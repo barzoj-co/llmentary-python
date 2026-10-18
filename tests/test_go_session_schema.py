@@ -123,6 +123,7 @@ def go_call(
     encode: str = "json",
     request: object = None,
     response: object = None,
+    normalized: str = "meta",
 ) -> dict[str, Any]:
     raw_request: object
     raw_response: object
@@ -151,12 +152,16 @@ def go_call(
         "raw_response": raw_response,
         "stream": False,
         "http_status": 200,
-        "normalized": {
-            "model": request_body.get("model"),
-            "api_family": api_family,
-            "request": request_body,
-            "response": response_body,
-        },
+        "normalized": (
+            {
+                "model": request_body.get("model"),
+                "api_family": api_family,
+                "request": request_body,
+                "response": response_body,
+            }
+            if normalized == "full"
+            else {"model": request_body.get("model"), "api_family": api_family}
+        ),
     }
     assert list(payload) == GO_CALL_KEYS
     return payload
@@ -316,7 +321,10 @@ def test_parses_responses_api_family_and_output() -> None:
 
 
 def test_query_filter_keeps_go_chat_calls() -> None:
-    empty = go_chat_trace().filtered(api_type="responses")
+    trace = go_chat_trace()
+    kept = trace.filtered(api_type="chat_completions")
+    assert [call.api_type for call in kept.calls] == ["chat_completions", "chat_completions"]
+    empty = trace.filtered(api_type="responses")
     assert empty.calls == []
     assert list(empty.raw.keys()) == ["id", "calls"]
 
@@ -368,3 +376,92 @@ def test_model_filter_accepts_openai_snapshot_id() -> None:
     trace = SessionTrace.from_payload("snap", payload)
     assert trace.calls[0].model == "gpt-4.1-mini-2025-04-14"
     assert len(trace.filtered(api_type="chat_completions", model="gpt-4.1-mini").calls) == 1
+
+
+def test_sparse_request_response_do_not_hide_raw_payloads() -> None:
+    request_body = chat_tool_request()
+    response_body = chat_tool_response()
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+        request={"model": "", "messages": None, "path": "/v1/chat/completions"},
+        response={"model": "", "choices": None},
+    )
+    trace = SessionTrace.from_payload("sparse", {"id": "sparse", "calls": [call]})
+    captured = trace.calls[0]
+    assert captured.api_type == "chat_completions"
+    assert captured.tool_calls[0].name == "get_weather"
+    assert captured.request["messages"][0]["content"] == "What is the weather in Paris?"
+
+
+def test_http_envelope_with_model_key_uses_body() -> None:
+    request_body = chat_tool_request()
+    response_body = chat_tool_response()
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+        request={
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "model": "ignored-wrapper",
+            "body": json.dumps(request_body),
+        },
+        response={
+            "status": 200,
+            "model": "ignored-wrapper",
+            "body": json.dumps(response_body),
+        },
+    )
+    captured = SessionTrace.from_payload("env", {"id": "env", "calls": [call]}).calls[0]
+    assert captured.model == "fake-model"
+    assert captured.tool_calls[0].name == "get_weather"
+
+
+def test_parses_json_byte_array_raw_response() -> None:
+    response_body = chat_tool_response()
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=chat_tool_request(),
+        response_body=response_body,
+        request=None,
+        response=None,
+    )
+    call["raw_response"] = list(json.dumps(response_body).encode("utf-8"))
+    captured = SessionTrace.from_payload("bytes", {"id": "bytes", "calls": [call]}).calls[0]
+    assert captured.tool_calls[0].name == "get_weather"
+
+
+def test_normalized_transcript_messages_are_invocations() -> None:
+    payload = {
+        "id": "transcript",
+        "calls": [
+            {
+                "api_family": "chat.completions",
+                "request": None,
+                "response": None,
+                "normalized": {
+                    "messages": [
+                        {"role": "user", "content": "weather"},
+                        {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "function": {
+                                        "name": "get_weather",
+                                        "arguments": '{"city":"Paris"}',
+                                    },
+                                }
+                            ],
+                        },
+                    ]
+                },
+            }
+        ],
+    }
+    Expectation(SessionTrace.from_payload("transcript", payload)).tool_called("get_weather")

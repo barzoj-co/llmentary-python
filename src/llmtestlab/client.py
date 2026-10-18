@@ -106,7 +106,7 @@ class ControlClient:
         if response.status_code == 405:
             response = self._client.post(
                 url,
-                json=params,
+                params=params,
                 headers=self.headers,
                 timeout=request_timeout,
             )

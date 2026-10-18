@@ -419,13 +419,23 @@ def looks_like_llm_payload(
     side: Optional[Literal["request", "response"]] = None,
 ) -> bool:
     if side == "request":
-        return any(key in mapping for key in ("messages", "input", "tools", "model", "prompt"))
+        return has_payload_field(mapping, ("messages", "input", "tools", "prompt"))
     if side == "response":
-        return any(
-            key in mapping
-            for key in ("choices", "output", "output_text", "tool_calls", "model", "usage")
+        return has_payload_field(
+            mapping, ("choices", "output", "output_text", "tool_calls", "usage")
         )
-    return any(key in mapping for key in LLM_PAYLOAD_KEYS)
+    return has_payload_field(mapping, LLM_PAYLOAD_KEYS)
+
+
+def has_payload_field(mapping: Mapping[str, Any], keys: Sequence[str]) -> bool:
+    for key in keys:
+        value = mapping.get(key)
+        if value is None or value == "":
+            continue
+        if isinstance(value, (list, dict)) and not value:
+            continue
+        return True
+    return False
 
 
 def coerce_mapping(value: Any) -> Mapping[str, Any]:
@@ -456,6 +466,10 @@ def decode_value(value: Any, *, depth: int = 0) -> Any:
             return decode_value(data.decode("utf-8"), depth=depth + 1)
         except UnicodeDecodeError:
             return value
+    if isinstance(value, list) and value and all(
+        isinstance(item, int) and 0 <= item <= 255 for item in value
+    ):
+        return decode_value(bytes(value), depth=depth + 1)
     if not isinstance(value, str):
         return value
 
@@ -561,6 +575,13 @@ def extract_tool_calls(mapping: Mapping[str, Any], start_index: int) -> list[Too
         item_map = as_mapping(item)
         if item_map.get("type") in {"function_call", "custom_tool_call", "tool_call"}:
             calls.append(tool_call_from_raw(item_map, start_index + len(calls)))
+
+    for message in sequence_at(mapping, "messages"):
+        message_map = as_mapping(message)
+        if message_map.get("role") != "assistant":
+            continue
+        nested = sequence_at(message_map, "tool_calls") or sequence_at(message_map, "toolCalls")
+        calls.extend(tool_call_from_raw(item, start_index + len(calls)) for item in nested)
 
     return [call for call in calls if call.name]
 
