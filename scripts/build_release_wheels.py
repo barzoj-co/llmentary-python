@@ -289,6 +289,8 @@ def safe_extract_tar(tf: tarfile.TarFile, destination: Path) -> None:
         target = (dest / member.name).resolve()
         if not target.is_relative_to(dest):
             raise SystemExit(f"Unsafe path in archive: {member.name}")
+        if not (member.isdir() or member.isreg()):
+            raise SystemExit(f"Unsupported member in archive: {member.name}")
     if sys.version_info >= (3, 12):
         tf.extractall(destination, filter="data")
     else:

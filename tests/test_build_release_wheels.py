@@ -28,6 +28,19 @@ sys.modules[SPEC.name] = wheels
 SPEC.loader.exec_module(wheels)
 
 
+def test_safe_extract_tar_rejects_symlink(tmp_path: Path) -> None:
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        link = tarfile.TarInfo(name="evil-link")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "/tmp/outside"
+        tar.addfile(link)
+    archive.seek(0)
+    with tarfile.open(fileobj=archive, mode="r:gz") as tar:
+        with pytest.raises(SystemExit, match="Unsupported member"):
+            wheels.safe_extract_tar(tar, tmp_path)
+
+
 def test_parse_goreleaser_checksums() -> None:
     checksums = wheels.parse_checksums(
         b"abc123  llmtestlab_Linux_x86_64.tar.gz\ndef456 *llmtestlab_Darwin_arm64.tar.gz\n"
