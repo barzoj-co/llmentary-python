@@ -70,7 +70,7 @@ jobs:
         run: |
           python -m venv /tmp/audit-runtime
           /tmp/audit-runtime/bin/python -m pip install -U pip
-          /tmp/audit-runtime/bin/python -m pip install ".[pytest,openai]" "pip-audit==${PIP_AUDIT_VERSION}"
+          /tmp/audit-runtime/bin/python -m pip install -e ".[pytest,openai]" "pip-audit==${PIP_AUDIT_VERSION}"
           /tmp/audit-runtime/bin/pip-audit --strict --skip-editable --progress-spinner off
 
       - name: Audit dev extras
@@ -80,5 +80,5 @@ jobs:
         run: |
           python -m venv /tmp/audit-dev
           /tmp/audit-dev/bin/python -m pip install -U pip
-          /tmp/audit-dev/bin/python -m pip install ".[dev]" "pip-audit==${PIP_AUDIT_VERSION}"
+          /tmp/audit-dev/bin/python -m pip install -e ".[dev]" "pip-audit==${PIP_AUDIT_VERSION}"
           /tmp/audit-dev/bin/pip-audit --strict --skip-editable --progress-spinner off
