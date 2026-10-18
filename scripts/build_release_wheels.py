@@ -32,11 +32,11 @@ REPO = "barzoj-co/llm-test-lab"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_BIN_DIR = Path("src/llmtestlab/bin")
 AGPL_LICENSE_FILE = REPO_ROOT / "licenses" / "AGPL-3.0.txt"
-PROXY_NOTICE_FILE = REPO_ROOT / "licenses" / "PROXY-NOTICE.txt"
 PLATFORM_WHEEL_LICENSE = "MIT AND AGPL-3.0-only"
 AGPL_CLASSIFIER = (
     "Classifier: License :: OSI Approved :: GNU Affero General Public License v3"
 )
+AGPL_LICENSE_FILE_FIELD = "License-File: licenses/AGPL-3.0.txt"
 
 
 @dataclass(frozen=True)
@@ -259,14 +259,9 @@ def install_binary(archive: bytes, asset_name: str, target: Target, *, version: 
         target_path = destination / target.binary_name
         shutil.copy2(binary, target_path)
         target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    if not AGPL_LICENSE_FILE.is_file() or not PROXY_NOTICE_FILE.is_file():
-        raise SystemExit("Missing licenses/AGPL-3.0.txt or licenses/PROXY-NOTICE.txt")
+    if not AGPL_LICENSE_FILE.is_file():
+        raise SystemExit("Missing licenses/AGPL-3.0.txt")
     shutil.copy2(AGPL_LICENSE_FILE, destination / "AGPL-3.0.txt")
-    notice = PROXY_NOTICE_FILE.read_text(encoding="utf-8").rstrip()
-    (destination / "PROXY-LICENSE.txt").write_text(
-        f"{notice}\n\nBundled proxy version: {version}\n",
-        encoding="utf-8",
-    )
     (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
 
 
@@ -325,16 +320,27 @@ def rewrite_wheel_license_metadata(metadata: str) -> str:
         metadata = metadata.rstrip() + f"\nLicense-Expression: {PLATFORM_WHEEL_LICENSE}\n"
 
     if AGPL_CLASSIFIER not in metadata:
-        lines = metadata.splitlines(keepends=True)
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
-        classifier_indexes = [
-            index for index, line in enumerate(lines) if line.startswith("Classifier:")
-        ]
-        insert_at = classifier_indexes[-1] + 1 if classifier_indexes else len(lines)
-        lines.insert(insert_at, AGPL_CLASSIFIER + "\n")
-        metadata = "".join(lines)
+        metadata = _insert_metadata_line(metadata, AGPL_CLASSIFIER, ("Classifier:",))
+    if AGPL_LICENSE_FILE_FIELD not in metadata:
+        prefixes = (
+            ("License-File:",)
+            if "License-File:" in metadata
+            else ("License-Expression:", "License:")
+        )
+        metadata = _insert_metadata_line(metadata, AGPL_LICENSE_FILE_FIELD, prefixes)
     return metadata
+
+
+def _insert_metadata_line(metadata: str, line: str, prefixes: tuple[str, ...]) -> str:
+    lines = metadata.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    indexes = [
+        index for index, current in enumerate(lines) if current.startswith(prefixes)
+    ]
+    insert_at = indexes[-1] + 1 if indexes else len(lines)
+    lines.insert(insert_at, line + "\n")
+    return "".join(lines)
 
 
 def wheel_record_digest(data: bytes) -> str:
@@ -343,11 +349,10 @@ def wheel_record_digest(data: bytes) -> str:
 
 
 def apply_platform_wheel_license(wheel_path: Path) -> None:
-    if not AGPL_LICENSE_FILE.is_file() or not PROXY_NOTICE_FILE.is_file():
-        raise SystemExit("Missing licenses/AGPL-3.0.txt or licenses/PROXY-NOTICE.txt")
+    if not AGPL_LICENSE_FILE.is_file():
+        raise SystemExit("Missing licenses/AGPL-3.0.txt")
     license_files = {
         "licenses/AGPL-3.0.txt": AGPL_LICENSE_FILE.read_bytes(),
-        "licenses/PROXY-NOTICE.txt": PROXY_NOTICE_FILE.read_bytes(),
     }
     contents: dict[str, bytes] = {}
     dist_info: Optional[str] = None

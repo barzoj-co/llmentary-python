@@ -17,12 +17,12 @@ by the proxy.
 <!-- ltl-repos:start -->
 ## llm-test-lab repositories
 
-| Repository | What | License |
-|---|---|---|
-| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
-| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
-| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
-| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+| Repository | What |
+|---|---|
+| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) |
+| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` |
+| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin |
+| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest |
 <!-- ltl-repos:end -->
 
 ## Install
@@ -134,9 +134,6 @@ Published wheels:
 - `macosx_11_0_arm64`
 - `win_amd64`
 
-The bundled proxy is a separate process. This Python client is MIT; the proxy
-binary remains AGPL-3.0.
-
 The client starts the proxy with the Go binary's flags: `-listen` for the
 OpenAI-compatible proxy, `-control` for the control API, and
 `-upstream name=https://host/base` (default name `openai`). Override the whole
@@ -196,12 +193,4 @@ through the same real binary.
 
 ## License
 
-This Python client library is MIT licensed. See [LICENSE](LICENSE).
-
-The `llm-test-lab` proxy binary bundled in platform wheels, started by this
-client, or already running as a separate process, comes from
-`barzoj-co/llm-test-lab` and is licensed AGPL-3.0. The client and the proxy are
-separate processes; distributing or modifying the proxy is subject to AGPL.
-Platform wheels include `AGPL-3.0.txt` and `PROXY-LICENSE.txt` next to the
-bundled binary and declare `MIT AND AGPL-3.0-only`. The sdist does not bundle
-the proxy and remains MIT-only.
+Licensed under MIT, see LICENSE
