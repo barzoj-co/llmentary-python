@@ -211,7 +211,13 @@ class CapturedCall:
 
     @property
     def cached_tokens(self) -> Optional[int]:
-        return usage_detail(self.usage, "cached_tokens", "cachedTokens")
+        return usage_detail(
+            self.usage,
+            "cached_tokens",
+            "cachedTokens",
+            "cached_input_tokens",
+            "cachedInputTokens",
+        )
 
     @property
     def reasoning_tokens(self) -> Optional[int]:
@@ -673,23 +679,30 @@ def numeric_at_any(
 
 
 def usage_detail(usage: Mapping[str, Any], *keys: str) -> Optional[int]:
-    for container_key in (
-        "prompt_tokens_details",
-        "promptTokensDetails",
-        "input_tokens_details",
-        "inputTokensDetails",
-        "completion_tokens_details",
-        "completionTokensDetails",
-        "output_tokens_details",
-        "outputTokensDetails",
-    ):
-        details = mapping_at(usage, container_key)
-        if not details:
+    containers = [usage, mapping_at(usage, "raw"), mapping_at(usage, "body")]
+    for container in containers:
+        if not container:
             continue
-        parsed = int_or_none(first_present(details, *keys))
+        for container_key in (
+            "prompt_tokens_details",
+            "promptTokensDetails",
+            "input_tokens_details",
+            "inputTokensDetails",
+            "completion_tokens_details",
+            "completionTokensDetails",
+            "output_tokens_details",
+            "outputTokensDetails",
+        ):
+            details = mapping_at(container, container_key)
+            if not details:
+                continue
+            parsed = int_or_none(first_present(details, *keys))
+            if parsed is not None:
+                return parsed
+        parsed = int_or_none(first_present(container, *keys))
         if parsed is not None:
             return parsed
-    return int_or_none(first_present(usage, *keys))
+    return None
 
 
 def int_or_none(value: Any) -> Optional[int]:

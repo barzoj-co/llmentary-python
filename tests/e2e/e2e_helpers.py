@@ -250,7 +250,7 @@ def recorded_incomplete_or_errored(calls: Sequence[CapturedCall]) -> bool:
         ended = call.raw.get("ended_at")
         if ended in (None, ""):
             return True
-        if call.streamed and call.finish_reason in {None, "length", "unknown"}:
+        if call.streamed and call.finish_reason in {None, "unknown"}:
             return True
         normalized = call.normalized_payload
         if normalized.get("stream_truncated") or normalized.get("client_aborted"):

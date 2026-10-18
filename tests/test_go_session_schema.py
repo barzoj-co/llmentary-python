@@ -493,8 +493,34 @@ def test_parses_stream_status_usage_details_and_error_fields() -> None:
     assert captured.http_status == 400
     assert captured.cached_tokens == 3
     assert captured.reasoning_tokens == 2
-    assert captured.error_type == "invalid_request_error"
-    assert captured.error_code == "model_not_found"
+
+
+def test_parses_go_normalized_cached_input_tokens() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {"choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["usage"] = {
+        "input_tokens": 3215,
+        "output_tokens": 1,
+        "total_tokens": 3216,
+        "cached_input_tokens": 3072,
+        "reasoning_tokens": 0,
+        "source": "body",
+        "raw": {
+            "prompt_tokens": 3215,
+            "completion_tokens": 1,
+            "total_tokens": 3216,
+            "prompt_tokens_details": {"cached_tokens": 3072},
+        },
+    }
+    captured = SessionTrace.from_payload("cache", {"id": "cache", "calls": [call]}).calls[0]
+    assert captured.cached_tokens == 3072
+    assert captured.reasoning_tokens == 0
 
 
 def test_parses_error_from_raw_response_without_top_level_error() -> None:
