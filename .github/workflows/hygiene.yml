@@ -26,7 +26,7 @@ jobs:
 
       - name: Install actionlint
         env:
-          # renovate: datasource=github-releases depName=rhysd/actionlint
+          # renovate: datasource=github-releases depName=rhysd/actionlint extractVersion=^v(?<version>.*)$
           ACTIONLINT_VERSION: "1.7.12"
         run: |
           set -euo pipefail
@@ -143,6 +143,7 @@ jobs:
 
   release-please-dry-run:
     name: release-please (dry run)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

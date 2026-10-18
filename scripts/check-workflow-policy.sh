@@ -73,6 +73,8 @@ def parse_yaml(text: str) -> dict:
             return raw == "true"
         if re.fullmatch(r"-?\d+", raw):
             return int(raw)
+        if raw.startswith("{") and raw.endswith("}") and not raw[1:-1].strip():
+            return {}
         if raw.startswith("[") and raw.endswith("]"):
             inner = raw[1:-1].strip()
             if not inner:

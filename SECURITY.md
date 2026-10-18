@@ -53,7 +53,9 @@ with:
 
 ```bash
 pip install pypi-attestations
-pypi-attestations verify pypi llm-test-lab
+pypi-attestations verify pypi \
+  --repository https://github.com/barzoj-co/llm-test-lab-python \
+  llm_test_lab-<version>-py3-none-any.whl
 ```
 
 or in the PyPI UI under **Verified details** on the project or file page.

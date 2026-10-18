@@ -63,7 +63,9 @@ Until step 3, the publish job is skipped and `release.yml` stays green.
 
 ```bash
 pip install pypi-attestations
-pypi-attestations verify pypi llm-test-lab
+pypi-attestations verify pypi \
+  --repository https://github.com/barzoj-co/llm-test-lab-python \
+  llm_test_lab-<version>-py3-none-any.whl
 ```
 
 The PyPI UI also shows **Verified details** on the project and file pages.
