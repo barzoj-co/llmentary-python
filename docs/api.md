@@ -128,7 +128,9 @@ expect.response_json_valid()
 expect.response_json_schema({"type": "object", "required": ["answer"]})
 ```
 
-JSON assertions look at normalized response text and the raw response body.
+JSON assertions inspect model output text only (`output_text`, Chat
+`choices[].message.content`, Responses `output[].content`), not the HTTP
+response envelope.
 
 ## Trace payload handling
 

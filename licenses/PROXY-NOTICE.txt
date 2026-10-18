@@ -1,0 +1,8 @@
+The bundled `llmtestlab` proxy is a separate process licensed under the GNU
+Affero General Public License, version 3.0 (AGPL-3.0-only). See AGPL-3.0.txt
+for the complete license text.
+
+Corresponding source:
+https://github.com/barzoj-co/llm-test-lab
+
+The bundled proxy version is recorded in VERSION next to the binary.

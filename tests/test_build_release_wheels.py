@@ -36,6 +36,44 @@ def test_parse_goreleaser_checksums() -> None:
     }
 
 
+def test_select_checksum_asset_ignores_signing_artifacts() -> None:
+    assets = [
+        wheels.Asset("checksums.txt.sig", "https://example/checksums.txt.sig"),
+        wheels.Asset("checksums.txt.pem", "https://example/checksums.txt.pem"),
+        wheels.Asset("checksums.txt", "https://example/checksums.txt"),
+        wheels.Asset("checksums.txt.sigstore.json", "https://example/checksums.txt.sigstore.json"),
+    ]
+    assert wheels.select_checksum_asset(assets).name == "checksums.txt"
+
+
+def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
+    wheel_path = tmp_path / "llm_test_lab-0.1.0-py3-none-any.whl"
+    metadata = (
+        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "Classifier: License :: OSI Approved :: MIT License\n"
+    )
+    with zipfile.ZipFile(wheel_path, "w") as zf:
+        zf.writestr("llm_test_lab-0.1.0.dist-info/METADATA", metadata)
+        zf.writestr("llmtestlab/__init__.py", "x = 1\n")
+    wheels.apply_platform_wheel_license(wheel_path)
+    with zipfile.ZipFile(wheel_path) as zf:
+        names = zf.namelist()
+        rewritten = zf.read("llm_test_lab-0.1.0.dist-info/METADATA").decode("utf-8")
+    assert "License-Expression: MIT AND AGPL-3.0-only" in rewritten
+    assert any(name.endswith("licenses/AGPL-3.0.txt") for name in names)
+    assert any(name.endswith("licenses/PROXY-NOTICE.txt") for name in names)
+
+
+def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:
+    rewritten = wheels.rewrite_wheel_license_metadata(
+        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "Classifier: License :: OSI Approved :: MIT License\n"
+    )
+    assert "License-Expression: MIT AND AGPL-3.0-only" in rewritten
+    assert "License-Expression: MIT\n" not in rewritten
+    assert wheels.AGPL_CLASSIFIER in rewritten
+
+
 def test_select_asset_matches_platform() -> None:
     assets = [
         wheels.Asset("checksums.txt", "https://example/checksums.txt"),
@@ -71,9 +109,13 @@ def test_install_binary_extracts_and_records_version(
     )
     installed = wheels.PACKAGE_BIN_DIR / target.wheel_tag / "llmtestlab"
     assert installed.is_file()
-    assert (wheels.PACKAGE_BIN_DIR / target.wheel_tag / "VERSION").read_text(encoding="utf-8") == (
-        "1.2.3\n"
-    )
+    dest = wheels.PACKAGE_BIN_DIR / target.wheel_tag
+    assert (dest / "VERSION").read_text(encoding="utf-8") == "1.2.3\n"
+    agpl_text = (dest / "AGPL-3.0.txt").read_text(encoding="utf-8")
+    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_text
+    proxy_license = (dest / "PROXY-LICENSE.txt").read_text(encoding="utf-8")
+    assert "https://github.com/barzoj-co/llm-test-lab" in proxy_license
+    assert "Bundled proxy version: 1.2.3" in proxy_license
 
 
 def test_asset_download_strips_authorization_on_redirect() -> None:
@@ -158,25 +200,27 @@ def test_download_bytes_follows_http_error_redirect(monkeypatch: pytest.MonkeyPa
 
 def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     platform_tag = "manylinux2014_x86_64"
-    bin_root = ROOT / "src" / "llmtestlab" / "bin"
-    bin_dir = bin_root / platform_tag
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    for name in ("pyproject.toml", "README.md", "LICENSE"):
+        shutil.copy2(ROOT / name, project_root / name)
+    shutil.copytree(ROOT / "src", project_root / "src")
+    bin_dir = project_root / "src" / "llmtestlab" / "bin" / platform_tag
     bin_dir.mkdir(parents=True, exist_ok=True)
     binary = bin_dir / "llmtestlab"
     binary.write_bytes(b"dummy-proxy")
     binary.chmod(0o755)
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "build", "--wheel", "--outdir", str(tmp_path)],
-            cwd=ROOT,
-            check=True,
-        )
-        built = list(tmp_path.glob("*.whl"))
-        assert len(built) == 1
-        with zipfile.ZipFile(built[0]) as zf:
-            names = zf.namelist()
-        assert any(
-            name.replace("\\", "/").endswith(f"llmtestlab/bin/{platform_tag}/llmtestlab")
-            for name in names
-        )
-    finally:
-        shutil.rmtree(bin_root, ignore_errors=True)
+    outdir = tmp_path / "dist"
+    subprocess.run(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(outdir)],
+        cwd=project_root,
+        check=True,
+    )
+    built = list(outdir.glob("*.whl"))
+    assert len(built) == 1
+    with zipfile.ZipFile(built[0]) as zf:
+        names = zf.namelist()
+    assert any(
+        name.replace("\\", "/").endswith(f"llmtestlab/bin/{platform_tag}/llmtestlab")
+        for name in names
+    )

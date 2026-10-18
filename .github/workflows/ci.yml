@@ -38,6 +38,7 @@ jobs:
           repository: barzoj-co/llm-test-lab
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
           path: llm-test-lab
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -101,6 +102,7 @@ jobs:
           repository: barzoj-co/llm-test-lab
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
           path: llm-test-lab
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6

@@ -8,14 +8,16 @@ from fake_upstream import FakeOpenAIServer
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    if os.environ.get("LLMTESTLAB_BIN") or os.environ.get("LLMTESTLAB_PROXY_URL"):
-        return
+    has_proxy = bool(os.environ.get("LLMTESTLAB_BIN") or os.environ.get("LLMTESTLAB_PROXY_URL"))
     skip_integration = pytest.mark.skip(
         reason="requires real llm-test-lab Go binary via LLMTESTLAB_BIN"
     )
+    skip_e2e = pytest.mark.skip(reason="set LLMTESTLAB_E2E=1 to run real OpenAI E2E tests")
     for item in items:
-        if "integration" in item.keywords:
+        if "integration" in item.keywords and not has_proxy:
             item.add_marker(skip_integration)
+        if "e2e" in item.keywords and os.environ.get("LLMTESTLAB_E2E") != "1":
+            item.add_marker(skip_e2e)
 
 
 @pytest.fixture(scope="session")

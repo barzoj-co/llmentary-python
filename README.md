@@ -183,3 +183,6 @@ The `llm-test-lab` proxy binary bundled in platform wheels, started by this
 client, or already running as a separate process, comes from
 `barzoj-co/llm-test-lab` and is licensed AGPL-3.0. The client and the proxy are
 separate processes; distributing or modifying the proxy is subject to AGPL.
+Platform wheels include `AGPL-3.0.txt` and `PROXY-LICENSE.txt` next to the
+bundled binary and declare `MIT AND AGPL-3.0-only`. The sdist does not bundle
+the proxy and remains MIT-only.

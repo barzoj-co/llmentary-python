@@ -105,8 +105,8 @@ class Expectation:
             for call in self.trace.calls
             for result in call.tool_results
         )
-        result_mentions_name = any(
-            name in json.dumps(result, sort_keys=True)
+        result_mentions_name = not tool_ids and any(
+            result.get("name") == name
             for call in self.trace.calls
             for result in call.tool_results
         )

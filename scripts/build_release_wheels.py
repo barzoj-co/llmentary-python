@@ -28,7 +28,14 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 REPO = "barzoj-co/llm-test-lab"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_BIN_DIR = Path("src/llmtestlab/bin")
+AGPL_LICENSE_FILE = REPO_ROOT / "licenses" / "AGPL-3.0.txt"
+PROXY_NOTICE_FILE = REPO_ROOT / "licenses" / "PROXY-NOTICE.txt"
+PLATFORM_WHEEL_LICENSE = "MIT AND AGPL-3.0-only"
+AGPL_CLASSIFIER = (
+    "Classifier: License :: OSI Approved :: GNU Affero General Public License v3"
+)
 
 
 @dataclass(frozen=True)
@@ -77,9 +84,7 @@ def main() -> None:
 
     release = fetch_release(version, token)
     assets = release_assets(release)
-    checksum_asset = next((asset for asset in assets if "checksum" in asset.name.lower()), None)
-    if checksum_asset is None:
-        raise SystemExit(f"Release v{version} has no checksums.txt asset")
+    checksum_asset = select_checksum_asset(assets)
     checksums = parse_checksums(download_asset(checksum_asset.url, token))
 
     dist = Path("dist")
@@ -108,6 +113,7 @@ def main() -> None:
         raw.mkdir(parents=True)
         subprocess.run([sys.executable, "-m", "build", "--wheel", "--outdir", str(raw)], check=True)
         wheel = one(raw.glob("*.whl"))
+        before_tags = {path.name for path in dist.glob("*.whl")}
         subprocess.run(
             [
                 sys.executable,
@@ -123,6 +129,8 @@ def main() -> None:
             ],
             check=True,
         )
+        tagged = one(path for path in dist.glob("*.whl") if path.name not in before_tags)
+        apply_platform_wheel_license(tagged)
 
     shutil.rmtree(raw, ignore_errors=True)
     shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
@@ -159,6 +167,13 @@ def release_assets(release: dict[str, Any]) -> list[Asset]:
         if isinstance(name, str) and isinstance(url, str):
             assets.append(Asset(name=name, url=url))
     return assets
+
+
+def select_checksum_asset(assets: list[Asset]) -> Asset:
+    matches = [asset for asset in assets if Path(asset.name).name.lower() == "checksums.txt"]
+    if not matches:
+        raise SystemExit("Release has no checksums.txt asset")
+    return matches[0]
 
 
 def select_asset(assets: list[Asset], target: Target) -> Asset:
@@ -243,6 +258,14 @@ def install_binary(archive: bytes, asset_name: str, target: Target, *, version: 
         target_path = destination / target.binary_name
         shutil.copy2(binary, target_path)
         target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if not AGPL_LICENSE_FILE.is_file() or not PROXY_NOTICE_FILE.is_file():
+        raise SystemExit("Missing licenses/AGPL-3.0.txt or licenses/PROXY-NOTICE.txt")
+    shutil.copy2(AGPL_LICENSE_FILE, destination / "AGPL-3.0.txt")
+    notice = PROXY_NOTICE_FILE.read_text(encoding="utf-8").rstrip()
+    (destination / "PROXY-LICENSE.txt").write_text(
+        f"{notice}\n\nBundled proxy version: {version}\n",
+        encoding="utf-8",
+    )
     (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
 
 
@@ -276,6 +299,67 @@ def find_extracted_binary(root: Path, binary_name: str) -> Path:
     if not matches:
         raise SystemExit(f"Archive did not contain {binary_name}")
     return matches[0]
+
+
+def rewrite_wheel_license_metadata(metadata: str) -> str:
+    if re.search(r"^License-Expression:", metadata, flags=re.MULTILINE):
+        metadata = re.sub(
+            r"^License-Expression:.*$",
+            f"License-Expression: {PLATFORM_WHEEL_LICENSE}",
+            metadata,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    elif re.search(r"^License:", metadata, flags=re.MULTILINE):
+        metadata = re.sub(
+            r"^License:.*$",
+            f"License: {PLATFORM_WHEEL_LICENSE}",
+            metadata,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    else:
+        metadata = metadata.rstrip() + f"\nLicense-Expression: {PLATFORM_WHEEL_LICENSE}\n"
+
+    if AGPL_CLASSIFIER not in metadata:
+        lines = metadata.splitlines(keepends=True)
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        classifier_indexes = [
+            index for index, line in enumerate(lines) if line.startswith("Classifier:")
+        ]
+        insert_at = classifier_indexes[-1] + 1 if classifier_indexes else len(lines)
+        lines.insert(insert_at, AGPL_CLASSIFIER + "\n")
+        metadata = "".join(lines)
+    return metadata
+
+
+def apply_platform_wheel_license(wheel_path: Path) -> None:
+    if not AGPL_LICENSE_FILE.is_file() or not PROXY_NOTICE_FILE.is_file():
+        raise SystemExit("Missing licenses/AGPL-3.0.txt or licenses/PROXY-NOTICE.txt")
+    license_files = {
+        "licenses/AGPL-3.0.txt": AGPL_LICENSE_FILE.read_bytes(),
+        "licenses/PROXY-NOTICE.txt": PROXY_NOTICE_FILE.read_bytes(),
+    }
+    tmp_path = wheel_path.with_name(wheel_path.name + ".relicense")
+    with zipfile.ZipFile(wheel_path) as zin, zipfile.ZipFile(
+        tmp_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as zout:
+        dist_info: Optional[str] = None
+        existing = set(zin.namelist())
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename.endswith(".dist-info/METADATA"):
+                dist_info = info.filename.rsplit("/", 1)[0]
+                data = rewrite_wheel_license_metadata(data.decode("utf-8")).encode("utf-8")
+            zout.writestr(info, data)
+        if dist_info is None:
+            raise SystemExit(f"{wheel_path.name} has no METADATA")
+        for relative, payload in license_files.items():
+            dest = f"{dist_info}/{relative}"
+            if dest not in existing:
+                zout.writestr(dest, payload)
+    tmp_path.replace(wheel_path)
 
 
 def one(paths: Iterable[Path]) -> Path:

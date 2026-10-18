@@ -201,6 +201,145 @@ def test_null_request_does_not_block_raw_response_tools() -> None:
     Expectation(encoded).tool_called("get_weather").model("fake-model")
 
 
+def test_tool_result_fed_back_uses_call_id_not_name_substring() -> None:
+    mixed = SessionTrace.from_payload(
+        "substring",
+        {
+            "calls": [
+                {
+                    "request": {"body": {"messages": [{"role": "user", "content": "weather"}]}},
+                    "response": {
+                        "body": {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "tool_calls": [
+                                            {
+                                                "id": "call_1",
+                                                "function": {
+                                                    "name": "get_weather",
+                                                    "arguments": "{}",
+                                                },
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                },
+                {
+                    "request": {
+                        "body": {
+                            "messages": [
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": "call_other",
+                                    "content": "get_weather mentioned in the result text",
+                                }
+                            ]
+                        }
+                    },
+                    "response": {"body": {"choices": [{"message": {"content": "ok"}}]}},
+                },
+            ]
+        },
+    )
+    with pytest.raises(AssertionError, match="fed back"):
+        Expectation(mixed).tool_result_fed_back("get_weather")
+
+
+def test_tool_result_fed_back_name_fallback_is_exact() -> None:
+    named = SessionTrace.from_payload(
+        "name-only",
+        {
+            "calls": [
+                {
+                    "request": {"body": {"messages": [{"role": "user", "content": "weather"}]}},
+                    "response": {
+                        "body": {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "tool_calls": [
+                                            {
+                                                "function": {
+                                                    "name": "get_weather",
+                                                    "arguments": "{}",
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                },
+                {
+                    "request": {
+                        "body": {
+                            "input": [
+                                {
+                                    "type": "function_call_output",
+                                    "name": "get_weather",
+                                    "output": "sunny",
+                                }
+                            ]
+                        }
+                    },
+                    "response": {"body": {"output_text": "ok"}},
+                },
+            ]
+        },
+    )
+    Expectation(named).tool_result_fed_back("get_weather")
+
+    sibling = SessionTrace.from_payload(
+        "sibling-name",
+        {
+            "calls": [
+                {
+                    "request": {"body": {"messages": [{"role": "user", "content": "weather"}]}},
+                    "response": {
+                        "body": {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "tool_calls": [
+                                            {
+                                                "function": {
+                                                    "name": "get_weather",
+                                                    "arguments": "{}",
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                },
+                {
+                    "request": {
+                        "body": {
+                            "input": [
+                                {
+                                    "type": "function_call_output",
+                                    "name": "get_weather_v2",
+                                    "output": "get_weather is mentioned in the output",
+                                }
+                            ]
+                        }
+                    },
+                    "response": {"body": {"output_text": "ok"}},
+                },
+            ]
+        },
+    )
+    with pytest.raises(AssertionError, match="fed back"):
+        Expectation(sibling).tool_result_fed_back("get_weather")
+
+
 def test_request_echoed_tool_calls_are_not_invocations() -> None:
     echoed = SessionTrace.from_payload(
         "echo",
