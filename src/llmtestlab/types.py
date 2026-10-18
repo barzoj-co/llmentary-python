@@ -298,7 +298,18 @@ def model_matches(actual: Optional[str], expected: str) -> bool:
         return False
     if actual == expected:
         return True
-    return actual.startswith(expected + "-")
+    prefix = expected + "-"
+    if not actual.startswith(prefix):
+        return False
+    # OpenAI snapshot ids are `{model}-{YYYY}-{MM}-{DD}`, not sibling names like mini/nano.
+    parts = actual[len(prefix) :].split("-")
+    return (
+        len(parts) == 3
+        and len(parts[0]) == 4
+        and len(parts[1]) == 2
+        and len(parts[2]) == 2
+        and all(part.isdigit() for part in parts)
+    )
 
 
 def normalize_api_type(api_type: str) -> str:

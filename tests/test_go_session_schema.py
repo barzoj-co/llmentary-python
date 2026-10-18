@@ -333,6 +333,27 @@ def test_prefers_request_model_over_response_snapshot() -> None:
     assert len(trace.filtered(model="gpt-4.1-mini").calls) == 1
 
 
+def test_model_filter_does_not_match_sibling_models() -> None:
+    payload = {
+        "id": "siblings",
+        "calls": [
+            {
+                "api_family": "chat.completions",
+                "request": {"model": "gpt-4.1-mini"},
+                "response": {"choices": []},
+            },
+            {
+                "api_family": "chat.completions",
+                "request": {"model": "gpt-4.1-nano"},
+                "response": {"choices": []},
+            },
+        ],
+    }
+    trace = SessionTrace.from_payload("siblings", payload)
+    assert [call.model for call in trace.filtered(model="gpt-4.1").calls] == []
+    assert [call.model for call in trace.filtered(model="gpt-4.1-mini").calls] == ["gpt-4.1-mini"]
+
+
 def test_model_filter_accepts_openai_snapshot_id() -> None:
     payload = {
         "id": "snap",
