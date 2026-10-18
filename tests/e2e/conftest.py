@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from helpers import require_e2e
+from e2e_helpers import require_e2e
 
 
 @pytest.fixture(autouse=True)

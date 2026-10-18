@@ -50,10 +50,16 @@ def openai_client(lab: LabSession, *, api_key: str | None = None) -> Any:
     )
 
 
-def openai_client_errors() -> tuple[type[BaseException], ...]:
-    from openai import APIStatusError, AuthenticationError, BadRequestError, NotFoundError
+def openai_invalid_model_errors() -> tuple[type[BaseException], ...]:
+    from openai import BadRequestError, NotFoundError
 
-    return (APIStatusError, AuthenticationError, BadRequestError, NotFoundError)
+    return (BadRequestError, NotFoundError)
+
+
+def openai_invalid_key_errors() -> tuple[type[BaseException], ...]:
+    from openai import AuthenticationError, PermissionDeniedError
+
+    return (AuthenticationError, PermissionDeniedError)
 
 
 def call_openai(operation: Callable[[], T]) -> T:
@@ -135,7 +141,7 @@ def assert_assembled_matches_recorded(assembled: str, recorded: str) -> None:
     left, right = assembled.strip(), recorded.strip()
     assert left, "expected concatenated stream deltas"
     assert right, "expected recorded output text"
-    assert left == right or left in right or right in left, (left, right)
+    assert " ".join(left.split()) == " ".join(right.split()), (left, right)
 
 
 def error_fields(call: CapturedCall) -> tuple[int | None, str | None, str | None]:
@@ -244,6 +250,9 @@ def recorded_incomplete_or_errored(calls: Sequence[CapturedCall]) -> bool:
         ended = call.raw.get("ended_at")
         if ended in (None, ""):
             return True
-        if call.streamed and call.finish_reason in {None, "length"}:
+        if call.streamed and call.finish_reason in {None, "length", "unknown"}:
+            return True
+        normalized = call.normalized_payload
+        if normalized.get("stream_truncated") or normalized.get("client_aborted"):
             return True
     return False

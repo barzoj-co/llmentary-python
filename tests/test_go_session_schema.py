@@ -521,3 +521,40 @@ def test_parses_error_from_raw_response_without_top_level_error() -> None:
     assert captured.error_type == "invalid_request_error"
     assert captured.error_code == "invalid_api_key"
     assert captured.error
+
+
+def test_null_error_on_successful_response_is_not_an_error() -> None:
+    request_body = {"model": "fake-model", "input": "ping"}
+    response_body = {
+        "id": "resp_ok",
+        "status": "completed",
+        "error": None,
+        "output_text": "ping",
+        "output": [{"type": "message", "content": [{"type": "output_text", "text": "ping"}]}],
+        "usage": {"input_tokens": 4, "output_tokens": 1, "total_tokens": 5},
+    }
+    call = go_call(
+        seq=1,
+        api_family="openai.responses",
+        request_body=request_body,
+        response_body=response_body,
+        response=None,
+    )
+    captured = SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]}).calls[0]
+    assert captured.error is None
+    assert captured.error_mapping == {}
+    Expectation(SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]})).no_errors()
+
+
+def test_path_from_upstream_url_for_passthrough() -> None:
+    call = go_call(
+        seq=1,
+        api_family="openai.responses",
+        request_body={"model": "fake-model"},
+        response_body={"object": "list", "data": [{"id": "gpt-4.1-nano"}]},
+        request=None,
+        response=None,
+    )
+    call["upstream"] = {"method": "GET", "url": "https://api.openai.com/v1/models"}
+    captured = SessionTrace.from_payload("models", {"id": "models", "calls": [call]}).calls[0]
+    assert (captured.path or "").rstrip("/").endswith("/models")

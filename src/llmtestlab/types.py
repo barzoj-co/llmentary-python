@@ -110,6 +110,9 @@ class CapturedCall:
                 decoded = coerce_mapping(self.raw[key])
                 if decoded:
                     sources.append(decoded)
+        upstream = coerce_mapping(self.raw.get("upstream"))
+        if upstream:
+            sources.append(upstream)
         for source in sources:
             value = first_present(source, *PATH_KEYS)
             if isinstance(value, str) and value:
@@ -170,11 +173,18 @@ class CapturedCall:
         nested = coerce_mapping(self.normalized_payload.get("response"))
         if nested:
             sources.append(nested)
+        raw_body = self.raw_response_body
+        if isinstance(raw_body, Mapping):
+            sources.append(raw_body)
         for source in sources:
             usage = mapping_at(source, "usage")
             if usage:
                 return usage
         return {}
+
+    @property
+    def raw_response_body(self) -> Any:
+        return decode_value(first_present(self.raw, "raw_response", "rawResponse"))
 
     @property
     def streamed(self) -> bool:
@@ -427,19 +437,25 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
     return None
 
 
+def looks_like_error_object(mapping: Mapping[str, Any]) -> bool:
+    return any(mapping.get(key) not in (None, "") for key in ("type", "code", "message"))
+
+
 def unwrap_error(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         nested = value.get("error")
         if isinstance(nested, Mapping):
             return nested
-        return value
+        if looks_like_error_object(value):
+            return value
+        return {}
     if isinstance(value, str) and value.strip():
         extracted = extract_json_object(value)
         if extracted:
             nested = extracted.get("error")
             if isinstance(nested, Mapping):
                 return nested
-            if any(key in extracted for key in ("type", "code", "message")):
+            if looks_like_error_object(extracted):
                 return extracted
     return {}
 
@@ -455,12 +471,10 @@ def extract_error_mapping(raw: Mapping[str, Any]) -> Mapping[str, Any]:
             continue
         for candidate in candidate_mappings(raw[key]):
             if "error" in candidate:
-                mapped = unwrap_error(candidate)
+                mapped = unwrap_error(candidate.get("error"))
                 if mapped:
                     return mapped
-            if isinstance(candidate.get("type"), str) and (
-                candidate.get("code") is not None or "error" in str(candidate.get("type"))
-            ):
+            if looks_like_error_object(candidate):
                 return candidate
     return {}
 
@@ -672,12 +686,19 @@ def usage_detail(usage: Mapping[str, Any], *keys: str) -> Optional[int]:
         details = mapping_at(usage, container_key)
         if not details:
             continue
-        value = first_present(details, *keys)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
-    value = first_present(usage, *keys)
-    if isinstance(value, int) and not isinstance(value, bool):
+        parsed = int_or_none(first_present(details, *keys))
+        if parsed is not None:
+            return parsed
+    return int_or_none(first_present(usage, *keys))
+
+
+def int_or_none(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
         return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     return None
 
 

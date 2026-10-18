@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from helpers import (
+from e2e_helpers import (
     CHEAP_MODEL,
     INVALID_KEY_HEADERS,
     INVALID_MODEL,
@@ -20,7 +20,8 @@ from helpers import (
     call_openai,
     first_call,
     openai_client,
-    openai_client_errors,
+    openai_invalid_key_errors,
+    openai_invalid_model_errors,
     recorded_incomplete_or_errored,
     tool_argument_json,
 )
@@ -213,7 +214,7 @@ def test_chat_multi_turn_session_helpers(lab: LabSession) -> None:
 
 def test_chat_upstream_invalid_model(lab: LabSession) -> None:
     client = openai_client(lab)
-    with pytest.raises(openai_client_errors()):
+    with pytest.raises(openai_invalid_model_errors()):
         client.chat.completions.create(
             model=INVALID_MODEL,
             messages=[{"role": "user", "content": "ping"}],
@@ -227,7 +228,7 @@ def test_chat_upstream_invalid_model(lab: LabSession) -> None:
 
 def test_chat_upstream_invalid_api_key(lab: LabSession) -> None:
     client = openai_client(lab)
-    with pytest.raises(openai_client_errors()):
+    with pytest.raises(openai_invalid_key_errors()):
         client.chat.completions.create(
             model=CHEAP_MODEL,
             messages=[{"role": "user", "content": "ping"}],
@@ -236,7 +237,7 @@ def test_chat_upstream_invalid_api_key(lab: LabSession) -> None:
             extra_headers=INVALID_KEY_HEADERS,
         )
     call = assert_recorded_error(lab.wait(), pattern=r"auth|api.?key|401|invalid")
-    assert call.http_status == 401 or (call.http_status or 0) >= 400
+    assert call.http_status == 401, lab.trace().trace_summary()
 
 
 def test_chat_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:

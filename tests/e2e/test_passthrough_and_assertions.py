@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
+
 import pytest
-from helpers import (
+from e2e_helpers import (
     CHEAP_MODEL,
     INVALID_MODEL,
     WEATHER_CHAT,
     call_openai,
     openai_client,
-    openai_client_errors,
+    openai_invalid_model_errors,
 )
 
 from llmtestlab import LabSession
@@ -24,17 +26,14 @@ def test_raw_passthrough_models_list(lab: LabSession) -> None:
     trace = lab.wait()
     assert trace.calls, trace.trace_summary()
     matching = [
-        call
-        for call in trace.calls
-        if (call.path or "").rstrip("/").endswith("/models")
-        or "models" in str(call.raw.get("path") or "")
-        or "/models" in str(call.raw)
+        call for call in trace.calls if (call.path or "").rstrip("/").endswith("/models")
     ]
     assert matching, trace.trace_summary()
     call = matching[0]
-    assert call.http_status in {None, 200} or (call.http_status or 0) < 400
-    raw_blob = str(call.raw)
-    assert "gpt" in raw_blob.lower() or "data" in raw_blob.lower() or models[0] in raw_blob
+    assert call.http_status == 200, trace.trace_summary()
+    body = call.raw_response_body
+    blob = body if isinstance(body, str) else json.dumps(body, default=str)
+    assert models[0] in blob, trace.trace_summary()
 
 
 def test_assertion_helpers_fail_with_clear_messages(lab: LabSession) -> None:
@@ -70,7 +69,7 @@ def test_assertion_helpers_fail_with_clear_messages(lab: LabSession) -> None:
     with pytest.raises(AssertionError, match="expected finish reason"):
         expect.finish_reason("this-finish-reason-is-absent")
 
-    with pytest.raises(openai_client_errors()):
+    with pytest.raises(openai_invalid_model_errors()):
         client.chat.completions.create(
             model=INVALID_MODEL,
             messages=[{"role": "user", "content": "ping"}],

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from helpers import (
+from e2e_helpers import (
     CHEAP_MODEL,
     INVALID_KEY_HEADERS,
     INVALID_MODEL,
@@ -20,7 +20,8 @@ from helpers import (
     call_openai,
     first_call,
     openai_client,
-    openai_client_errors,
+    openai_invalid_key_errors,
+    openai_invalid_model_errors,
     recorded_incomplete_or_errored,
     responses_function_call,
     tool_argument_json,
@@ -38,7 +39,7 @@ def test_responses_nonstreaming_plain_text(lab: LabSession) -> None:
             model=CHEAP_MODEL,
             input="Reply with the single word ping.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     )
     expect = lab.query(api_type="responses", model=CHEAP_MODEL).expect()
@@ -53,7 +54,7 @@ def test_responses_streaming_plain_text(lab: LabSession) -> None:
             model=CHEAP_MODEL,
             input="Reply with the single word ping.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
             stream=True,
         )
     )
@@ -174,7 +175,7 @@ def test_responses_multi_turn_session_helpers(lab: LabSession) -> None:
             model=CHEAP_MODEL,
             input="Say one.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     )
     call_openai(
@@ -182,7 +183,7 @@ def test_responses_multi_turn_session_helpers(lab: LabSession) -> None:
             model=CHEAP_MODEL,
             input="Say two.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     )
     call_openai(
@@ -190,7 +191,7 @@ def test_responses_multi_turn_session_helpers(lab: LabSession) -> None:
             model=CHEAP_MODEL,
             input="Say three.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     )
     trace = lab.wait()
@@ -206,12 +207,12 @@ def test_responses_multi_turn_session_helpers(lab: LabSession) -> None:
 
 def test_responses_upstream_invalid_model(lab: LabSession) -> None:
     client = openai_client(lab)
-    with pytest.raises(openai_client_errors()):
+    with pytest.raises(openai_invalid_model_errors()):
         client.responses.create(
             model=INVALID_MODEL,
             input="ping",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     call = assert_recorded_error(lab.wait(), pattern=r"invalid|not.?found|model")
     assert call.http_status is not None and call.http_status >= 400
@@ -220,16 +221,16 @@ def test_responses_upstream_invalid_model(lab: LabSession) -> None:
 
 def test_responses_upstream_invalid_api_key(lab: LabSession) -> None:
     client = openai_client(lab)
-    with pytest.raises(openai_client_errors()):
+    with pytest.raises(openai_invalid_key_errors()):
         client.responses.create(
             model=CHEAP_MODEL,
             input="ping",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
             extra_headers=INVALID_KEY_HEADERS,
         )
     call = assert_recorded_error(lab.wait(), pattern=r"auth|api.?key|401|invalid")
-    assert call.http_status == 401 or (call.http_status or 0) >= 400
+    assert call.http_status == 401, lab.trace().trace_summary()
 
 
 def test_responses_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:
@@ -261,7 +262,7 @@ def test_responses_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> Non
             model=CHEAP_MODEL,
             input="Reply with the single word ok.",
             temperature=0,
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
     )
     lab.query(api_type="responses").expect().prompt_contains("single word ok").no_errors()

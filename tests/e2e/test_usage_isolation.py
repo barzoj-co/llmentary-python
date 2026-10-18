@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from helpers import CHEAP_MODEL, REASONING_MODEL, call_openai, openai_client
+from e2e_helpers import CHEAP_MODEL, REASONING_MODEL, call_openai, openai_client
 
 from llmtestlab import LabSession
 from llmtestlab.client import new_session_id
@@ -28,7 +28,11 @@ def test_cached_tokens_field_is_parsed(lab: LabSession) -> None:
     trace = lab.wait()
     assert len(trace.calls) == 2, trace.trace_summary()
     parsed = [call.cached_tokens for call in trace.calls]
-    assert all(value is not None for value in parsed), trace.trace_summary()
+    assert all(value is not None for value in parsed), (
+        f"expected cached_tokens to be parsed from usage details\n"
+        f"usage={[dict(call.usage) for call in trace.calls]}\n"
+        f"{trace.trace_summary()}"
+    )
     assert all(value is not None and value >= 0 for value in parsed)
 
 
@@ -45,6 +49,7 @@ def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
     trace = lab.query(api_type="responses").expect().trace
     assert trace.calls, trace.trace_summary()
     values = [call.reasoning_tokens for call in trace.calls]
+    # Field presence is the contract: effort=low may legitimately record 0.
     assert any(value is not None and value >= 0 for value in values), trace.trace_summary()
 
 

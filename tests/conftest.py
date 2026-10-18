@@ -26,12 +26,24 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter is None:
         return
-    skipped = reporter.stats.get("skipped", [])
+    skipped = [
+        report
+        for report in reporter.stats.get("skipped", [])
+        if _report_is_e2e(report)
+    ]
     if skipped:
         names = [getattr(report, "nodeid", str(report)) for report in skipped]
         reporter.write_line(f"E2E forbids skipped tests when LLMTESTLAB_E2E=1: {names}")
         if exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def _report_is_e2e(report: object) -> bool:
+    nodeid = str(getattr(report, "nodeid", ""))
+    if "tests/e2e/" in nodeid or nodeid.startswith("tests/e2e"):
+        return True
+    keywords = getattr(report, "keywords", {})
+    return "e2e" in keywords
 
 
 @pytest.fixture(scope="session")
