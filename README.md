@@ -116,15 +116,18 @@ Published wheels:
 The bundled proxy is a separate process. This Python client is MIT; the proxy
 binary remains AGPL-3.0.
 
-If the Go binary uses a different CLI flag shape, set
-`LLMTESTLAB_START_COMMAND`, for example:
+The client starts the proxy with the Go binary's flags: `-listen` for the
+OpenAI-compatible proxy, `-control` for the control API, and
+`-upstream name=https://host/base` (default name `openai`). Override the whole
+command with `LLMTESTLAB_START_COMMAND` if needed:
 
 ```bash
-export LLMTESTLAB_START_COMMAND='{bin} --listen {listen} --upstream-url {upstream_url}'
+export LLMTESTLAB_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
 ```
 
 Available template variables are `{bin}`, `{host}`, `{port}`, `{listen}`,
-`{upstream_url}`, `{upstream_api_key}`, and `{token}`.
+`{control}`, `{control_listen}`, `{upstream}`, `{upstream_url}`,
+`{upstream_api_key}`, and `{token}`.
 
 ## Assertion API
 

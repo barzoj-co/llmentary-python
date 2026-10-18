@@ -266,7 +266,8 @@ def start_proxy(
     attached_url = proxy_url or merged_env.get("LLMTESTLAB_PROXY_URL")
     token = token or merged_env.get("LLMTESTLAB_CONTROL_TOKEN")
     if attached_url:
-        control = ControlClient(attached_url, token=token)
+        control_url = (merged_env.get("LLMTESTLAB_CONTROL_URL") or attached_url).rstrip("/")
+        control = ControlClient(control_url, token=token)
         control.wait_for_health(timeout=startup_timeout)
         handle = ProxyHandle(url=attached_url.rstrip("/"), control=control)
         try:
@@ -278,13 +279,21 @@ def start_proxy(
     bin_path = binary or find_binary(env=merged_env)
     host = merged_env.get("LLMTESTLAB_HOST", "127.0.0.1")
     port = int(merged_env.get("LLMTESTLAB_PORT") or free_port(host))
+    control_port = int(merged_env.get("LLMTESTLAB_CONTROL_PORT") or free_port(host))
     url = f"http://{host}:{port}"
+    control_url = f"http://{host}:{control_port}"
+    resolved_upstream = upstream_url or merged_env.get("LLMTESTLAB_UPSTREAM_BASE_URL")
+    resolved_api_key = upstream_api_key or merged_env.get("LLMTESTLAB_UPSTREAM_API_KEY")
+    if resolved_api_key:
+        merged_env.setdefault("OPENAI_API_KEY", resolved_api_key)
+        merged_env["LLMTESTLAB_UPSTREAM_API_KEY"] = resolved_api_key
     command = build_start_command(
         bin_path=bin_path,
         host=host,
         port=port,
-        upstream_url=upstream_url or merged_env.get("LLMTESTLAB_UPSTREAM_BASE_URL"),
-        upstream_api_key=upstream_api_key or merged_env.get("LLMTESTLAB_UPSTREAM_API_KEY"),
+        control_port=control_port,
+        upstream_url=resolved_upstream,
+        upstream_api_key=resolved_api_key,
         token=token,
         env=merged_env,
     )
@@ -305,7 +314,7 @@ def start_proxy(
         stderr=subprocess.STDOUT,
         text=True,
     )
-    control = ControlClient(url, token=token)
+    control = ControlClient(control_url, token=token)
     handle = ProxyHandle(
         url=url,
         control=control,
@@ -331,12 +340,16 @@ def build_start_command(
     bin_path: Path,
     host: str,
     port: int,
+    control_port: int,
     upstream_url: Optional[str],
     upstream_api_key: Optional[str],
     token: Optional[str],
     env: Mapping[str, str],
 ) -> list[str]:
     listen = f"{host}:{port}"
+    control_listen = f"{host}:{control_port}"
+    upstream_name = env.get("LLMTESTLAB_UPSTREAM_NAME", "openai")
+    upstream_mapping = f"{upstream_name}={upstream_url}" if upstream_url else ""
     template = env.get("LLMTESTLAB_START_COMMAND")
     if template:
         rendered = template.format(
@@ -344,19 +357,20 @@ def build_start_command(
             host=host,
             port=port,
             listen=listen,
+            control=control_listen,
+            control_listen=control_listen,
+            upstream=upstream_mapping,
             upstream_url=upstream_url or "",
             upstream_api_key=upstream_api_key or "",
             token=token or "",
         )
         return shlex.split(rendered)
 
-    command = [str(bin_path), "--listen", listen]
-    if upstream_url:
-        command.extend(["--upstream-url", upstream_url])
-    if upstream_api_key:
-        command.extend(["--upstream-api-key", upstream_api_key])
+    command = [str(bin_path), "-listen", listen, "-control", control_listen]
+    if upstream_mapping:
+        command.extend(["-upstream", upstream_mapping])
     if token:
-        command.extend(["--control-token", token])
+        command.extend(["-control-token", token])
     return command
 
 

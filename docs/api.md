@@ -7,14 +7,16 @@
 ```python
 from llmtestlab import ControlClient
 
-control = ControlClient("http://127.0.0.1:8080", token=None)
+control = ControlClient("http://127.0.0.1:7778", token=None)
 control.health()
 trace = control.wait_session("session-id", timeout=5, quiet_for=0.2)
 control.delete_session("session-id")
 otlp_bytes = control.otlp("session-id")
 ```
 
-The control client uses the proxy endpoints:
+The Go proxy serves OpenAI-compatible traffic on `-listen` and the control API
+on a separate `-control` address (default `127.0.0.1:7778`). The control client
+uses:
 
 - `GET /healthz`
 - `GET /sessions/{id}`

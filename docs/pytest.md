@@ -48,6 +48,7 @@ def test_something(lab):
 | `--llmtestlab-upstream-url` | `LLMTESTLAB_UPSTREAM_BASE_URL` | Upstream OpenAI-compatible base URL |
 | `--llmtestlab-upstream-api-key` | `LLMTESTLAB_UPSTREAM_API_KEY` | Upstream API key |
 | `--llmtestlab-control-token` | `LLMTESTLAB_CONTROL_TOKEN` | Bearer token for control API |
+| `--llmtestlab-control-url` | `LLMTESTLAB_CONTROL_URL` | Control API URL when attaching |
 | `--llmtestlab-wait-timeout` | `LLMTESTLAB_WAIT_TIMEOUT` | Session wait timeout in seconds |
 | `--llmtestlab-quiet-for` | `LLMTESTLAB_QUIET_FOR` | Quiet period before wait returns |
 
@@ -57,7 +58,7 @@ If the Go proxy binary needs a different CLI shape, set
 `LLMTESTLAB_START_COMMAND`.
 
 ```bash
-export LLMTESTLAB_START_COMMAND='{bin} serve --addr {listen} --upstream {upstream_url}'
+export LLMTESTLAB_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
 ```
 
 Template variables:
@@ -66,6 +67,8 @@ Template variables:
 - `{host}`
 - `{port}`
 - `{listen}`
+- `{control}` / `{control_listen}`
+- `{upstream}` (`name=url`)
 - `{upstream_url}`
 - `{upstream_api_key}`
 - `{token}`

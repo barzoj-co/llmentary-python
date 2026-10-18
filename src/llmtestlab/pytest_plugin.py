@@ -43,6 +43,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Bearer token for non-loopback control API access.",
     )
     group.addoption(
+        "--llmtestlab-control-url",
+        action="store",
+        default=None,
+        help="Control API URL when attaching to an existing proxy (also LLMTESTLAB_CONTROL_URL).",
+    )
+    group.addoption(
         "--llmtestlab-wait-timeout",
         action="store",
         type=float,
@@ -77,6 +83,9 @@ def llmtestlab_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
         "--llmtestlab-upstream-api-key"
     )
     configured_token = token or request.config.getoption("--llmtestlab-control-token")
+    control_url = request.config.getoption("--llmtestlab-control-url")
+    if control_url:
+        os.environ["LLMTESTLAB_CONTROL_URL"] = str(control_url)
 
     with start_proxy(
         upstream_url=str(configured_upstream_url or "") or None,
