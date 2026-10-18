@@ -19,6 +19,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
       LLMTESTLAB_BIN: /tmp/llmtestlab
+      # TODO remove once llm-test-lab is public.
       LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
     steps:
       - name: Checkout Python client
@@ -73,6 +74,7 @@ jobs:
     env:
       LLMTESTLAB_BIN: /tmp/llmtestlab
       LLMTESTLAB_E2E: "1"
+      # TODO remove once llm-test-lab is public.
       LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       LLMTESTLAB_UPSTREAM_BASE_URL: https://api.openai.com/v1

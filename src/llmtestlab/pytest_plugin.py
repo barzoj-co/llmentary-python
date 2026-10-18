@@ -43,12 +43,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Bearer token for non-loopback control API access.",
     )
     group.addoption(
-        "--llmtestlab-download",
-        action="store_true",
-        default=False,
-        help="Opt in to downloading the proxy from GitHub Releases if not found.",
-    )
-    group.addoption(
         "--llmtestlab-wait-timeout",
         action="store",
         type=float,
@@ -90,7 +84,6 @@ def llmtestlab_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
         proxy_url=request.config.getoption("--llmtestlab-proxy-url"),
         token=str(configured_token or "") or None,
         binary=Path(option_bin) if option_bin else None,
-        download=bool(request.config.getoption("--llmtestlab-download")),
     ) as proxy:
         yield proxy
 

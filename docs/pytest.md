@@ -48,7 +48,6 @@ def test_something(lab):
 | `--llmtestlab-upstream-url` | `LLMTESTLAB_UPSTREAM_BASE_URL` | Upstream OpenAI-compatible base URL |
 | `--llmtestlab-upstream-api-key` | `LLMTESTLAB_UPSTREAM_API_KEY` | Upstream API key |
 | `--llmtestlab-control-token` | `LLMTESTLAB_CONTROL_TOKEN` | Bearer token for control API |
-| `--llmtestlab-download` | `LLMTESTLAB_DOWNLOAD=1` | Opt in to GitHub Releases download |
 | `--llmtestlab-wait-timeout` | `LLMTESTLAB_WAIT_TIMEOUT` | Session wait timeout in seconds |
 | `--llmtestlab-quiet-for` | `LLMTESTLAB_QUIET_FOR` | Quiet period before wait returns |
 

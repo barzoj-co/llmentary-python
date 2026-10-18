@@ -1,0 +1,264 @@
+"""Build version-pinned platform wheels that bundle verified GoReleaser binaries.
+
+The Python package version is expected to already match the Go proxy release
+tag (see .github/workflows/release.yml). Each wheel contains exactly one
+platform binary copied from GitHub Release assets after sha256 verification
+against checksums.txt. Runtime clients never download binaries.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import zipfile
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+
+REPO = "barzoj-co/llm-test-lab"
+PACKAGE_BIN_DIR = Path("src/llmtestlab/bin")
+
+
+@dataclass(frozen=True)
+class Target:
+    goos: str
+    arch_aliases: tuple[str, ...]
+    wheel_tag: str
+    binary_name: str
+
+
+TARGETS = [
+    Target("linux", ("amd64", "x86_64"), "manylinux2014_x86_64", "llmtestlab"),
+    Target("linux", ("arm64", "aarch64"), "manylinux2014_aarch64", "llmtestlab"),
+    Target("darwin", ("amd64", "x86_64"), "macosx_11_0_x86_64", "llmtestlab"),
+    Target("darwin", ("arm64", "aarch64"), "macosx_11_0_arm64", "llmtestlab"),
+    Target("windows", ("amd64", "x86_64"), "win_amd64", "llmtestlab.exe"),
+]
+
+
+@dataclass(frozen=True)
+class Asset:
+    name: str
+    url: str
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(  # type: ignore[override]
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        raise HTTPError(req.full_url, code, msg, headers, fp)
+
+
+def main() -> None:
+    version = os.environ.get("LLMTESTLAB_RELEASE_VERSION")
+    if not version:
+        raise SystemExit("LLMTESTLAB_RELEASE_VERSION is required")
+    token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise SystemExit("LLMTESTLAB_REPO_TOKEN or GITHUB_TOKEN is required")
+
+    release = fetch_release(version, token)
+    assets = release_assets(release)
+    checksum_asset = next((asset for asset in assets if "checksum" in asset.name.lower()), None)
+    if checksum_asset is None:
+        raise SystemExit(f"Release v{version} has no checksums.txt asset")
+    checksums = parse_checksums(download_asset(checksum_asset.url, token))
+
+    dist = Path("dist")
+    raw = dist / "_raw"
+    shutil.rmtree(dist, ignore_errors=True)
+    shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
+    dist.mkdir()
+
+    subprocess.run([sys.executable, "-m", "build", "--sdist", "--outdir", str(dist)], check=True)
+
+    for target in TARGETS:
+        asset = select_asset(assets, target)
+        expected = checksums.get(asset.name)
+        if not expected:
+            raise SystemExit(f"Checksum file has no entry for {asset.name}")
+        archive = download_asset(asset.url, token)
+        actual = hashlib.sha256(archive).hexdigest()
+        if actual.lower() != expected.lower():
+            raise SystemExit(
+                f"Checksum mismatch for {asset.name}: expected {expected}, got {actual}"
+            )
+
+        shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
+        install_binary(archive, asset.name, target, version=version)
+        shutil.rmtree(raw, ignore_errors=True)
+        raw.mkdir(parents=True)
+        subprocess.run([sys.executable, "-m", "build", "--wheel", "--outdir", str(raw)], check=True)
+        wheel = one(raw.glob("*.whl"))
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "wheel",
+                "tags",
+                "--platform-tag",
+                target.wheel_tag,
+                "--remove",
+                "--wheel-dir",
+                str(dist),
+                str(wheel),
+            ],
+            check=True,
+        )
+
+    shutil.rmtree(raw, ignore_errors=True)
+    shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
+    built = sorted(path.name for path in dist.iterdir() if path.is_file())
+    print("Built:")
+    for name in built:
+        print(f"  {name}")
+
+
+def fetch_release(version: str, token: str) -> dict[str, Any]:
+    tag = version if version.startswith("v") else f"v{version}"
+    data = download_bytes(
+        f"https://api.github.com/repos/{REPO}/releases/tags/{tag}",
+        token=token,
+        accept="application/vnd.github+json",
+        follow_redirects=True,
+    )
+    parsed = json.loads(data.decode("utf-8"))
+    if not isinstance(parsed, dict):
+        raise SystemExit("Unexpected GitHub release response")
+    return parsed
+
+
+def release_assets(release: dict[str, Any]) -> list[Asset]:
+    raw_assets = release.get("assets")
+    if not isinstance(raw_assets, list):
+        return []
+    assets = []
+    for raw_asset in raw_assets:
+        if not isinstance(raw_asset, dict):
+            continue
+        name = raw_asset.get("name")
+        url = raw_asset.get("url")
+        if isinstance(name, str) and isinstance(url, str):
+            assets.append(Asset(name=name, url=url))
+    return assets
+
+
+def select_asset(assets: list[Asset], target: Target) -> Asset:
+    candidates = [
+        asset
+        for asset in assets
+        if re.search(r"\.(tar\.gz|zip)$", asset.name, flags=re.IGNORECASE)
+    ]
+    for asset in candidates:
+        name = asset.name.lower()
+        if target.goos in name and any(alias in name for alias in target.arch_aliases):
+            return asset
+    names = ", ".join(asset.name for asset in candidates)
+    raise SystemExit(f"No release asset matched {target.goos}/{target.arch_aliases}: {names}")
+
+
+def download_asset(url: str, token: str) -> bytes:
+    return download_bytes(
+        url,
+        token=token,
+        accept="application/octet-stream",
+        follow_redirects=False,
+    )
+
+
+def download_bytes(url: str, *, token: Optional[str], accept: str, follow_redirects: bool) -> bytes:
+    headers = {"Accept": accept, "User-Agent": "llm-test-lab-python-release"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(url, headers=headers)
+    try:
+        opener = None if follow_redirects else build_opener(NoRedirectHandler)
+        open_url = urlopen if opener is None else opener.open
+        with open_url(request, timeout=60) as response:
+            return cast(bytes, response.read())
+    except HTTPError as exc:
+        if exc.code in {301, 302, 303, 307, 308} and not follow_redirects:
+            location = exc.headers.get("Location")
+            if not location:
+                raise SystemExit("GitHub release asset redirect had no Location") from exc
+            # Signed storage URLs reject GitHub Authorization headers.
+            return download_bytes(
+                location,
+                token=None,
+                accept="application/octet-stream",
+                follow_redirects=True,
+            )
+        raise SystemExit(f"Download failed for {url}: HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise SystemExit(f"Download failed for {url}: {exc.reason}") from exc
+
+
+def parse_checksums(data: bytes) -> dict[str, str]:
+    checksums: dict[str, str] = {}
+    for raw_line in data.decode("utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = re.split(r"\s+", line, maxsplit=1)
+        if len(parts) == 2:
+            checksums[parts[1].lstrip("*")] = parts[0]
+    return checksums
+
+
+def install_binary(archive: bytes, asset_name: str, target: Target, *, version: str) -> None:
+    destination = PACKAGE_BIN_DIR / target.wheel_tag
+    shutil.rmtree(destination, ignore_errors=True)
+    destination.mkdir(parents=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        archive_path = tmp_path / asset_name
+        archive_path.write_bytes(archive)
+        if asset_name.endswith(".zip"):
+            with zipfile.ZipFile(archive_path) as zf:
+                zf.extractall(tmp_path)
+        else:
+            with tarfile.open(archive_path) as tf:
+                if sys.version_info >= (3, 12):
+                    tf.extractall(tmp_path, filter="data")
+                else:
+                    tf.extractall(tmp_path)
+        binary = find_extracted_binary(tmp_path, target.binary_name)
+        target_path = destination / target.binary_name
+        shutil.copy2(binary, target_path)
+        target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+
+
+def find_extracted_binary(root: Path, binary_name: str) -> Path:
+    matches = [path for path in root.rglob(binary_name) if path.is_file()]
+    if not matches:
+        raise SystemExit(f"Archive did not contain {binary_name}")
+    return matches[0]
+
+
+def one(paths: Iterable[Path]) -> Path:
+    items = list(paths)
+    if len(items) != 1:
+        raise SystemExit(f"Expected exactly one wheel, found {len(items)}")
+    return items[0]
+
+
+if __name__ == "__main__":
+    main()

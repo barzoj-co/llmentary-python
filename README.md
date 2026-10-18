@@ -93,17 +93,28 @@ the session during teardown.
 
 ## Binary management
 
-Binary lookup order:
+There is no download-on-first-run. Platform wheels bundle a version-pinned Go
+proxy binary taken from the matching `barzoj-co/llm-test-lab` GoReleaser
+release. The Python package version and the bundled binary version are the same.
+Release packaging verifies each archive against `checksums.txt` (sha256) before
+it is copied into the wheel.
 
-1. `LLMTESTLAB_BIN`
-2. `llmtestlab` on `PATH`
-3. cache directory (`LLMTESTLAB_CACHE_DIR` or the platform cache dir)
-4. optional GitHub Releases download
+Lookup order:
 
-Downloads are disabled by default because the Go proxy repository is private.
-Enable them with `LLMTESTLAB_DOWNLOAD=1` or `--llmtestlab-download` and provide a
-`GITHUB_TOKEN` that can read `barzoj-co/llm-test-lab`. Release assets are verified
-against the GoReleaser checksum file before installation.
+1. `LLMTESTLAB_BIN` — explicit override, including CI builds from source
+2. Binary bundled in the installed platform wheel
+3. `llmtestlab` on `PATH`
+
+Published wheels:
+
+- `manylinux2014_x86_64`
+- `manylinux2014_aarch64`
+- `macosx_11_0_x86_64`
+- `macosx_11_0_arm64`
+- `win_amd64`
+
+The bundled proxy is a separate process. This Python client is MIT; the proxy
+binary remains AGPL-3.0.
 
 If the Go binary uses a different CLI flag shape, set
 `LLMTESTLAB_START_COMMAND`, for example:
@@ -143,18 +154,27 @@ See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
 
 ## CI configuration required
 
-This repository's CI intentionally fails loudly until these are configured:
-
-- `secrets.LLMTESTLAB_REPO_TOKEN`: token with read access to private repository
-  `barzoj-co/llm-test-lab`, used to check out and build the real Go proxy.
-- `secrets.OPENAI_API_KEY`: used by non-fork OpenAI E2E tests.
+- `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
+  repository `barzoj-co/llm-test-lab`. Used only to check out and build the real
+  Go proxy in CI, and to fetch GoReleaser assets when building release wheels.
+  TODO: remove once llm-test-lab is public.
+- `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
+  Those tests actually run (they do not skip) when this secret is present.
 - PyPI Trusted Publishing: configure PyPI project `llm-test-lab` to trust this
   repository's `release.yml` workflow and `pypi` environment for tag `v*`
-  releases. No PyPI API token is used.
+  releases. No PyPI API token is used. The workflow is prepared for Trusted
+  Publishing but does not publish yet.
+
+CI builds the real Go proxy from source (`go build ./cmd/llmtestlab`) and points
+tests at it with `LLMTESTLAB_BIN`. Integration tests talk to a fake OpenAI
+upstream through that real binary. E2E tests talk to the real OpenAI API
+through the same real binary.
 
 ## License
 
-This Python client library is MIT licensed.
+This Python client library is MIT licensed. See [LICENSE](LICENSE).
 
-The `llm-test-lab` proxy binary that this client starts or talks to is a
-separate process from `barzoj-co/llm-test-lab` and is licensed AGPL-3.0.
+The `llm-test-lab` proxy binary bundled in platform wheels, started by this
+client, or already running as a separate process, comes from
+`barzoj-co/llm-test-lab` and is licensed AGPL-3.0. The client and the proxy are
+separate processes; distributing or modifying the proxy is subject to AGPL.

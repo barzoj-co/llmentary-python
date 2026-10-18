@@ -38,6 +38,7 @@ dev = [
   "pytest>=8.4.2",
   "pytest-cov>=7.0.0",
   "ruff>=0.14.1",
+  "wheel>=0.45.0",
 ]
 
 [project.urls]
@@ -50,6 +51,16 @@ llmtestlab = "llmtestlab.pytest_plugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llmtestlab"]
+# Release wheels inject a version-pinned Go proxy under bin/; keep VCS-ignored.
+artifacts = [
+  "src/llmtestlab/bin/*/llmtestlab",
+  "src/llmtestlab/bin/*/llmtestlab.exe",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/src/llmtestlab/bin",
+]
 
 [tool.ruff]
 line-length = 100
@@ -63,7 +74,7 @@ ignore = ["UP006", "UP007", "UP045"]
 python_version = "3.9"
 strict = true
 files = ["src", "tests"]
-exclude = ["tests/test_openai_e2e.py"]
+exclude = ["tests/test_openai_e2e.py", "scripts"]
 follow_imports = "skip"
 disallow_untyped_decorators = false
 

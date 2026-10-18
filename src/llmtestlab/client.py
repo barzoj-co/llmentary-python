@@ -254,7 +254,6 @@ def start_proxy(
     proxy_url: Optional[str] = None,
     token: Optional[str] = None,
     binary: Optional[Path] = None,
-    download: bool = False,
     startup_timeout: float = 10.0,
     env: Optional[Mapping[str, str]] = None,
 ) -> Iterator[ProxyHandle]:
@@ -276,10 +275,7 @@ def start_proxy(
             handle.close()
         return
 
-    bin_path = binary or find_binary(
-        env=merged_env,
-        download=download or merged_env.get("LLMTESTLAB_DOWNLOAD") == "1",
-    )
+    bin_path = binary or find_binary(env=merged_env)
     host = merged_env.get("LLMTESTLAB_HOST", "127.0.0.1")
     port = int(merged_env.get("LLMTESTLAB_PORT") or free_port(host))
     url = f"http://{host}:{port}"
