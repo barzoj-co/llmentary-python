@@ -1,0 +1,39 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - name: Create release PR or GitHub Release
+        id: rp
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Dispatch release workflow
+        if: steps.rp.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ""
+          TAG_NAME: ${{ steps.rp.outputs.tag_name }}
+        run: gh workflow run release.yml --ref "$TAG_NAME"

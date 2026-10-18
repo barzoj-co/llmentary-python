@@ -23,7 +23,9 @@ def find_binary(*, env: Optional[dict[str, str]] = None) -> Path:
     3. ``llmtestlab`` on ``PATH``
 
     Runtime downloads are disabled. Platform wheels ship a version-pinned copy of
-    the Go proxy that matches this Python package version.
+    the Go proxy. The bundled proxy version is recorded in the wheel ``VERSION``
+    file and pinned via ``PROXY_VERSION``; it is not required to equal this
+    Python package version.
     """
 
     env_map: Mapping[str, str] = env if env is not None else os.environ

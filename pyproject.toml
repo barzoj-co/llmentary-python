@@ -90,6 +90,13 @@ module = ["pytest", "_pytest.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 
+[tool.coverage.run]
+source = ["llmtestlab"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]

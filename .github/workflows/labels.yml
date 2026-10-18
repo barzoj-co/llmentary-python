@@ -1,0 +1,32 @@
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/labels.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  labels:
+    name: labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Sync labels
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          yaml-file: .github/labels.yml
+          skip-delete: true

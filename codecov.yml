@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment:
+  layout: "condensed_header, diff, flags, files"
+  require_changes: false
+flags:
+  unit:
+    carryforward: true
+ignore:
+  - "tests/**"
+  - "scripts/**"
+github_checks:
+  annotations: false

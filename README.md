@@ -1,11 +1,29 @@
 # llm-test-lab Python
 
+[![CI](https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/barzoj-co/llm-test-lab-python/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llm-test-lab-python)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-python/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-python)
+[![License: MIT](https://img.shields.io/github/license/barzoj-co/llm-test-lab-python)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/llm-test-lab)](https://pypi.org/project/llm-test-lab/)
+[![Python versions](https://img.shields.io/pypi/pyversions/llm-test-lab)](https://pypi.org/project/llm-test-lab/)
+
 `llm-test-lab` is the Python/pytest client for the
 [`barzoj-co/llm-test-lab`](https://github.com/barzoj-co/llm-test-lab) proxy.
 It gives Python tests deterministic, trace-based assertions for OpenAI-compatible
 Chat Completions and Responses calls. There is no LLM judge: assertions inspect
 the requests, responses, tool calls, usage, timings, retries, and errors recorded
 by the proxy.
+
+<!-- ltl-repos:start -->
+## llm-test-lab repositories
+
+| Repository | What | License |
+|---|---|---|
+| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
+| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
+| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
+| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+<!-- ltl-repos:end -->
 
 ## Install
 
@@ -96,10 +114,11 @@ the session during teardown.
 ## Binary management
 
 There is no download-on-first-run. Platform wheels bundle a version-pinned Go
-proxy binary taken from the matching `barzoj-co/llm-test-lab` GoReleaser
-release. The Python package version and the bundled binary version are the same.
-Release packaging verifies each archive against `checksums.txt` (sha256) before
-it is copied into the wheel.
+proxy binary taken from the `barzoj-co/llm-test-lab` GoReleaser release named in
+`PROXY_VERSION`. That pin is independent of this Python package version. The
+bundled version is also written to the wheel `VERSION` file. Release packaging
+verifies each archive against `checksums.txt` (sha256) before it is copied into
+the wheel.
 
 Lookup order:
 
@@ -167,8 +186,8 @@ See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
   Those tests actually run (they do not skip) when this secret is present.
 - PyPI Trusted Publishing: configure PyPI project `llm-test-lab` to trust this
   repository's `release.yml` workflow and `pypi` environment for tag `v*`
-  releases. No PyPI API token is used. The workflow is prepared for Trusted
-  Publishing but does not publish yet.
+  releases. No PyPI API token is used. Publish stays gated on
+  `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
 
 CI builds the real Go proxy from source (`go build ./cmd/llmtestlab`) and points
 tests at it with `LLMTESTLAB_BIN`. Integration tests talk to a fake OpenAI

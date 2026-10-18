@@ -1,0 +1,48 @@
+- name: bug
+  color: "d73a4a"
+  description: Something is broken
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+- name: documentation
+  color: "0075ca"
+  description: Documentation only
+- name: question
+  color: "d876e3"
+  description: Further information is requested
+- name: needs-triage
+  color: "e4e669"
+  description: Not yet reviewed
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+- name: breaking-change
+  color: "b60205"
+  description: Introduces a breaking change
+- name: security
+  color: "ee0701"
+  description: Security-related
+- name: dependencies
+  color: "0366d6"
+  description: Dependency updates
+- name: ci
+  color: "000000"
+  description: Continuous integration
+- name: "area: pytest-plugin"
+  color: "c5def5"
+  description: Pytest plugin
+- name: "area: assertions"
+  color: "c5def5"
+  description: Assertion helpers
+- name: "area: packaging"
+  color: "c5def5"
+  description: Packaging and wheels
+- name: "autorelease: pending"
+  color: "ededed"
+  description: release-please release PR
+- name: "autorelease: tagged"
+  color: "0e8a16"
+  description: release-please has tagged a release

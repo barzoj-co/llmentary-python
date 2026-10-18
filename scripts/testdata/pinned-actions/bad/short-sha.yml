@@ -1,0 +1,7 @@
+name: bad-short-sha
+on: push
+jobs:
+  ok:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f39 # v5.1.0
