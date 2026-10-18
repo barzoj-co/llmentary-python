@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
 import io
 import shutil
@@ -46,22 +48,59 @@ def test_select_checksum_asset_ignores_signing_artifacts() -> None:
     assert wheels.select_checksum_asset(assets).name == "checksums.txt"
 
 
+def _record_line(name: str, data: bytes) -> str:
+    digest = hashlib.sha256(data).digest()
+    hashed = "sha256=" + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return f"{name},{hashed},{len(data)}"
+
+
 def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
     wheel_path = tmp_path / "llm_test_lab-0.1.0-py3-none-any.whl"
     metadata = (
-        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
-        "Classifier: License :: OSI Approved :: MIT License\n"
+        b"Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        b"Classifier: License :: OSI Approved :: MIT License\n"
+    )
+    init = b"x = 1\n"
+    dist_info = "llm_test_lab-0.1.0.dist-info"
+    stale_record = (
+        "\n".join(
+            [
+                _record_line(f"{dist_info}/METADATA", metadata),
+                _record_line("llmtestlab/__init__.py", init),
+                f"{dist_info}/RECORD,,",
+            ]
+        )
+        + "\n"
     )
     with zipfile.ZipFile(wheel_path, "w") as zf:
-        zf.writestr("llm_test_lab-0.1.0.dist-info/METADATA", metadata)
-        zf.writestr("llmtestlab/__init__.py", "x = 1\n")
+        zf.writestr(f"{dist_info}/METADATA", metadata)
+        zf.writestr("llmtestlab/__init__.py", init)
+        zf.writestr(f"{dist_info}/RECORD", stale_record)
     wheels.apply_platform_wheel_license(wheel_path)
     with zipfile.ZipFile(wheel_path) as zf:
-        names = zf.namelist()
-        rewritten = zf.read("llm_test_lab-0.1.0.dist-info/METADATA").decode("utf-8")
-    assert "License-Expression: MIT AND AGPL-3.0-only" in rewritten
-    assert any(name.endswith("licenses/AGPL-3.0.txt") for name in names)
-    assert any(name.endswith("licenses/PROXY-NOTICE.txt") for name in names)
+        names = set(zf.namelist())
+        record = zf.read(f"{dist_info}/RECORD").decode("utf-8")
+        files = {
+            name: zf.read(name)
+            for name in (
+                f"{dist_info}/METADATA",
+                "llmtestlab/__init__.py",
+                f"{dist_info}/licenses/AGPL-3.0.txt",
+                f"{dist_info}/licenses/PROXY-NOTICE.txt",
+            )
+        }
+        entries = {
+            path: (digest, size)
+            for path, digest, size in (line.split(",") for line in record.splitlines() if line)
+        }
+    assert b"License-Expression: MIT AND AGPL-3.0-only" in files[f"{dist_info}/METADATA"]
+    assert f"{dist_info}/licenses/AGPL-3.0.txt" in names
+    assert f"{dist_info}/licenses/PROXY-NOTICE.txt" in names
+    for name, data in files.items():
+        _, digest, size = _record_line(name, data).split(",")
+        assert entries[name] == (digest, size)
+    assert entries[f"{dist_info}/RECORD"] == ("", "")
+    assert _record_line(f"{dist_info}/METADATA", metadata) not in record
 
 
 def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:

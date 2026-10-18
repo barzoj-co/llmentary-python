@@ -8,6 +8,7 @@ against checksums.txt. Runtime clients never download binaries.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -334,6 +335,11 @@ def rewrite_wheel_license_metadata(metadata: str) -> str:
     return metadata
 
 
+def wheel_record_digest(data: bytes) -> str:
+    digest = hashlib.sha256(data).digest()
+    return "sha256=" + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
 def apply_platform_wheel_license(wheel_path: Path) -> None:
     if not AGPL_LICENSE_FILE.is_file() or not PROXY_NOTICE_FILE.is_file():
         raise SystemExit("Missing licenses/AGPL-3.0.txt or licenses/PROXY-NOTICE.txt")
@@ -341,24 +347,37 @@ def apply_platform_wheel_license(wheel_path: Path) -> None:
         "licenses/AGPL-3.0.txt": AGPL_LICENSE_FILE.read_bytes(),
         "licenses/PROXY-NOTICE.txt": PROXY_NOTICE_FILE.read_bytes(),
     }
-    tmp_path = wheel_path.with_name(wheel_path.name + ".relicense")
-    with zipfile.ZipFile(wheel_path) as zin, zipfile.ZipFile(
-        tmp_path, "w", compression=zipfile.ZIP_DEFLATED
-    ) as zout:
-        dist_info: Optional[str] = None
-        existing = set(zin.namelist())
+    contents: dict[str, bytes] = {}
+    dist_info: Optional[str] = None
+    with zipfile.ZipFile(wheel_path) as zin:
         for info in zin.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename.replace("\\", "/")
+            if name.endswith(".dist-info/RECORD"):
+                dist_info = name.rsplit("/", 1)[0]
+                continue
             data = zin.read(info.filename)
-            if info.filename.endswith(".dist-info/METADATA"):
-                dist_info = info.filename.rsplit("/", 1)[0]
+            if name.endswith(".dist-info/METADATA"):
+                dist_info = name.rsplit("/", 1)[0]
                 data = rewrite_wheel_license_metadata(data.decode("utf-8")).encode("utf-8")
-            zout.writestr(info, data)
-        if dist_info is None:
-            raise SystemExit(f"{wheel_path.name} has no METADATA")
-        for relative, payload in license_files.items():
-            dest = f"{dist_info}/{relative}"
-            if dest not in existing:
-                zout.writestr(dest, payload)
+            contents[name] = data
+    if dist_info is None:
+        raise SystemExit(f"{wheel_path.name} has no METADATA")
+    for relative, payload in license_files.items():
+        contents.setdefault(f"{dist_info}/{relative}", payload)
+    record_name = f"{dist_info}/RECORD"
+    record_lines = [
+        f"{name},{wheel_record_digest(data)},{len(data)}"
+        for name, data in sorted(contents.items())
+    ]
+    record_lines.append(f"{record_name},,")
+    contents[record_name] = ("\n".join(record_lines) + "\n").encode("utf-8")
+
+    tmp_path = wheel_path.with_name(wheel_path.name + ".relicense")
+    with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for name, data in contents.items():
+            zout.writestr(name, data)
     tmp_path.replace(wheel_path)
 
 
