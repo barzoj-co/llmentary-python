@@ -125,3 +125,37 @@ def test_soft_expectation_accumulates_failures() -> None:
     expectation.tool_called("missing_tool").not_called("get_weather")
     with pytest.raises(AssertionError, match="2 soft assertion"):
         expectation.assert_all()
+
+
+def test_json_valid_checks_model_output_not_response_envelope() -> None:
+    plain_text_trace = SessionTrace.from_payload(
+        "plain-text",
+        {
+            "calls": [
+                {
+                    "response": {
+                        "body": {
+                            "choices": [
+                                {
+                                    "message": {"content": "this is not json"},
+                                    "finish_reason": "stop",
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(AssertionError, match="valid JSON"):
+        Expectation(plain_text_trace).response_json_valid()
+
+
+def test_tokens_only_require_requested_usage_field() -> None:
+    total_only_trace = SessionTrace.from_payload(
+        "usage",
+        {"calls": [{"response": {"body": {"usage": {"total_tokens": 42}}}}]},
+    )
+
+    Expectation(total_only_trace).tokens(min_total=40, max_total=50)

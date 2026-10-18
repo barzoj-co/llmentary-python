@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional, Union
 from jsonschema import ValidationError
 from jsonschema.validators import Draft202012Validator
 
-from .types import CapturedCall, SessionTrace, ToolCall
+from .types import CapturedCall, SessionTrace, ToolCall, as_mapping, sequence_at, stringify_value
 
 ArgsMatcher = Union[Mapping[str, Any], Callable[[Mapping[str, Any]], bool]]
 Regex = Union[str, Pattern[str]]
@@ -160,6 +160,8 @@ class Expectation:
             ("completion", min_completion, max_completion),
         ]
         for key, minimum, maximum in checks:
+            if minimum is None and maximum is None:
+                continue
             value = usage.get(key)
             if value is None:
                 self._assert(False, f"expected usage token field {key!r} to be present")
@@ -288,8 +290,7 @@ class Expectation:
     def _response_json_candidates(self) -> Sequence[str]:
         candidates: list[str] = []
         for call in self.trace.calls:
-            candidates.append(call.response_text)
-            candidates.append(json.dumps(call.response))
+            candidates.extend(model_output_text_candidates(call))
         return candidates
 
     def _bounds(
@@ -358,6 +359,27 @@ def nested_get(mapping: Mapping[str, Any], dotted_key: str) -> Any:
             return None
         current = current[part]
     return current
+
+
+def model_output_text_candidates(call: CapturedCall) -> list[str]:
+    response = call.response
+    candidates: list[str] = []
+    output_text = response.get("output_text")
+    if isinstance(output_text, str):
+        candidates.append(output_text)
+
+    for choice in sequence_at(response, "choices"):
+        message = as_mapping(as_mapping(choice).get("message"))
+        content = message.get("content")
+        if content is not None:
+            candidates.append(stringify_value(content))
+
+    for item in sequence_at(response, "output"):
+        item_map = as_mapping(item)
+        if item_map.get("type") == "message" or "content" in item_map:
+            candidates.append(stringify_value(item_map.get("content")))
+
+    return [candidate for candidate in candidates if candidate]
 
 
 def aggregate_usage(calls: Sequence[CapturedCall]) -> dict[str, int]:

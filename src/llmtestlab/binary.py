@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, cast
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 
 class BinaryResolutionError(RuntimeError):
@@ -110,7 +110,7 @@ def download_binary(
     raw_assets = release.get("assets")
     asset_items = raw_assets if isinstance(raw_assets, list) else []
     assets = [
-        ReleaseAsset(name=str(asset["name"]), url=str(asset["browser_download_url"]))
+        ReleaseAsset(name=str(asset["name"]), url=str(asset["url"]))
         for asset in asset_items
         if is_asset_mapping(asset)
     ]
@@ -121,7 +121,7 @@ def download_binary(
             "checksum verification."
         )
 
-    checksums = parse_checksums(download_bytes(checksum_asset.url, github_token=github_token))
+    checksums = parse_checksums(download_asset(checksum_asset.url, github_token=github_token))
     wanted = select_archive_asset(assets)
     expected = checksums.get(wanted.name)
     if not expected:
@@ -129,7 +129,7 @@ def download_binary(
             f"Release {tag} checksum file does not contain selected asset {wanted.name}."
         )
 
-    archive_bytes = download_bytes(wanted.url, github_token=github_token)
+    archive_bytes = download_asset(wanted.url, github_token=github_token)
     actual = hashlib.sha256(archive_bytes).hexdigest()
     if actual.lower() != expected.lower():
         raise BinaryResolutionError(
@@ -151,7 +151,7 @@ def fetch_release(*, version: str, github_token: Optional[str]) -> dict[str, obj
     suffix = "latest" if version == "latest" else f"tags/{version}"
     url = f"https://api.github.com/repos/barzoj-co/llm-test-lab/releases/{suffix}"
     try:
-        data = download_bytes(url, github_token=github_token)
+        data = download_github_json(url, github_token=github_token)
     except BinaryResolutionError:
         raise
     import json
@@ -162,18 +162,57 @@ def fetch_release(*, version: str, github_token: Optional[str]) -> dict[str, obj
     return parsed
 
 
-def download_bytes(url: str, *, github_token: Optional[str]) -> bytes:
+def download_github_json(url: str, *, github_token: Optional[str]) -> bytes:
+    return download_bytes(
+        url,
+        github_token=github_token,
+        accept="application/vnd.github+json",
+        follow_redirects=True,
+    )
+
+
+def download_asset(url: str, *, github_token: Optional[str]) -> bytes:
+    return download_bytes(
+        url,
+        github_token=github_token,
+        accept="application/octet-stream",
+        follow_redirects=False,
+    )
+
+
+def download_bytes(
+    url: str,
+    *,
+    github_token: Optional[str],
+    accept: str,
+    follow_redirects: bool,
+) -> bytes:
     headers = {
-        "Accept": "application/octet-stream",
+        "Accept": accept,
         "User-Agent": "llm-test-lab-python",
     }
     if github_token:
         headers["Authorization"] = f"Bearer {github_token}"
     request = Request(url, headers=headers)
     try:
-        with urlopen(request, timeout=30) as response:
+        opener = None if follow_redirects else build_opener(NoRedirectHandler)
+        open_url = urlopen if opener is None else opener.open
+        with open_url(request, timeout=30) as response:
             return cast(bytes, response.read())
     except HTTPError as exc:
+        if exc.code in {301, 302, 303, 307, 308} and not follow_redirects:
+            location = exc.headers.get("Location")
+            if not location:
+                raise BinaryResolutionError(
+                    "GitHub release asset redirect had no Location."
+                ) from exc
+            # Signed storage URLs reject GitHub Authorization headers.
+            return download_bytes(
+                location,
+                github_token=None,
+                accept="application/octet-stream",
+                follow_redirects=True,
+            )
         if exc.code in {401, 403, 404}:
             raise BinaryResolutionError(
                 "Could not download llm-test-lab from GitHub Releases. The upstream "
@@ -205,8 +244,21 @@ def is_asset_mapping(value: Any) -> bool:
     return (
         isinstance(value, dict)
         and value.get("name") is not None
-        and value.get("browser_download_url") is not None
+        and value.get("url") is not None
     )
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(  # type: ignore[override]
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Mapping[str, str],
+        newurl: str,
+    ) -> None:
+        return None
 
 
 def select_archive_asset(assets: Iterable[ReleaseAsset]) -> ReleaseAsset:

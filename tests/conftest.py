@@ -28,10 +28,23 @@ def fake_openai_server() -> Iterator[FakeOpenAIServer]:
 
 
 @pytest.fixture(scope="session")
-def llmtestlab_upstream_url(fake_openai_server: FakeOpenAIServer) -> str:
-    return fake_openai_server.url
+def llmtestlab_upstream_url(request: pytest.FixtureRequest) -> str:
+    if os.environ.get("LLMTESTLAB_E2E") == "1":
+        upstream_url = os.environ.get("LLMTESTLAB_UPSTREAM_BASE_URL")
+        if not upstream_url:
+            pytest.fail("LLMTESTLAB_UPSTREAM_BASE_URL is required when LLMTESTLAB_E2E=1")
+        assert upstream_url is not None
+        return upstream_url
+    server: FakeOpenAIServer = request.getfixturevalue("fake_openai_server")
+    return server.url
 
 
 @pytest.fixture(scope="session")
 def llmtestlab_upstream_api_key() -> str:
+    if os.environ.get("LLMTESTLAB_E2E") == "1":
+        api_key = os.environ.get("LLMTESTLAB_UPSTREAM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            pytest.fail("OPENAI_API_KEY is required when LLMTESTLAB_E2E=1")
+        assert api_key is not None
+        return api_key
     return "test-api-key"

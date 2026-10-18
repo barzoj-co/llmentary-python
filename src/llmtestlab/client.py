@@ -5,12 +5,13 @@ import os
 import shlex
 import socket
 import subprocess
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional, TextIO, cast
 
 import httpx
 
@@ -93,9 +94,20 @@ class ControlClient:
     ) -> SessionTrace:
         params = {"timeout": f"{timeout}s", "quiet_for": f"{quiet_for}s"}
         url = f"{self.base_url}/sessions/{session_id}/wait"
-        response = self._client.get(url, params=params, headers=self.headers)
+        request_timeout = timeout + quiet_for + 5
+        response = self._client.get(
+            url,
+            params=params,
+            headers=self.headers,
+            timeout=request_timeout,
+        )
         if response.status_code == 405:
-            response = self._client.post(url, json=params, headers=self.headers)
+            response = self._client.post(
+                url,
+                json=params,
+                headers=self.headers,
+                timeout=request_timeout,
+            )
         response.raise_for_status()
         if response.content:
             try:
@@ -133,6 +145,8 @@ class ProxyHandle:
     url: str
     control: ControlClient
     process: Optional[subprocess.Popen[str]] = None
+    log_file: Optional[TextIO] = None
+    log_path: Optional[Path] = None
 
     def close(self) -> None:
         self.control.close()
@@ -145,6 +159,8 @@ class ProxyHandle:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
+        if self.log_file is not None:
+            self.log_file.close()
 
 
 @dataclass
@@ -276,20 +292,36 @@ def start_proxy(
         token=token,
         env=merged_env,
     )
+    log_file = cast(
+        TextIO,
+        tempfile.NamedTemporaryFile(
+            mode="w+",
+            prefix="llmtestlab-proxy-",
+            suffix=".log",
+            encoding="utf-8",
+            delete=False,
+        ),
+    )
     process = subprocess.Popen(
         command,
         env=merged_env,
-        stdout=subprocess.PIPE,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
         text=True,
     )
     control = ControlClient(url, token=token)
-    handle = ProxyHandle(url=url, control=control, process=process)
+    handle = ProxyHandle(
+        url=url,
+        control=control,
+        process=process,
+        log_file=log_file,
+        log_path=Path(log_file.name),
+    )
     try:
         try:
             control.wait_for_health(timeout=startup_timeout)
         except BaseException as exc:
-            output = read_process_output(process)
+            output = read_process_output(process, log_file=log_file)
             raise RuntimeError(
                 f"llm-test-lab failed to start with command {command!r}.\n{output}"
             ) from exc
@@ -338,15 +370,15 @@ def free_port(host: str = "127.0.0.1") -> int:
         return int(sock.getsockname()[1])
 
 
-def read_process_output(process: subprocess.Popen[str]) -> str:
+def read_process_output(process: subprocess.Popen[str], *, log_file: TextIO) -> str:
     if process.poll() is None:
         process.terminate()
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=2)
-    if process.stdout is None:
-        return "<no process output>"
     with contextlib.suppress(Exception):
-        return process.stdout.read()
+        log_file.flush()
+        log_file.seek(0)
+        return log_file.read()
     return "<could not read process output>"
 
 
