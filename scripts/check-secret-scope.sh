@@ -37,11 +37,19 @@ except ImportError:
 
 E2E_JOB = os.environ["E2E_JOB"]
 E2E_ENVIRONMENT = "openai-e2e"
-OPENAI_SECRET = "OPENAI_API_KEY"
 SKIP_KEYS = {"__line__", "__key_lines__"}
 RAW_SECRET_EXPR = re.compile(r"\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}")
 GITHUB_TOKEN_EXPR = re.compile(r"\$\{\{\s*(?:github\.token|secrets\.GITHUB_TOKEN)\s*\}\}")
 ANY_SECRET_EXPR = re.compile(r"\$\{\{\s*secrets\.")
+OPENAI_REF = re.compile(
+    r"secrets\s*(?:\.\s*OPENAI_API_KEY\b|\[\s*['\"]OPENAI_API_KEY['\"]\s*\])"
+)
+OPENAI_EXPR = re.compile(r"\$\{\{.*?\}\}", re.DOTALL)
+OPENAI_PRESENCE_EXPR = re.compile(
+    r"\$\{\{\s*"
+    r"secrets\s*(?:\.\s*OPENAI_API_KEY\b|\[\s*['\"]OPENAI_API_KEY['\"]\s*\])"
+    r"\s*(?:!=|==)\s*''\s*\}\}"
+)
 INSTALL_RE = re.compile(
     r"(?:^|[;\n&|])\s*(?:npm ci\b|npm install\b|npm i |pnpm install\b|"
     r"yarn install\b|pip install\b|python -m pip install\b|uv sync\b|"
@@ -318,7 +326,11 @@ def job_environment(job: dict) -> str:
 
 def job_receives_openai(job: dict) -> bool:
     for text, _line in walk_strings(job):
-        if OPENAI_SECRET in raw_secrets(text):
+        for expression in OPENAI_EXPR.findall(text):
+            if not OPENAI_REF.search(expression):
+                continue
+            if OPENAI_PRESENCE_EXPR.fullmatch(expression.strip()):
+                continue
             return True
     return False
 

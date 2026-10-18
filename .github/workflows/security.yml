@@ -86,7 +86,7 @@ jobs:
         run: scripts/check-gitleaks-config.sh --self-test
 
       - name: Gitleaks git history
-        run: gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="--all" .
+        run: gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="--all -m" .
 
       - name: Gitleaks working tree
         run: gitleaks dir --config .gitleaks.toml --redact --exit-code 1 .
