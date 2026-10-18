@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-test-lab"
+version = "0.1.0"
+description = "Python and pytest client for deterministic llm-test-lab trace assertions"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Barzoj B.V." }]
+keywords = ["llm", "testing", "pytest", "openai", "responses", "chat-completions"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: Pytest",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+  "httpx>=0.28.1",
+  "jsonschema>=4.25.1",
+]
+
+[project.optional-dependencies]
+pytest = ["pytest>=8.4.2"]
+openai = ["openai>=2.5.0"]
+dev = [
+  "build>=1.3.0",
+  "mypy>=1.17,<1.18",
+  "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
+  "ruff>=0.14.1",
+  "wheel>=0.45.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/barzoj-co/llm-test-lab-python"
+Repository = "https://github.com/barzoj-co/llm-test-lab-python"
+Issues = "https://github.com/barzoj-co/llm-test-lab-python/issues"
+
+[project.entry-points.pytest11]
+llmtestlab = "llmtestlab.pytest_plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llmtestlab"]
+# Release wheels inject a version-pinned Go proxy under bin/; keep VCS-ignored.
+artifacts = [
+  "src/llmtestlab/bin/*/llmtestlab",
+  "src/llmtestlab/bin/*/llmtestlab.exe",
+  "src/llmtestlab/bin/*/VERSION",
+  "src/llmtestlab/bin/*/AGPL-3.0.txt",
+  "src/llmtestlab/bin/*/PROXY-LICENSE.txt",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/src/llmtestlab/bin",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "RUF"]
+ignore = ["UP006", "UP007", "UP045"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = ["src", "tests"]
+exclude = ["tests/test_openai_e2e.py", "scripts"]
+follow_imports = "skip"
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pytest", "_pytest.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+  "integration: tests that require the real llm-test-lab Go binary",
+  "e2e: tests that call the real OpenAI API through llm-test-lab",
+]
