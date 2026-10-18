@@ -371,14 +371,28 @@ def step_dispatches_release(step: dict) -> bool:
     return "workflow run release.yml" in run
 
 
+def nonempty_gh_repo(env) -> bool:
+    if not isinstance(env, dict) or "GH_REPO" not in env:
+        return False
+    value = env.get("GH_REPO")
+    if value is None:
+        return False
+    return bool(str(value).strip().strip("'\""))
+
+
+def text_has_nonempty_gh_repo(text: str) -> bool:
+    for match in re.finditer(r"GH_REPO:\s*(.*)$", text, re.M):
+        raw = match.group(1).strip().strip("'\"")
+        if raw:
+            return True
+    return False
+
+
 def dispatch_targets_repo(step: dict, job: dict) -> bool:
     run = str(step.get("run") or "")
     if re.search(r"(^|\s)--repo(\s|=)", run):
         return True
-    for env in (step.get("env"), job.get("env")):
-        if isinstance(env, dict) and "GH_REPO" in env:
-            return True
-    return False
+    return nonempty_gh_repo(step.get("env")) or nonempty_gh_repo(job.get("env"))
 
 
 def check_release_please_yml(path: Path, doc: dict) -> None:
@@ -404,7 +418,7 @@ def check_release_please_yml(path: Path, doc: dict) -> None:
                         "release-please dispatch step must set GH_REPO or pass --repo",
                     )
     if "gh workflow run release.yml" in text and not found_dispatch:
-        if "GH_REPO:" not in text and "--repo" not in text:
+        if not text_has_nonempty_gh_repo(text) and "--repo" not in text:
             err(path, "release-please dispatch step must set GH_REPO or pass --repo")
 
 
@@ -436,7 +450,7 @@ def check_workflow(path: Path) -> None:
         check_release_please_yml(path, doc)
 
 
-paths = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml"))
+paths = sorted(WORKFLOWS.rglob("*.yml")) + sorted(WORKFLOWS.rglob("*.yaml"))
 if not paths:
     print(f"no workflows in {WORKFLOWS}", file=sys.stderr)
     sys.exit(1)
