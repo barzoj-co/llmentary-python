@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, Union
@@ -71,29 +72,23 @@ class CapturedCall:
 
     @property
     def request(self) -> Mapping[str, Any]:
-        request = mapping_at(self.raw, "request")
+        request = coerce_mapping(
+            first_present(self.raw, "request", "req", "http_request", "httpRequest")
+        )
         if not request:
             return {}
-        body = mapping_at(request, "body")
-        if body:
-            return body
-        json_body = mapping_at(request, "json")
-        if json_body:
-            return json_body
-        return request
+        body = coerce_mapping(first_present(request, "body", "json", "payload", "Body"))
+        return body or request
 
     @property
     def response(self) -> Mapping[str, Any]:
-        response = mapping_at(self.raw, "response")
+        response = coerce_mapping(
+            first_present(self.raw, "response", "resp", "http_response", "httpResponse")
+        )
         if not response:
             return {}
-        body = mapping_at(response, "body")
-        if body:
-            return body
-        json_body = mapping_at(response, "json")
-        if json_body:
-            return json_body
-        return response
+        body = coerce_mapping(first_present(response, "body", "json", "payload", "Body"))
+        return body or response
 
     @property
     def model(self) -> Optional[str]:
@@ -180,6 +175,8 @@ class CapturedCall:
 
     @property
     def tool_calls(self) -> list[ToolCall]:
+        # Only the model output counts as an invocation. Do not walk request
+        # messages: those echo prior assistant tool_calls on later turns.
         calls: list[ToolCall] = []
         calls.extend(extract_tool_calls(self.raw, len(calls)))
         calls.extend(extract_tool_calls(self.response, len(calls)))
@@ -206,7 +203,10 @@ class SessionTrace:
 
     def trace_summary(self) -> str:
         if not self.calls:
-            return f"llm-test-lab session {self.session_id}: no captured calls"
+            return (
+                f"llm-test-lab session {self.session_id}: no captured calls "
+                f"(payload keys={list(self.raw.keys())})"
+            )
 
         lines = [f"llm-test-lab session {self.session_id}: {len(self.calls)} captured call(s)"]
         for call in self.calls:
@@ -219,6 +219,8 @@ class SessionTrace:
                 f"  [{call.index}] api={call.api_type or '?'} model={call.model or '?'} "
                 f"status={status}{finish}{latency}{ttft} tools=[{tool_names}]"
             )
+            if not call.tool_calls:
+                lines.append(f"      call keys={list(call.raw.keys())}")
             if call.error:
                 lines.append(f"      error: {call.error}")
             if call.mid_stream_error:
@@ -250,10 +252,20 @@ def normalize_api_type(api_type: str) -> str:
 
 
 def find_call_list(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    for key in ("calls", "requests", "records", "events", "entries"):
+    for key in (
+        "calls",
+        "requests",
+        "records",
+        "events",
+        "entries",
+        "spans",
+        "llm_calls",
+        "captured",
+    ):
         value = payload.get(key)
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, Mapping)]
+            mapped = [coerce_mapping(item) for item in value]
+            return [item for item in mapped if item]
 
     session = payload.get("session")
     if isinstance(session, Mapping):
@@ -268,13 +280,32 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
     return None
 
 
+def coerce_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return {}
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return {}
+
+
 def as_mapping(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
+    return coerce_mapping(value)
 
 
 def mapping_at(mapping: Mapping[str, Any], key: str) -> Mapping[str, Any]:
-    value = mapping.get(key)
-    return value if isinstance(value, Mapping) else {}
+    return coerce_mapping(mapping.get(key))
 
 
 def sequence_at(mapping: Mapping[str, Any], key: str) -> Sequence[Any]:
@@ -356,8 +387,6 @@ def parse_args(value: Any) -> Mapping[str, Any]:
         return value
     if not isinstance(value, str) or not value:
         return {}
-    import json
-
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError:
@@ -428,8 +457,6 @@ def stringify_value(value: Any) -> str:
         content = value.get("text") or value.get("content")
         if isinstance(content, str):
             return content
-        import json
-
         return json.dumps(value, sort_keys=True)
     return "" if value is None else str(value)
 

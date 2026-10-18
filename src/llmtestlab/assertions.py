@@ -84,12 +84,6 @@ class Expectation:
 
     def parallel_tool_calls(self, expected: bool = True) -> Expectation:
         actual = any(len(call.tool_calls) > 1 for call in self.trace.calls)
-        request_param = any(
-            call.request.get("parallel_tool_calls") is True
-            or call.request.get("parallelToolCalls") is True
-            for call in self.trace.calls
-        )
-        actual = actual or request_param
         self._assert(
             actual is expected,
             f"expected parallel tool calls to be {expected}, got {actual}",

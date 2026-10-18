@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shlex
 import socket
 import subprocess
 import tempfile
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
+from urllib.parse import urlparse
 
 import httpx
 
@@ -161,6 +163,9 @@ class ProxyHandle:
                 self.process.wait(timeout=5)
         if self.log_file is not None:
             self.log_file.close()
+        if self.log_path is not None:
+            with contextlib.suppress(OSError):
+                self.log_path.unlink(missing_ok=True)
 
 
 @dataclass
@@ -182,7 +187,7 @@ class LabSession:
 
     @property
     def headers(self) -> dict[str, str]:
-        return {SESSION_HEADER: self.session_id}
+        return {SESSION_HEADER: self.session_id, "baggage": self.baggage}
 
     @property
     def baggage(self) -> str:
@@ -266,7 +271,7 @@ def start_proxy(
     attached_url = proxy_url or merged_env.get("LLMTESTLAB_PROXY_URL")
     token = token or merged_env.get("LLMTESTLAB_CONTROL_TOKEN")
     if attached_url:
-        control_url = (merged_env.get("LLMTESTLAB_CONTROL_URL") or attached_url).rstrip("/")
+        control_url = default_control_url(attached_url, merged_env)
         control = ControlClient(control_url, token=token)
         control.wait_for_health(timeout=startup_timeout)
         handle = ProxyHandle(url=attached_url.rstrip("/"), control=control)
@@ -328,7 +333,8 @@ def start_proxy(
         except BaseException as exc:
             output = read_process_output(process, log_file=log_file)
             raise RuntimeError(
-                f"llm-test-lab failed to start with command {command!r}.\n{output}"
+                "llm-test-lab failed to start with command "
+                f"{redact_command(command)!r}.\n{redact_secrets(output)}"
             ) from exc
         yield handle
     finally:
@@ -349,7 +355,8 @@ def build_start_command(
     listen = f"{host}:{port}"
     control_listen = f"{host}:{control_port}"
     upstream_name = env.get("LLMTESTLAB_UPSTREAM_NAME", "openai")
-    upstream_mapping = f"{upstream_name}={upstream_url}" if upstream_url else ""
+    normalized_upstream = normalize_upstream_url(upstream_url) if upstream_url else ""
+    upstream_mapping = f"{upstream_name}={normalized_upstream}" if normalized_upstream else ""
     template = env.get("LLMTESTLAB_START_COMMAND")
     if template:
         rendered = template.format(
@@ -360,7 +367,7 @@ def build_start_command(
             control=control_listen,
             control_listen=control_listen,
             upstream=upstream_mapping,
-            upstream_url=upstream_url or "",
+            upstream_url=normalized_upstream,
             upstream_api_key=upstream_api_key or "",
             token=token or "",
         )
@@ -372,6 +379,48 @@ def build_start_command(
     if token:
         command.extend(["-control-token", token])
     return command
+
+
+def normalize_upstream_url(url: str) -> str:
+    """Map OpenAI-style base URLs to the Go proxy `name=origin` form.
+
+    The proxy concatenates the inbound request path onto the upstream origin, so
+    `https://api.openai.com/v1` plus `/v1/chat/completions` 404s. Strip a
+    trailing `/v1`.
+    """
+
+    cleaned = url.strip().rstrip("/")
+    if cleaned.endswith("/v1"):
+        cleaned = cleaned[: -len("/v1")].rstrip("/")
+    return cleaned
+
+
+def default_control_url(proxy_url: str, env: Mapping[str, str]) -> str:
+    configured = env.get("LLMTESTLAB_CONTROL_URL")
+    if configured:
+        return configured.rstrip("/")
+    parsed = urlparse(proxy_url)
+    host = parsed.hostname or "127.0.0.1"
+    scheme = parsed.scheme or "http"
+    return f"{scheme}://{host}:7778"
+
+
+def redact_command(command: Sequence[str]) -> list[str]:
+    redacted = list(command)
+    secret_flags = {"-control-token", "--control-token", "-upstream-api-key", "--upstream-api-key"}
+    for index, part in enumerate(redacted):
+        name, sep, _value = part.partition("=")
+        if sep and name in secret_flags:
+            redacted[index] = f"{name}=***"
+            continue
+        if part in secret_flags and index + 1 < len(redacted):
+            redacted[index + 1] = "***"
+    return redacted
+
+
+def redact_secrets(text: str) -> str:
+    text = re.sub(r"(sk-[A-Za-z0-9_-]+)", "***", text)
+    return re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+", r"\1***", text)
 
 
 def free_port(host: str = "127.0.0.1") -> int:

@@ -27,10 +27,12 @@ pip install "llm-test-lab[pytest,openai]"
 
 ## Quickstart
 
-Point the client at an existing proxy:
+Point the client at an existing proxy. The Go control API listens on a
+separate address (default `127.0.0.1:7778`):
 
 ```bash
-export LLMTESTLAB_PROXY_URL=http://127.0.0.1:8080
+export LLMTESTLAB_PROXY_URL=http://127.0.0.1:7777
+export LLMTESTLAB_CONTROL_URL=http://127.0.0.1:7778
 pytest
 ```
 

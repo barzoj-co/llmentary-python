@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, cast
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 REPO = "barzoj-co/llm-test-lab"
@@ -137,7 +138,7 @@ def fetch_release(version: str, token: str) -> dict[str, Any]:
         f"https://api.github.com/repos/{REPO}/releases/tags/{tag}",
         token=token,
         accept="application/vnd.github+json",
-        follow_redirects=True,
+        follow_redirects=False,
     )
     parsed = json.loads(data.decode("utf-8"))
     if not isinstance(parsed, dict):
@@ -198,12 +199,12 @@ def download_bytes(url: str, *, token: Optional[str], accept: str, follow_redire
             location = exc.headers.get("Location")
             if not location:
                 raise SystemExit("GitHub release asset redirect had no Location") from exc
-            # Signed storage URLs reject GitHub Authorization headers.
+            next_token = token if is_github_api_url(location) else None
             return download_bytes(
                 location,
-                token=None,
+                token=next_token,
                 accept="application/octet-stream",
-                follow_redirects=True,
+                follow_redirects=not next_token,
             )
         raise SystemExit(f"Download failed for {url}: HTTP {exc.code}") from exc
     except URLError as exc:
@@ -232,18 +233,42 @@ def install_binary(archive: bytes, asset_name: str, target: Target, *, version: 
         archive_path.write_bytes(archive)
         if asset_name.endswith(".zip"):
             with zipfile.ZipFile(archive_path) as zf:
-                zf.extractall(tmp_path)
+                safe_extract_zip(zf, tmp_path)
         else:
             with tarfile.open(archive_path) as tf:
-                if sys.version_info >= (3, 12):
-                    tf.extractall(tmp_path, filter="data")
-                else:
-                    tf.extractall(tmp_path)
+                safe_extract_tar(tf, tmp_path)
         binary = find_extracted_binary(tmp_path, target.binary_name)
+        if not binary.resolve().is_relative_to(tmp_path.resolve()):
+            raise SystemExit("Refusing to install a binary outside the extract directory")
         target_path = destination / target.binary_name
         shutil.copy2(binary, target_path)
         target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+
+
+def is_github_api_url(url: str) -> bool:
+    return (urlparse(url).hostname or "").lower() == "api.github.com"
+
+
+def safe_extract_zip(zf: zipfile.ZipFile, destination: Path) -> None:
+    dest = destination.resolve()
+    for info in zf.infolist():
+        target = (dest / info.filename).resolve()
+        if not target.is_relative_to(dest):
+            raise SystemExit(f"Unsafe path in archive: {info.filename}")
+    zf.extractall(destination)
+
+
+def safe_extract_tar(tf: tarfile.TarFile, destination: Path) -> None:
+    dest = destination.resolve()
+    for member in tf.getmembers():
+        target = (dest / member.name).resolve()
+        if not target.is_relative_to(dest):
+            raise SystemExit(f"Unsafe path in archive: {member.name}")
+    if sys.version_info >= (3, 12):
+        tf.extractall(destination, filter="data")
+    else:
+        tf.extractall(destination)
 
 
 def find_extracted_binary(root: Path, binary_name: str) -> Path:

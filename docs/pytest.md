@@ -12,7 +12,9 @@ one.
 Attach mode:
 
 ```bash
-LLMTESTLAB_PROXY_URL=http://127.0.0.1:8080 pytest
+LLMTESTLAB_PROXY_URL=http://127.0.0.1:7777 \
+LLMTESTLAB_CONTROL_URL=http://127.0.0.1:7778 \
+pytest
 ```
 
 Start mode:

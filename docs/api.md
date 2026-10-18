@@ -37,7 +37,7 @@ Useful properties:
 - `lab.session_id`
 - `lab.base_url`: proxy URL
 - `lab.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
-- `lab.headers`: `{"X-Test-Session": lab.session_id}`
+- `lab.headers`: `X-Test-Session` plus W3C `baggage` with `llmtestlab.session.id`
 - `lab.baggage`: `llmtestlab.session.id=<session-id>`
 
 Methods:

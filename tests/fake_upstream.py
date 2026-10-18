@@ -17,7 +17,7 @@ class FakeOpenAIServer:
 
     @property
     def url(self) -> str:
-        return f"http://{self.host}:{self.port}/v1"
+        return f"http://{self.host}:{self.port}"
 
     def start(self) -> FakeOpenAIServer:
         self.thread.start()

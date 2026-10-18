@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from llmtestlab.client import build_start_command
+from llmtestlab.client import build_start_command, default_control_url, redact_command
 
 
 def test_build_start_command_matches_go_cli(tmp_path: Path) -> None:
@@ -24,7 +24,7 @@ def test_build_start_command_matches_go_cli(tmp_path: Path) -> None:
         "-control",
         "127.0.0.1:7778",
         "-upstream",
-        "openai=http://127.0.0.1:9/v1",
+        "openai=http://127.0.0.1:9",
         "-control-token",
         "secret",
     ]
@@ -53,5 +53,27 @@ def test_build_start_command_template(tmp_path: Path) -> None:
         "-control",
         "127.0.0.1:10",
         "-upstream",
-        "openai=http://upstream/v1",
+        "openai=http://upstream",
     ]
+
+
+def test_redact_command_hides_control_token() -> None:
+    assert redact_command(["llmtestlab", "-control-token", "super-secret"]) == [
+        "llmtestlab",
+        "-control-token",
+        "***",
+    ]
+    assert redact_command(["llmtestlab", "-control-token=super-secret"]) == [
+        "llmtestlab",
+        "-control-token=***",
+    ]
+
+
+def test_default_control_url_uses_go_control_port() -> None:
+    assert (
+        default_control_url("http://127.0.0.1:7777", {}) == "http://127.0.0.1:7778"
+    )
+    assert (
+        default_control_url("http://127.0.0.1:7777", {"LLMTESTLAB_CONTROL_URL": "http://127.0.0.1:9"})
+        == "http://127.0.0.1:9"
+    )

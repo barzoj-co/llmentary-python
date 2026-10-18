@@ -159,3 +159,54 @@ def test_tokens_only_require_requested_usage_field() -> None:
     )
 
     Expectation(total_only_trace).tokens(min_total=40, max_total=50)
+
+
+def test_parses_json_string_request_and_response_bodies() -> None:
+    encoded = SessionTrace.from_payload(
+        "encoded",
+        {
+            "calls": [
+                {
+                    "latency_ms": 3,
+                    "request": '{"model":"fake-model","messages":[{"role":"user","content":"hi"}]}',
+                    "response": (
+                        '{"choices":[{"message":{"tool_calls":[{"id":"call_1","function":'
+                        '{"name":"get_weather","arguments":"{\\"city\\":\\"Paris\\"}"}}]}}]}'
+                    ),
+                }
+            ]
+        },
+    )
+    Expectation(encoded).tool_called("get_weather").args_subset("get_weather", {"city": "Paris"})
+
+
+def test_request_echoed_tool_calls_are_not_invocations() -> None:
+    echoed = SessionTrace.from_payload(
+        "echo",
+        {
+            "calls": [
+                {
+                    "request": {
+                        "body": {
+                            "messages": [
+                                {
+                                    "role": "assistant",
+                                    "tool_calls": [
+                                        {
+                                            "id": "call_1",
+                                            "function": {
+                                                "name": "get_weather",
+                                                "arguments": '{"city":"Paris"}',
+                                            },
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    },
+                    "response": {"body": {"choices": [{"message": {"content": "done"}}]}},
+                }
+            ]
+        },
+    )
+    Expectation(echoed).not_called("get_weather")
