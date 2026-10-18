@@ -57,8 +57,8 @@ lab.query(api_type="chat_completions", model="gpt-4.1-mini").expect().no_errors(
 lab.query(api_type="responses").expect().tool_called("lookup")
 ```
 
-Accepted API type spellings include `chat`, `chat_completions`, `response`, and
-`responses`.
+Accepted API type spellings include `chat`, `chat_completions`, `chat.completions`,
+`response`, `responses`, and the Go proxy's `api_family` values.
 
 ## Assertions
 

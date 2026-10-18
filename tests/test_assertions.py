@@ -180,6 +180,27 @@ def test_parses_json_string_request_and_response_bodies() -> None:
     Expectation(encoded).tool_called("get_weather").args_subset("get_weather", {"city": "Paris"})
 
 
+def test_null_request_does_not_block_raw_response_tools() -> None:
+    encoded = SessionTrace.from_payload(
+        "null-request",
+        {
+            "calls": [
+                {
+                    "api_family": "chat.completions",
+                    "request": None,
+                    "response": None,
+                    "raw_response": (
+                        '{"choices":[{"message":{"tool_calls":[{"id":"call_1","function":'
+                        '{"name":"get_weather","arguments":"{\\"city\\":\\"Paris\\"}"}}]}}]}'
+                    ),
+                    "normalized": {"model": "fake-model"},
+                }
+            ]
+        },
+    )
+    Expectation(encoded).tool_called("get_weather").model("fake-model")
+
+
 def test_request_echoed_tool_calls_are_not_invocations() -> None:
     echoed = SessionTrace.from_payload(
         "echo",

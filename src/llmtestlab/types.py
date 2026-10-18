@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -9,6 +11,35 @@ JSONPrimitive = Union[str, int, float, bool, None]
 JSONValue = Union[JSONPrimitive, dict[str, "JSONValue"], list["JSONValue"]]
 JSONObject = dict[str, JSONValue]
 APIType = Literal["chat_completions", "responses", "chat", "response"]
+
+REQUEST_KEYS = (
+    "request",
+    "req",
+    "http_request",
+    "httpRequest",
+    "raw_request",
+    "rawRequest",
+)
+RESPONSE_KEYS = (
+    "response",
+    "resp",
+    "http_response",
+    "httpResponse",
+    "raw_response",
+    "rawResponse",
+)
+BODY_KEYS = ("body", "json", "payload", "Body")
+LLM_PAYLOAD_KEYS = (
+    "messages",
+    "input",
+    "output",
+    "choices",
+    "model",
+    "output_text",
+    "tool_calls",
+    "tools",
+)
+PATH_KEYS = ("path", "url", "endpoint")
 
 
 @dataclass(frozen=True)
@@ -35,80 +66,85 @@ class CapturedCall:
     index: int
 
     @property
-    def api_type(self) -> Optional[str]:
-        value = first_present(
-            self.raw,
-            "api_type",
-            "apiType",
-            "api",
-            "type",
-            "kind",
-            "endpoint_type",
-            "endpointType",
-        )
-        if isinstance(value, str):
-            normalized = value.lower().replace("-", "_")
-            if normalized in {"chat", "chat_completion", "chat_completions"}:
-                return "chat_completions"
-            if normalized in {"response", "responses"}:
-                return "responses"
+    def normalized_payload(self) -> Mapping[str, Any]:
+        return coerce_mapping(self.raw.get("normalized"))
 
-        path = self.path
-        if path:
-            if "/chat/completions" in path:
-                return "chat_completions"
-            if "/responses" in path:
-                return "responses"
+    @property
+    def api_type(self) -> Optional[str]:
+        for source in (self.raw, self.normalized_payload):
+            value = first_present(
+                source,
+                "api_type",
+                "apiType",
+                "api_family",
+                "apiFamily",
+                "api",
+                "type",
+                "kind",
+                "endpoint_type",
+                "endpointType",
+            )
+            mapped = normalize_api_type(value) if isinstance(value, str) else None
+            if mapped in {"chat_completions", "responses"}:
+                return mapped
+
+        path = self.path or ""
+        if "/chat/completions" in path:
+            return "chat_completions"
+        if "/responses" in path:
+            return "responses"
+
+        request = self.request
+        response = self.response
+        if "messages" in request:
+            return "chat_completions"
+        if any(key in request or key in response for key in ("input", "output", "output_text")):
+            return "responses"
         return None
 
     @property
     def path(self) -> Optional[str]:
-        value = first_present(self.raw, "path", "url", "endpoint")
-        if isinstance(value, str):
-            return value
-        request = mapping_at(self.raw, "request")
-        value = first_present(request, "path", "url", "endpoint") if request else None
-        return value if isinstance(value, str) else None
+        sources: list[Mapping[str, Any]] = [self.raw, self.normalized_payload]
+        for key in REQUEST_KEYS:
+            if key in self.raw and self.raw[key] is not None:
+                decoded = coerce_mapping(self.raw[key])
+                if decoded:
+                    sources.append(decoded)
+        for source in sources:
+            value = first_present(source, *PATH_KEYS)
+            if isinstance(value, str) and value:
+                return value
+        return None
 
     @property
     def request(self) -> Mapping[str, Any]:
-        request = coerce_mapping(
-            first_present(self.raw, "request", "req", "http_request", "httpRequest")
-        )
-        if not request:
-            return {}
-        body = coerce_mapping(first_present(request, "body", "json", "payload", "Body"))
-        return body or request
+        return extract_llm_side(self.raw, REQUEST_KEYS, side="request")
 
     @property
     def response(self) -> Mapping[str, Any]:
-        response = coerce_mapping(
-            first_present(self.raw, "response", "resp", "http_response", "httpResponse")
-        )
-        if not response:
-            return {}
-        body = coerce_mapping(first_present(response, "body", "json", "payload", "Body"))
-        return body or response
+        return extract_llm_side(self.raw, RESPONSE_KEYS, side="response")
 
     @property
     def model(self) -> Optional[str]:
-        for source in (self.raw, self.request, self.response):
+        # Prefer the request model: OpenAI responses often echo a dated snapshot ID.
+        for source in (self.request, self.raw, self.normalized_payload, self.response):
             value = first_present(source, "model")
-            if isinstance(value, str):
+            if isinstance(value, str) and value:
                 return value
         return None
 
     @property
     def finish_reason(self) -> Optional[str]:
-        value = first_present(self.raw, "finish_reason", "finishReason")
-        if isinstance(value, str):
-            return value
+        for source in (self.raw, self.normalized_payload):
+            value = first_present(source, "finish_reason", "finishReason")
+            if isinstance(value, str) and value:
+                return value
 
         choices = sequence_at(self.response, "choices")
         if choices:
             choice0 = as_mapping(choices[0])
             value = first_present(choice0, "finish_reason", "finishReason")
-            if isinstance(value, str):
+            if isinstance(value, str) and value:
                 return value
 
         output = sequence_at(self.response, "output")
@@ -125,8 +161,11 @@ class CapturedCall:
 
     @property
     def usage(self) -> Mapping[str, Any]:
-        usage = mapping_at(self.raw, "usage") or mapping_at(self.response, "usage")
-        return usage or {}
+        for source in (self.raw, self.normalized_payload, self.response):
+            usage = mapping_at(source, "usage")
+            if usage:
+                return usage
+        return {}
 
     @property
     def latency_ms(self) -> Optional[float]:
@@ -141,7 +180,7 @@ class CapturedCall:
         return numeric_at_any(
             self.raw,
             ("ttft_ms", "ttftMs", "time_to_first_token_ms", "timeToFirstTokenMs"),
-            nested=("timings", "metrics"),
+            nested=("timings", "metrics", "normalized"),
         )
 
     @property
@@ -178,13 +217,24 @@ class CapturedCall:
         # Only the model output counts as an invocation. Do not walk request
         # messages: those echo prior assistant tool_calls on later turns.
         calls: list[ToolCall] = []
-        calls.extend(extract_tool_calls(self.raw, len(calls)))
+        normalized = self.normalized_payload
+        if normalized:
+            calls.extend(extract_tool_calls(normalized, len(calls)))
+            for key in ("response", "body", "result"):
+                nested = decode_value(normalized.get(key))
+                if isinstance(nested, Mapping):
+                    calls.extend(extract_tool_calls(nested, len(calls)))
         calls.extend(extract_tool_calls(self.response, len(calls)))
         return dedupe_tool_calls(calls)
 
     @property
     def tool_results(self) -> list[Mapping[str, Any]]:
-        return extract_tool_results(self.request)
+        results = extract_tool_results(self.request)
+        normalized = self.normalized_payload
+        if normalized:
+            results.extend(extract_tool_results(coerce_mapping(normalized.get("request"))))
+            results.extend(extract_tool_results(normalized))
+        return results
 
 
 @dataclass(frozen=True)
@@ -215,8 +265,9 @@ class SessionTrace:
             latency = f", latency={call.latency_ms:.1f}ms" if call.latency_ms is not None else ""
             ttft = f", ttft={call.ttft_ms:.1f}ms" if call.ttft_ms is not None else ""
             finish = f", finish={call.finish_reason}" if call.finish_reason else ""
+            api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             lines.append(
-                f"  [{call.index}] api={call.api_type or '?'} model={call.model or '?'} "
+                f"  [{call.index}] api={api_label} model={call.model or '?'} "
                 f"status={status}{finish}{latency}{ttft} tools=[{tool_names}]"
             )
             if not call.tool_calls:
@@ -238,17 +289,28 @@ class SessionTrace:
             normalized = normalize_api_type(api_type)
             calls = [call for call in calls if call.api_type == normalized]
         if model:
-            calls = [call for call in calls if call.model == model]
+            calls = [call for call in calls if model_matches(call.model, model)]
         return SessionTrace(session_id=self.session_id, raw=self.raw, calls=calls)
 
 
+def model_matches(actual: Optional[str], expected: str) -> bool:
+    if not actual:
+        return False
+    if actual == expected:
+        return True
+    return actual.startswith(expected + "-")
+
+
 def normalize_api_type(api_type: str) -> str:
-    normalized = api_type.lower().replace("-", "_")
-    if normalized in {"chat", "chat_completion", "chat_completions"}:
+    normalized = api_type.lower().replace("-", "_").replace(".", "_").replace("/", "_")
+    collapsed = "_".join(part for part in normalized.split("_") if part)
+    if collapsed in {"chat", "chat_completion", "chat_completions"}:
         return "chat_completions"
-    if normalized in {"response", "responses"}:
+    if "chat" in collapsed and "completion" in collapsed:
+        return "chat_completions"
+    if collapsed in {"response", "responses"} or "response" in collapsed:
         return "responses"
-    return normalized
+    return collapsed
 
 
 def find_call_list(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -266,6 +328,11 @@ def find_call_list(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
         if isinstance(value, list):
             mapped = [coerce_mapping(item) for item in value]
             return [item for item in mapped if item]
+        if isinstance(value, Mapping):
+            mapped = [coerce_mapping(item) for item in value.values()]
+            found = [item for item in mapped if item]
+            if found:
+                return found
 
     session = payload.get("session")
     if isinstance(session, Mapping):
@@ -274,30 +341,163 @@ def find_call_list(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
+    if not isinstance(mapping, Mapping):
+        return None
     for key in keys:
-        if key in mapping:
-            return mapping[key]
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if value is None or value == "":
+            continue
+        return value
     return None
 
 
+def extract_llm_side(
+    raw: Mapping[str, Any],
+    keys: Sequence[str],
+    *,
+    side: Literal["request", "response"],
+) -> Mapping[str, Any]:
+    fallback: Mapping[str, Any] = {}
+    for key in keys:
+        if key not in raw or raw[key] is None:
+            continue
+        for candidate in candidate_mappings(raw[key]):
+            if looks_like_llm_payload(candidate, side=side):
+                return candidate
+            if not fallback:
+                fallback = candidate
+
+    normalized = coerce_mapping(raw.get("normalized"))
+    if normalized:
+        nested = first_present(normalized, side, "body")
+        if nested is not None:
+            for candidate in candidate_mappings(nested):
+                if looks_like_llm_payload(candidate, side=side):
+                    return candidate
+                if not fallback:
+                    fallback = candidate
+        if looks_like_llm_payload(normalized, side=side):
+            return normalized
+    return fallback
+
+
+def candidate_mappings(value: Any) -> list[Mapping[str, Any]]:
+    decoded = decode_value(value)
+    candidates: list[Mapping[str, Any]] = []
+    if isinstance(decoded, Mapping):
+        candidates.append(decoded)
+        for key in BODY_KEYS:
+            nested = first_present(decoded, key)
+            if nested is None:
+                continue
+            nested_decoded = decode_value(nested)
+            if isinstance(nested_decoded, Mapping):
+                candidates.append(nested_decoded)
+    elif isinstance(decoded, str):
+        extracted = extract_json_object(decoded)
+        if extracted is not None:
+            candidates.append(extracted)
+    return candidates
+
+
+def looks_like_llm_payload(
+    mapping: Mapping[str, Any],
+    *,
+    side: Optional[Literal["request", "response"]] = None,
+) -> bool:
+    if side == "request":
+        return any(key in mapping for key in ("messages", "input", "tools", "model", "prompt"))
+    if side == "response":
+        return any(
+            key in mapping
+            for key in ("choices", "output", "output_text", "tool_calls", "model", "usage")
+        )
+    return any(key in mapping for key in LLM_PAYLOAD_KEYS)
+
+
 def coerce_mapping(value: Any) -> Mapping[str, Any]:
+    decoded = decode_value(value)
+    if isinstance(decoded, Mapping):
+        return decoded
+    if isinstance(decoded, str):
+        extracted = extract_json_object(decoded)
+        if extracted is not None:
+            return extracted
+    return {}
+
+
+def decode_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > 5:
+        return value
     if isinstance(value, Mapping):
         return value
-    if isinstance(value, (bytes, bytearray)):
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        data = bytes(value)
+        stripped = data.lstrip()
+        if stripped.startswith((b"{", b"[")):
+            try:
+                return decode_value(json.loads(data), depth=depth + 1)
+            except json.JSONDecodeError:
+                pass
         try:
-            value = value.decode("utf-8")
+            return decode_value(data.decode("utf-8"), depth=depth + 1)
         except UnicodeDecodeError:
-            return {}
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return {}
+            return value
+    if not isinstance(value, str):
+        return value
+
+    text = value.strip()
+    if not text:
+        return value
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if parsed is not None:
+        return decode_value(parsed, depth=depth + 1)
+
+    decoded_b64 = decode_base64_json(text)
+    if decoded_b64 is not None:
+        return decode_value(decoded_b64, depth=depth + 1)
+
+    extracted = extract_json_object(text)
+    return extracted if extracted is not None else value
+
+
+def decode_base64_json(text: str) -> Any:
+    compact = "".join(text.split())
+    if len(compact) < 8:
+        return None
+    try:
+        padding = (-len(compact)) % 4
+        decoded = base64.b64decode(compact + ("=" * padding), validate=False)
+    except (ValueError, binascii.Error):
+        return None
+    stripped = decoded.lstrip()
+    if stripped.startswith((b"{", b"[")):
         try:
-            parsed = json.loads(text)
+            return json.loads(decoded)
         except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, Mapping) else {}
-    return {}
+            return None
+    try:
+        as_text = decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return extract_json_object(as_text)
+
+
+def extract_json_object(text: str) -> Optional[Mapping[str, Any]]:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
 
 
 def as_mapping(value: Any) -> Mapping[str, Any]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Optional
@@ -101,7 +102,7 @@ def llmtestlab_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
 def lab(request: pytest.FixtureRequest, llmtestlab_proxy: ProxyHandle) -> Iterator[LabSession]:
     """Unique llm-test-lab recording session for one pytest test function."""
 
-    test_name = request.node.name.replace("[", "-").replace("]", "")
+    test_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", request.node.name).strip("-.")
     session = LabSession(
         session_id=new_session_id(test_name),
         proxy=llmtestlab_proxy,

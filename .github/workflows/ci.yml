@@ -79,6 +79,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       LLMTESTLAB_UPSTREAM_BASE_URL: https://api.openai.com/v1
       LLMTESTLAB_UPSTREAM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LLMTESTLAB_WAIT_TIMEOUT: "30"
     steps:
       - name: Checkout Python client
         uses: actions/checkout@v5

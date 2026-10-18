@@ -13,7 +13,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -116,10 +116,10 @@ class ControlClient:
                 payload = response.json()
             except ValueError:
                 payload = None
-            if isinstance(payload, Mapping) and any(
-                key in payload for key in ("calls", "requests", "records", "session")
-            ):
-                return SessionTrace.from_payload(session_id, payload)
+            if isinstance(payload, Mapping):
+                trace = SessionTrace.from_payload(session_id, payload)
+                if trace.calls:
+                    return trace
         return self.get_session(session_id)
 
     def delete_session(self, session_id: str) -> None:
@@ -191,7 +191,7 @@ class LabSession:
 
     @property
     def baggage(self) -> str:
-        return f"{BAGGAGE_SESSION_KEY}={self.session_id}"
+        return f"{BAGGAGE_SESSION_KEY}={encode_baggage_value(self.session_id)}"
 
     @property
     def client(self) -> httpx.Client:
@@ -289,9 +289,7 @@ def start_proxy(
     control_url = f"http://{host}:{control_port}"
     resolved_upstream = upstream_url or merged_env.get("LLMTESTLAB_UPSTREAM_BASE_URL")
     resolved_api_key = upstream_api_key or merged_env.get("LLMTESTLAB_UPSTREAM_API_KEY")
-    if resolved_api_key:
-        merged_env.setdefault("OPENAI_API_KEY", resolved_api_key)
-        merged_env["LLMTESTLAB_UPSTREAM_API_KEY"] = resolved_api_key
+    apply_upstream_api_key(merged_env, resolved_api_key)
     command = build_start_command(
         bin_path=bin_path,
         host=host,
@@ -393,6 +391,29 @@ def normalize_upstream_url(url: str) -> str:
     if cleaned.endswith("/v1"):
         cleaned = cleaned[: -len("/v1")].rstrip("/")
     return cleaned
+
+
+def apply_upstream_api_key(env: dict[str, str], api_key: Optional[str]) -> None:
+    """Force the proxy child to use the configured upstream key.
+
+    ``setdefault`` would leave a pre-existing ``OPENAI_API_KEY`` in place and the
+    Go proxy would authenticate with the wrong credential.
+    """
+
+    if not api_key:
+        return
+    env["OPENAI_API_KEY"] = api_key
+    env["LLMTESTLAB_UPSTREAM_API_KEY"] = api_key
+
+
+def encode_baggage_value(value: str) -> str:
+    """Percent-encode a W3C baggage value.
+
+    Session ids are derived from pytest node names and may contain comma, space,
+    or equals, which split baggage list members if left raw.
+    """
+
+    return quote(value, safe="-._~")
 
 
 def default_control_url(proxy_url: str, env: Mapping[str, str]) -> str:
