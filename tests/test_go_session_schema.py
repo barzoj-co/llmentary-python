@@ -465,3 +465,197 @@ def test_normalized_transcript_messages_are_invocations() -> None:
         ],
     }
     Expectation(SessionTrace.from_payload("transcript", payload)).tool_called("get_weather")
+
+
+def test_parses_stream_status_usage_details_and_error_fields() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {
+        "choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "total_tokens": 14,
+            "prompt_tokens_details": {"cached_tokens": 3},
+            "completion_tokens_details": {"reasoning_tokens": 2},
+        },
+    }
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["stream"] = True
+    call["http_status"] = 400
+    call["error"] = {"error": {"type": "invalid_request_error", "code": "model_not_found"}}
+    captured = SessionTrace.from_payload("details", {"id": "details", "calls": [call]}).calls[0]
+    assert captured.streamed is True
+    assert captured.http_status == 400
+    assert captured.cached_tokens == 3
+    assert captured.reasoning_tokens == 2
+    assert captured.error_type == "invalid_request_error"
+    assert captured.error_code == "model_not_found"
+
+
+def test_parses_go_normalized_cached_input_tokens() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {"choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["usage"] = {
+        "input_tokens": 3215,
+        "output_tokens": 1,
+        "total_tokens": 3216,
+        "cached_input_tokens": 3072,
+        "reasoning_tokens": 0,
+        "source": "body",
+        "raw": {
+            "prompt_tokens": 3215,
+            "completion_tokens": 1,
+            "total_tokens": 3216,
+            "prompt_tokens_details": {"cached_tokens": 3072},
+        },
+    }
+    captured = SessionTrace.from_payload("cache", {"id": "cache", "calls": [call]}).calls[0]
+    assert captured.cached_tokens == 3072
+    assert captured.reasoning_tokens == 0
+
+
+def test_prefers_nested_usage_details_over_zero_top_level_aliases() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {"choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["usage"] = {
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "total_tokens": 120,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "source": "body",
+        "raw": {
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "prompt_tokens_details": {"cached_tokens": 12},
+            "completion_tokens_details": {"reasoning_tokens": 9},
+        },
+    }
+    captured = SessionTrace.from_payload("nested", {"id": "nested", "calls": [call]}).calls[0]
+    assert captured.cached_tokens == 12
+    assert captured.reasoning_tokens == 9
+
+
+def test_parses_normalized_client_aborted_on_disconnect() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "count"}]}
+    response_body = {"choices": [{"message": {"content": "One,"}, "finish_reason": None}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["stream"] = True
+    call["http_status"] = 200
+    call["normalized"] = {
+        "derived_version": 1,
+        "model": {"requested": "fake-model", "returned": "fake-model"},
+        "finish_reason": "unknown",
+        "stream_truncated": True,
+        "client_aborted": True,
+        "parser_warnings": ["response copy error: context canceled"],
+    }
+    captured = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).calls[0]
+    assert captured.raw.get("ended_at")
+    assert captured.client_aborted is True
+    assert captured.stream_truncated is True
+    summary = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).trace_summary()
+    assert "client_aborted" in summary
+
+
+def test_missing_ended_at_is_not_client_aborted() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {"choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["ended_at"] = None
+    call["stream"] = True
+    captured = SessionTrace.from_payload("open", {"id": "open", "calls": [call]}).calls[0]
+    assert captured.raw.get("ended_at") in (None, "")
+    assert captured.client_aborted is False
+    assert captured.stream_truncated is False
+
+
+def test_parses_error_from_raw_response_without_top_level_error() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": []},
+        response=None,
+    )
+    call["http_status"] = 401
+    call["raw_response"] = json.dumps(
+        {
+            "error": {
+                "message": "invalid api key",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key",
+            }
+        }
+    )
+    captured = SessionTrace.from_payload("auth", {"id": "auth", "calls": [call]}).calls[0]
+    assert captured.http_status == 401
+    assert captured.error_type == "invalid_request_error"
+    assert captured.error_code == "invalid_api_key"
+    assert captured.error
+
+
+def test_null_error_on_successful_response_is_not_an_error() -> None:
+    request_body = {"model": "fake-model", "input": "ping"}
+    response_body = {
+        "id": "resp_ok",
+        "status": "completed",
+        "error": None,
+        "output_text": "ping",
+        "output": [{"type": "message", "content": [{"type": "output_text", "text": "ping"}]}],
+        "usage": {"input_tokens": 4, "output_tokens": 1, "total_tokens": 5},
+    }
+    call = go_call(
+        seq=1,
+        api_family="openai.responses",
+        request_body=request_body,
+        response_body=response_body,
+        response=None,
+    )
+    captured = SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]}).calls[0]
+    assert captured.error is None
+    assert captured.error_mapping == {}
+    Expectation(SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]})).no_errors()
+
+
+def test_path_from_upstream_url_for_passthrough() -> None:
+    call = go_call(
+        seq=1,
+        api_family="openai.responses",
+        request_body={"model": "fake-model"},
+        response_body={"object": "list", "data": [{"id": "gpt-4.1-nano"}]},
+        request=None,
+        response=None,
+    )
+    call["upstream"] = {"method": "GET", "url": "https://api.openai.com/v1/models"}
+    captured = SessionTrace.from_payload("models", {"id": "models", "calls": [call]}).calls[0]
+    assert (captured.path or "").rstrip("/").endswith("/models")
