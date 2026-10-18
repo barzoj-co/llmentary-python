@@ -110,6 +110,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
     agpl_bytes = files[f"{dist_info}/licenses/AGPL-3.0.txt"]
     assert b"License-Expression: MIT AND AGPL-3.0-only" in rewritten_metadata
     assert b"License-File: licenses/AGPL-3.0.txt" in rewritten_metadata
+    assert b"Classifier: License ::" not in rewritten_metadata
     assert f"{dist_info}/licenses/AGPL-3.0.txt" in names
     assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_bytes
     for name, data in files.items():
@@ -129,7 +130,20 @@ def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:
     assert "License-Expression: MIT\n" not in rewritten
     assert "License-File: LICENSE" in rewritten
     assert wheels.AGPL_LICENSE_FILE_FIELD in rewritten
-    assert wheels.AGPL_CLASSIFIER in rewritten
+    assert "Classifier: License ::" not in rewritten
+
+
+def test_rewrite_wheel_license_metadata_inserts_before_description_body() -> None:
+    rewritten = wheels.rewrite_wheel_license_metadata(
+        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "\nLong description that is not a header.\n"
+    )
+    header, separator, body = rewritten.partition("\n\n")
+    assert separator == "\n\n"
+    assert "License-Expression: MIT AND AGPL-3.0-only" in header
+    assert wheels.AGPL_LICENSE_FILE_FIELD in header
+    assert "Classifier: License ::" not in rewritten
+    assert body.startswith("Long description that is not a header.")
 
 
 def test_select_asset_matches_platform() -> None:
@@ -288,4 +302,5 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     assert agpl_name in names
     assert b"License-Expression: MIT AND AGPL-3.0-only" in metadata
     assert b"License-File: licenses/AGPL-3.0.txt" in metadata
+    assert b"Classifier: License ::" not in metadata
     assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl

@@ -33,9 +33,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_BIN_DIR = Path("src/llmtestlab/bin")
 AGPL_LICENSE_FILE = REPO_ROOT / "licenses" / "AGPL-3.0.txt"
 PLATFORM_WHEEL_LICENSE = "MIT AND AGPL-3.0-only"
-AGPL_CLASSIFIER = (
-    "Classifier: License :: OSI Approved :: GNU Affero General Public License v3"
-)
 AGPL_LICENSE_FILE_FIELD = "License-File: licenses/AGPL-3.0.txt"
 
 
@@ -319,8 +316,11 @@ def rewrite_wheel_license_metadata(metadata: str) -> str:
     else:
         metadata = metadata.rstrip() + f"\nLicense-Expression: {PLATFORM_WHEEL_LICENSE}\n"
 
-    if AGPL_CLASSIFIER not in metadata:
-        metadata = _insert_metadata_line(metadata, AGPL_CLASSIFIER, ("Classifier:",))
+    metadata = "".join(
+        line
+        for line in metadata.splitlines(keepends=True)
+        if not line.startswith("Classifier: License ::")
+    )
     if AGPL_LICENSE_FILE_FIELD not in metadata:
         prefixes = (
             ("License-File:",)
@@ -338,7 +338,13 @@ def _insert_metadata_line(metadata: str, line: str, prefixes: tuple[str, ...]) -
     indexes = [
         index for index, current in enumerate(lines) if current.startswith(prefixes)
     ]
-    insert_at = indexes[-1] + 1 if indexes else len(lines)
+    if indexes:
+        insert_at = indexes[-1] + 1
+    else:
+        insert_at = next(
+            (index for index, current in enumerate(lines) if current.strip() == ""),
+            len(lines),
+        )
     lines.insert(insert_at, line + "\n")
     return "".join(lines)
 

@@ -48,10 +48,9 @@ if ! grep -F -q -- "$canonical_block" "$README"; then
   missing=1
 fi
 
-mapfile -t license_lines < <(awk '/^## License$/{p=1} p' "$README" | sed '/^$/d')
-if [[ ${#license_lines[@]} -ne 2 ]] ||
-  [[ "${license_lines[0]}" != "## License" ]] ||
-  [[ "${license_lines[1]}" != "Licensed under MIT, see LICENSE" ]]; then
+license_section="$(awk '/^## License$/{p=1} p' "$README" | sed '/^$/d')"
+expected_license="$(printf '%s\n%s' '## License' 'Licensed under MIT, see LICENSE')"
+if [ "$license_section" != "$expected_license" ]; then
   echo "README.md License section must be a single line: Licensed under MIT, see LICENSE" >&2
   missing=1
 fi
