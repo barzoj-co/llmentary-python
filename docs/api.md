@@ -1,0 +1,146 @@
+# API reference
+
+## Core objects
+
+### `ControlClient`
+
+```python
+from llmtestlab import ControlClient
+
+control = ControlClient("http://127.0.0.1:8080", token=None)
+control.health()
+trace = control.wait_session("session-id", timeout=5, quiet_for=0.2)
+control.delete_session("session-id")
+otlp_bytes = control.otlp("session-id")
+```
+
+The control client uses the proxy endpoints:
+
+- `GET /healthz`
+- `GET /sessions/{id}`
+- `GET /sessions/{id}/wait?timeout=...&quiet_for=...`
+- fallback `POST /sessions/{id}/wait`
+- `DELETE /sessions/{id}`
+- `GET /sessions/{id}/otlp`
+
+For non-loopback proxies, pass the bearer token as `token` or set
+`LLMTESTLAB_CONTROL_TOKEN`.
+
+### `LabSession`
+
+The pytest `lab` fixture returns `LabSession`.
+
+Useful properties:
+
+- `lab.session_id`
+- `lab.base_url`: proxy URL
+- `lab.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
+- `lab.headers`: `{"X-Test-Session": lab.session_id}`
+- `lab.baggage`: `llmtestlab.session.id=<session-id>`
+
+Methods:
+
+- `lab.wait(timeout=None, quiet_for=None)`: wait for quiescence and return a trace
+- `lab.trace()`: fetch the current trace without waiting
+- `lab.otlp()`: fetch OTLP bytes for the session
+- `lab.cleanup()`: delete the session
+- `lab.expect(soft=False)`: wait, then return an expectation object
+- `lab.query(api_type=None, model=None)`: scope assertions by API type/model
+- `lab.soft_expect()`: context manager that accumulates assertion failures
+
+### `Query`
+
+```python
+lab.query(api_type="chat_completions", model="gpt-4.1-mini").expect().no_errors()
+lab.query(api_type="responses").expect().tool_called("lookup")
+```
+
+Accepted API type spellings include `chat`, `chat_completions`, `response`, and
+`responses`.
+
+## Assertions
+
+All assertion methods are chainable. Hard expectations raise `AssertionError` on
+the first failure. Soft expectations collect failures and raise from
+`assert_all()` or when leaving `lab.soft_expect()`.
+
+### Tool calls
+
+```python
+expect.tool_called("get_weather")
+expect.not_called("delete_user")
+expect.called_times("search", 2)
+expect.args_subset("get_weather", {"city": "Paris"})
+expect.args_matcher("get_weather", lambda args: args["city"].startswith("Par"))
+expect.order("search", "summarize")
+expect.order("search", "summarize", strict=True)
+expect.parallel_tool_calls()
+expect.tool_result_fed_back("get_weather")
+```
+
+`args_subset` recursively checks only the expected keys. `args_matcher` accepts
+either a mapping (same behavior as `args_subset`) or a callable returning bool.
+
+### Request and response metadata
+
+```python
+expect.model("gpt-4.1-mini")
+expect.request_param("temperature", 0)
+expect.request_param("response_format.type", "json_schema")
+expect.finish_reason("stop")
+```
+
+`request_param` supports dot notation for nested request JSON fields.
+
+### Usage, latency, TTFT, retries
+
+```python
+expect.tokens(min_total=1, max_total=500)
+expect.tokens(min_prompt=1, max_completion=100)
+expect.latency(max_ms=2_000)
+expect.ttft(max_ms=500)
+expect.retries(max_count=1)
+expect.no_retries()
+```
+
+The client accepts both Chat Completions token names
+(`prompt_tokens`, `completion_tokens`, `total_tokens`) and Responses names
+(`input_tokens`, `output_tokens`, `total_tokens`).
+
+### Errors
+
+```python
+expect.no_errors()
+expect.has_error("429")
+expect.mid_stream_error("connection reset")
+```
+
+### Prompt and response content
+
+```python
+expect.prompt_contains("weather")
+expect.prompt_regex(r"weather.+Paris")
+expect.response_contains("sunny")
+expect.response_regex(r"sunny|clear")
+expect.response_json_valid()
+expect.response_json_schema({"type": "object", "required": ["answer"]})
+```
+
+JSON assertions look at normalized response text and the raw response body.
+
+## Trace payload handling
+
+The client preserves the exact JSON returned by the Go proxy and normalizes the
+common fields used for assertions:
+
+- call list keys: `calls`, `requests`, `records`, `events`, `entries`
+- API type keys and endpoint paths
+- request/response `body` or `json`
+- Chat Completions `choices[].message.tool_calls`
+- Responses `output[]` function calls
+- Chat `role=tool` results and Responses `function_call_output` results
+- usage, latency, TTFT, retry, and error fields in the names used by the Go
+  proxy and OpenAI APIs
+
+Every assertion failure includes `SessionTrace.trace_summary()`, which lists each
+captured call with API type, model, status, finish reason, timings, and tools.
