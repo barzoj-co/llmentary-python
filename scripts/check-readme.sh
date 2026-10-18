@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fail if the README is missing the required badge URLs or the canonical
-# llm-test-lab repository table.
+# Fail if the README is missing the required badge URLs, the canonical
+# llm-test-lab repository table, or the MIT license one-liner.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,12 +35,12 @@ done
 canonical_block='<!-- ltl-repos:start -->
 ## llm-test-lab repositories
 
-| Repository | What | License |
-|---|---|---|
-| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
-| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
-| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
-| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+| Repository | What |
+|---|---|
+| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) |
+| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` |
+| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin |
+| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest |
 <!-- ltl-repos:end -->'
 
 if ! grep -F -q -- "$canonical_block" "$README"; then
@@ -48,7 +48,14 @@ if ! grep -F -q -- "$canonical_block" "$README"; then
   missing=1
 fi
 
+license_section="$(awk '/^## License$/{p=1} p' "$README" | sed '/^$/d')"
+expected_license="$(printf '%s\n%s' '## License' 'Licensed under MIT, see LICENSE')"
+if [ "$license_section" != "$expected_license" ]; then
+  echo "README.md License section must be a single line: Licensed under MIT, see LICENSE" >&2
+  missing=1
+fi
+
 if [[ "$missing" -ne 0 ]]; then
   exit 1
 fi
-echo "README.md badges and repository block are present"
+echo "README.md badges, repository block, and license one-liner are present"

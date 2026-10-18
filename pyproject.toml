@@ -57,7 +57,6 @@ artifacts = [
   "src/llmtestlab/bin/*/llmtestlab.exe",
   "src/llmtestlab/bin/*/VERSION",
   "src/llmtestlab/bin/*/AGPL-3.0.txt",
-  "src/llmtestlab/bin/*/PROXY-LICENSE.txt",
 ]
 
 [tool.hatch.build.targets.sdist]

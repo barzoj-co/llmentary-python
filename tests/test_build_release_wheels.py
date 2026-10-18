@@ -71,6 +71,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
     wheel_path = tmp_path / "llm_test_lab-0.1.0-py3-none-any.whl"
     metadata = (
         b"Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        b"License-File: LICENSE\n"
         b"Classifier: License :: OSI Approved :: MIT License\n"
     )
     init = b"x = 1\n"
@@ -99,16 +100,19 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
                 f"{dist_info}/METADATA",
                 "llmtestlab/__init__.py",
                 f"{dist_info}/licenses/AGPL-3.0.txt",
-                f"{dist_info}/licenses/PROXY-NOTICE.txt",
             )
         }
         entries = {
             path: (digest, size)
             for path, digest, size in (line.split(",") for line in record.splitlines() if line)
         }
-    assert b"License-Expression: MIT AND AGPL-3.0-only" in files[f"{dist_info}/METADATA"]
+    rewritten_metadata = files[f"{dist_info}/METADATA"]
+    agpl_bytes = files[f"{dist_info}/licenses/AGPL-3.0.txt"]
+    assert b"License-Expression: MIT AND AGPL-3.0-only" in rewritten_metadata
+    assert b"License-File: licenses/AGPL-3.0.txt" in rewritten_metadata
+    assert b"Classifier: License ::" not in rewritten_metadata
     assert f"{dist_info}/licenses/AGPL-3.0.txt" in names
-    assert f"{dist_info}/licenses/PROXY-NOTICE.txt" in names
+    assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_bytes
     for name, data in files.items():
         _, digest, size = _record_line(name, data).split(",")
         assert entries[name] == (digest, size)
@@ -119,11 +123,27 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
 def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:
     rewritten = wheels.rewrite_wheel_license_metadata(
         "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "License-File: LICENSE\n"
         "Classifier: License :: OSI Approved :: MIT License\n"
     )
     assert "License-Expression: MIT AND AGPL-3.0-only" in rewritten
     assert "License-Expression: MIT\n" not in rewritten
-    assert wheels.AGPL_CLASSIFIER in rewritten
+    assert "License-File: LICENSE" in rewritten
+    assert wheels.AGPL_LICENSE_FILE_FIELD in rewritten
+    assert "Classifier: License ::" not in rewritten
+
+
+def test_rewrite_wheel_license_metadata_inserts_before_description_body() -> None:
+    rewritten = wheels.rewrite_wheel_license_metadata(
+        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "\nLong description that is not a header.\n"
+    )
+    header, separator, body = rewritten.partition("\n\n")
+    assert separator == "\n\n"
+    assert "License-Expression: MIT AND AGPL-3.0-only" in header
+    assert wheels.AGPL_LICENSE_FILE_FIELD in header
+    assert "Classifier: License ::" not in rewritten
+    assert body.startswith("Long description that is not a header.")
 
 
 def test_select_asset_matches_platform() -> None:
@@ -165,9 +185,6 @@ def test_install_binary_extracts_and_records_version(
     assert (dest / "VERSION").read_text(encoding="utf-8") == "1.2.3\n"
     agpl_text = (dest / "AGPL-3.0.txt").read_text(encoding="utf-8")
     assert "GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_text
-    proxy_license = (dest / "PROXY-LICENSE.txt").read_text(encoding="utf-8")
-    assert "https://github.com/barzoj-co/llm-test-lab" in proxy_license
-    assert "Bundled proxy version: 1.2.3" in proxy_license
 
 
 def test_asset_download_strips_authorization_on_redirect() -> None:
@@ -262,6 +279,7 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     binary = bin_dir / "llmtestlab"
     binary.write_bytes(b"dummy-proxy")
     binary.chmod(0o755)
+    shutil.copy2(ROOT / "licenses" / "AGPL-3.0.txt", bin_dir / "AGPL-3.0.txt")
     outdir = tmp_path / "dist"
     subprocess.run(
         [sys.executable, "-m", "build", "--wheel", "--outdir", str(outdir)],
@@ -270,9 +288,19 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     )
     built = list(outdir.glob("*.whl"))
     assert len(built) == 1
+    wheels.apply_platform_wheel_license(built[0])
     with zipfile.ZipFile(built[0]) as zf:
-        names = zf.namelist()
-    assert any(
-        name.replace("\\", "/").endswith(f"llmtestlab/bin/{platform_tag}/llmtestlab")
-        for name in names
-    )
+        names = {name.replace("\\", "/") for name in zf.namelist()}
+        metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+        agpl_name = next(
+            name for name in names if name.endswith(".dist-info/licenses/AGPL-3.0.txt")
+        )
+        metadata = zf.read(metadata_name)
+        agpl = zf.read(agpl_name)
+    assert f"llmtestlab/bin/{platform_tag}/llmtestlab" in names
+    assert f"llmtestlab/bin/{platform_tag}/AGPL-3.0.txt" in names
+    assert agpl_name in names
+    assert b"License-Expression: MIT AND AGPL-3.0-only" in metadata
+    assert b"License-File: licenses/AGPL-3.0.txt" in metadata
+    assert b"Classifier: License ::" not in metadata
+    assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl
