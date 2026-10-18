@@ -9,7 +9,15 @@ from typing import Any, Callable, Optional, Union
 from jsonschema import ValidationError
 from jsonschema.validators import Draft202012Validator
 
-from .types import CapturedCall, SessionTrace, ToolCall, as_mapping, sequence_at, stringify_value
+from .types import (
+    CapturedCall,
+    SessionTrace,
+    ToolCall,
+    as_mapping,
+    model_matches,
+    sequence_at,
+    stringify_value,
+)
 
 ArgsMatcher = Union[Mapping[str, Any], Callable[[Mapping[str, Any]], bool]]
 Regex = Union[str, Pattern[str]]
@@ -118,7 +126,10 @@ class Expectation:
 
     def model(self, expected: str) -> Expectation:
         models = {call.model for call in self.trace.calls if call.model}
-        self._assert(expected in models, f"expected model {expected!r}, got {sorted(models)!r}")
+        self._assert(
+            any(model_matches(model, expected) for model in models),
+            f"expected model {expected!r}, got {sorted(models)!r}",
+        )
         return self
 
     def request_param(self, name: str, expected: Any) -> Expectation:

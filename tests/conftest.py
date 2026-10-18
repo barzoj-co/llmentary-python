@@ -20,6 +20,20 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_e2e)
 
 
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if os.environ.get("LLMTESTLAB_E2E") != "1":
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    skipped = reporter.stats.get("skipped", [])
+    if skipped:
+        names = [getattr(report, "nodeid", str(report)) for report in skipped]
+        reporter.write_line(f"E2E forbids skipped tests when LLMTESTLAB_E2E=1: {names}")
+        if exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
 @pytest.fixture(scope="session")
 def fake_openai_server() -> Iterator[FakeOpenAIServer]:
     server = FakeOpenAIServer().start()

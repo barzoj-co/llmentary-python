@@ -77,7 +77,7 @@ ignore = ["UP006", "UP007", "UP045"]
 python_version = "3.9"
 strict = true
 files = ["src", "tests"]
-exclude = ["tests/test_openai_e2e.py", "scripts"]
+exclude = ["tests/e2e", "scripts"]
 follow_imports = "skip"
 disallow_untyped_decorators = false
 

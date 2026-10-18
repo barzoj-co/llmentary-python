@@ -157,15 +157,55 @@ class CapturedCall:
             ]
             if reasons:
                 return ",".join(reasons)
+
+        for source in (self.response, self.normalized_payload, self.raw):
+            value = first_present(source, "status")
+            if isinstance(value, str) and value and not value.isdigit():
+                return value
         return None
 
     @property
     def usage(self) -> Mapping[str, Any]:
-        for source in (self.raw, self.normalized_payload, self.response):
+        sources: list[Mapping[str, Any]] = [self.raw, self.normalized_payload, self.response]
+        nested = coerce_mapping(self.normalized_payload.get("response"))
+        if nested:
+            sources.append(nested)
+        for source in sources:
             usage = mapping_at(source, "usage")
             if usage:
                 return usage
         return {}
+
+    @property
+    def streamed(self) -> bool:
+        value = first_present(self.raw, "stream", "streaming", "is_stream")
+        if isinstance(value, bool):
+            return value
+        request_stream = self.request.get("stream")
+        return request_stream is True
+
+    @property
+    def http_status(self) -> Optional[int]:
+        value = first_present(self.raw, "http_status", "httpStatus", "status_code", "statusCode")
+        if isinstance(value, bool):
+            value = None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        wrapped = coerce_mapping(self.raw.get("response"))
+        nested = first_present(wrapped, "status", "status_code", "http_status", "httpStatus")
+        if isinstance(nested, int) and not isinstance(nested, bool):
+            return nested
+        return None
+
+    @property
+    def cached_tokens(self) -> Optional[int]:
+        return usage_detail(self.usage, "cached_tokens", "cachedTokens")
+
+    @property
+    def reasoning_tokens(self) -> Optional[int]:
+        return usage_detail(self.usage, "reasoning_tokens", "reasoningTokens")
 
     @property
     def latency_ms(self) -> Optional[float]:
@@ -192,7 +232,27 @@ class CapturedCall:
 
     @property
     def error(self) -> Optional[Any]:
-        return first_present(self.raw, "error", "errors")
+        value = first_present(self.raw, "error", "errors")
+        if value:
+            return value
+        mapping = self.error_mapping
+        return mapping or None
+
+    @property
+    def error_mapping(self) -> Mapping[str, Any]:
+        return extract_error_mapping(self.raw)
+
+    @property
+    def error_type(self) -> Optional[str]:
+        value = self.error_mapping.get("type")
+        return value if isinstance(value, str) else None
+
+    @property
+    def error_code(self) -> Optional[str]:
+        value = self.error_mapping.get("code")
+        if value is None or isinstance(value, Mapping):
+            return None
+        return str(value)
 
     @property
     def mid_stream_error(self) -> Optional[Any]:
@@ -265,10 +325,13 @@ class SessionTrace:
             latency = f", latency={call.latency_ms:.1f}ms" if call.latency_ms is not None else ""
             ttft = f", ttft={call.ttft_ms:.1f}ms" if call.ttft_ms is not None else ""
             finish = f", finish={call.finish_reason}" if call.finish_reason else ""
+            http_status = f", http={call.http_status}" if call.http_status is not None else ""
+            streamed = ", streamed" if call.streamed else ""
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             lines.append(
                 f"  [{call.index}] api={api_label} model={call.model or '?'} "
-                f"status={status}{finish}{latency}{ttft} tools=[{tool_names}]"
+                f"status={status}{http_status}{streamed}{finish}{latency}{ttft} "
+                f"tools=[{tool_names}]"
             )
             if not call.tool_calls:
                 lines.append(f"      call keys={list(call.raw.keys())}")
@@ -362,6 +425,44 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
             continue
         return value
     return None
+
+
+def unwrap_error(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        nested = value.get("error")
+        if isinstance(nested, Mapping):
+            return nested
+        return value
+    if isinstance(value, str) and value.strip():
+        extracted = extract_json_object(value)
+        if extracted:
+            nested = extracted.get("error")
+            if isinstance(nested, Mapping):
+                return nested
+            if any(key in extracted for key in ("type", "code", "message")):
+                return extracted
+    return {}
+
+
+def extract_error_mapping(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    for source in (raw, coerce_mapping(raw.get("normalized"))):
+        mapped = unwrap_error(first_present(source, "error", "errors"))
+        if mapped:
+            return mapped
+
+    for key in RESPONSE_KEYS:
+        if key not in raw or raw[key] is None:
+            continue
+        for candidate in candidate_mappings(raw[key]):
+            if "error" in candidate:
+                mapped = unwrap_error(candidate)
+                if mapped:
+                    return mapped
+            if isinstance(candidate.get("type"), str) and (
+                candidate.get("code") is not None or "error" in str(candidate.get("type"))
+            ):
+                return candidate
+    return {}
 
 
 def extract_llm_side(
@@ -554,6 +655,29 @@ def numeric_at_any(
             value = numeric_at_any(nested_mapping, keys)
             if value is not None:
                 return value
+    return None
+
+
+def usage_detail(usage: Mapping[str, Any], *keys: str) -> Optional[int]:
+    for container_key in (
+        "prompt_tokens_details",
+        "promptTokensDetails",
+        "input_tokens_details",
+        "inputTokensDetails",
+        "completion_tokens_details",
+        "completionTokensDetails",
+        "output_tokens_details",
+        "outputTokensDetails",
+    ):
+        details = mapping_at(usage, container_key)
+        if not details:
+            continue
+        value = first_present(details, *keys)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    value = first_present(usage, *keys)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
     return None
 
 

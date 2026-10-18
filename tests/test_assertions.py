@@ -115,6 +115,20 @@ def test_expectation_tool_and_content_assertions() -> None:
     ).no_errors().no_retries()
 
 
+def test_model_assertion_accepts_openai_snapshot_id() -> None:
+    payload = {
+        "id": "snap",
+        "calls": [
+            {
+                "api_type": "chat_completions",
+                "request": {"model": "gpt-4.1-nano-2025-04-14", "messages": []},
+                "response": {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+            }
+        ],
+    }
+    Expectation(SessionTrace.from_payload("snap", payload)).model("gpt-4.1-nano")
+
+
 def test_failure_includes_trace_summary() -> None:
     with pytest.raises(AssertionError, match="llm-test-lab session test-session"):
         Expectation(trace()).tool_called("missing_tool")

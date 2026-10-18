@@ -465,3 +465,59 @@ def test_normalized_transcript_messages_are_invocations() -> None:
         ],
     }
     Expectation(SessionTrace.from_payload("transcript", payload)).tool_called("get_weather")
+
+
+def test_parses_stream_status_usage_details_and_error_fields() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    response_body = {
+        "choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "total_tokens": 14,
+            "prompt_tokens_details": {"cached_tokens": 3},
+            "completion_tokens_details": {"reasoning_tokens": 2},
+        },
+    }
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body=response_body,
+    )
+    call["stream"] = True
+    call["http_status"] = 400
+    call["error"] = {"error": {"type": "invalid_request_error", "code": "model_not_found"}}
+    captured = SessionTrace.from_payload("details", {"id": "details", "calls": [call]}).calls[0]
+    assert captured.streamed is True
+    assert captured.http_status == 400
+    assert captured.cached_tokens == 3
+    assert captured.reasoning_tokens == 2
+    assert captured.error_type == "invalid_request_error"
+    assert captured.error_code == "model_not_found"
+
+
+def test_parses_error_from_raw_response_without_top_level_error() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": []},
+        response=None,
+    )
+    call["http_status"] = 401
+    call["raw_response"] = json.dumps(
+        {
+            "error": {
+                "message": "invalid api key",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key",
+            }
+        }
+    )
+    captured = SessionTrace.from_payload("auth", {"id": "auth", "calls": [call]}).calls[0]
+    assert captured.http_status == 401
+    assert captured.error_type == "invalid_request_error"
+    assert captured.error_code == "invalid_api_key"
+    assert captured.error
