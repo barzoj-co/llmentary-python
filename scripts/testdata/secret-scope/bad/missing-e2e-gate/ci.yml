@@ -1,0 +1,8 @@
+# expect: missing or malformed e2e-gate job
+name: CI
+on: pull_request
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo e2e

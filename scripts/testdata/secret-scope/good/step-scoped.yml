@@ -1,0 +1,10 @@
+name: good
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pytest

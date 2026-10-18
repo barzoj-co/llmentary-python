@@ -1,0 +1,13 @@
+name: bad-matrix
+on:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      matrix:
+        python: ["3.12"]
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

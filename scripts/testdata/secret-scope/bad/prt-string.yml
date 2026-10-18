@@ -1,0 +1,8 @@
+# expect: pull_request_target is forbidden
+name: bad
+on: pull_request_target
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

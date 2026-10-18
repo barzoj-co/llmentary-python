@@ -1,0 +1,10 @@
+name: good
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          persist-credentials: false

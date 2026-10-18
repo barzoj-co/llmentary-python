@@ -1,0 +1,9 @@
+name: bad-list
+on: [push, pull_request]
+jobs:
+  test:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
