@@ -5,10 +5,16 @@ import json
 import pytest
 from e2e_helpers import (
     CHEAP_MODEL,
+    INVALID_KEY_ERROR_CODE,
+    INVALID_KEY_ERROR_TYPE,
     INVALID_KEY_HEADERS,
+    INVALID_KEY_STATUS,
     INVALID_MODEL,
+    INVALID_MODEL_ERROR_CODE,
+    INVALID_MODEL_ERROR_TYPE,
     JSON_SCHEMA,
     PARALLEL_MODEL,
+    RESPONSES_INVALID_MODEL_STATUS,
     TIME_RESPONSES,
     WEATHER_RESPONSES,
     assemble_responses_text,
@@ -22,7 +28,7 @@ from e2e_helpers import (
     openai_client,
     openai_invalid_key_errors,
     openai_invalid_model_errors,
-    recorded_incomplete_or_errored,
+    recorded_client_aborted,
     responses_function_call,
     tool_argument_json,
 )
@@ -194,14 +200,26 @@ def test_responses_multi_turn_session_helpers(lab: LabSession) -> None:
             max_output_tokens=16,
         )
     )
-    trace = lab.wait()
-    assert len(trace.calls) == 3, trace.trace_summary()
-    prompts = [call.prompt_text for call in trace.calls]
+    call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Say other API."}],
+            temperature=0,
+            max_tokens=8,
+        )
+    )
+    unfiltered = lab.wait()
+    assert len(unfiltered.calls) == 4, unfiltered.trace_summary()
+    prompts = [call.prompt_text for call in unfiltered.calls]
     assert "Say one." in prompts[0]
     assert "Say two." in prompts[1]
     assert "Say three." in prompts[2]
+    assert any("Say other API." in text for text in prompts)
     filtered = lab.query(api_type="responses", model=CHEAP_MODEL).expect()
     assert len(filtered.trace.calls) == 3
+    assert len(unfiltered.calls) > len(filtered.trace.calls)
+    assert all(call.api_type == "responses" for call in filtered.trace.calls)
+    assert all("Say other API." not in call.prompt_text for call in filtered.trace.calls)
     filtered.prompt_contains("Say two.").no_errors()
 
 
@@ -214,9 +232,13 @@ def test_responses_upstream_invalid_model(lab: LabSession) -> None:
             temperature=0,
             max_output_tokens=16,
         )
-    call = assert_recorded_error(lab.wait(), pattern=r"invalid|not.?found|model")
-    assert call.http_status is not None and call.http_status >= 400
-    assert call.error_type or call.error_code
+    assert_recorded_error(
+        lab.wait(),
+        pattern=r"invalid|not.?found|model",
+        http_status=RESPONSES_INVALID_MODEL_STATUS,
+        error_type=INVALID_MODEL_ERROR_TYPE,
+        error_code=INVALID_MODEL_ERROR_CODE,
+    )
 
 
 def test_responses_upstream_invalid_api_key(lab: LabSession) -> None:
@@ -229,8 +251,13 @@ def test_responses_upstream_invalid_api_key(lab: LabSession) -> None:
             max_output_tokens=16,
             extra_headers=INVALID_KEY_HEADERS,
         )
-    call = assert_recorded_error(lab.wait(), pattern=r"auth|api.?key|401|invalid")
-    assert call.http_status == 401, lab.trace().trace_summary()
+    assert_recorded_error(
+        lab.wait(),
+        pattern=r"auth|api.?key|401|invalid",
+        http_status=INVALID_KEY_STATUS,
+        error_type=INVALID_KEY_ERROR_TYPE,
+        error_code=INVALID_KEY_ERROR_CODE,
+    )
 
 
 def test_responses_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:
@@ -255,7 +282,11 @@ def test_responses_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> Non
 
     trace = lab.wait()
     assert trace.calls, trace.trace_summary()
-    assert recorded_incomplete_or_errored(trace.calls), trace.trace_summary()
+    assert recorded_client_aborted(trace.calls), (
+        "expected normalized.client_aborted after client disconnect\n"
+        f"{trace.trace_summary()}"
+    )
+    assert any(call.client_aborted for call in trace.calls), trace.trace_summary()
     lab.proxy.control.health()
     call_openai(
         lambda: client.responses.create(

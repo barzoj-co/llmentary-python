@@ -18,6 +18,21 @@ REASONING_MODEL = "o4-mini"
 INVALID_MODEL = "ltl-e2e-invalid-model-does-not-exist"
 INVALID_API_KEY = "sk-invalid-ltl-e2e-override"
 INVALID_KEY_HEADERS = {"Authorization": f"Bearer {INVALID_API_KEY}"}
+# Observed OpenAI error envelope through the live proxy:
+# Chat Completions unknown model -> 404; Responses unknown model -> 400.
+# Both use type=invalid_request_error, code=model_not_found.
+# Invalid API key -> 401, type=invalid_request_error, code=invalid_api_key.
+CHAT_INVALID_MODEL_STATUS = 404
+RESPONSES_INVALID_MODEL_STATUS = 400
+INVALID_MODEL_ERROR_TYPE = "invalid_request_error"
+INVALID_MODEL_ERROR_CODE = "model_not_found"
+INVALID_KEY_STATUS = 401
+INVALID_KEY_ERROR_TYPE = "invalid_request_error"
+INVALID_KEY_ERROR_CODE = "invalid_api_key"
+REASONING_PROMPT = (
+    "Compute 3847 * 5921 by expanding (3800+47)*(5900+21). "
+    "Show each partial product, then reply with the final integer only."
+)
 JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -144,18 +159,25 @@ def assert_assembled_matches_recorded(assembled: str, recorded: str) -> None:
     assert " ".join(left.split()) == " ".join(right.split()), (left, right)
 
 
-def error_fields(call: CapturedCall) -> tuple[int | None, str | None, str | None]:
-    return call.http_status, call.error_type, call.error_code
-
-
-def assert_recorded_error(trace: SessionTrace, *, pattern: str) -> CapturedCall:
+def assert_recorded_error(
+    trace: SessionTrace,
+    *,
+    pattern: str,
+    http_status: int,
+    error_type: str,
+    error_code: str,
+) -> CapturedCall:
     Expectation(trace).has_error(pattern)
     errored = [call for call in trace.calls if call.error or (call.http_status or 0) >= 400]
     assert errored, trace.trace_summary()
     call = errored[0]
-    status, err_type, err_code = error_fields(call)
-    assert status is not None and status >= 400, trace.trace_summary()
-    assert err_type or err_code or call.error, trace.trace_summary()
+    summary = (
+        f"http_status={call.http_status} error_type={call.error_type!r} "
+        f"error_code={call.error_code!r}\n{trace.trace_summary()}"
+    )
+    assert call.http_status == http_status, summary
+    assert call.error_type == error_type, summary
+    assert call.error_code == error_code, summary
     return call
 
 
@@ -241,18 +263,12 @@ def tool_argument_json(trace: SessionTrace, name: str) -> Mapping[str, Any]:
     raise AssertionError(f"no arguments for {name!r}\n\n{trace.trace_summary()}")
 
 
-def recorded_incomplete_or_errored(calls: Sequence[CapturedCall]) -> bool:
-    for call in calls:
-        if call.error or call.mid_stream_error:
-            return True
-        if call.http_status is not None and call.http_status >= 400:
-            return True
-        ended = call.raw.get("ended_at")
-        if ended in (None, ""):
-            return True
-        if call.streamed and call.finish_reason in {None, "unknown"}:
-            return True
-        normalized = call.normalized_payload
-        if normalized.get("stream_truncated") or normalized.get("client_aborted"):
-            return True
-    return False
+def recorded_client_aborted(calls: Sequence[CapturedCall]) -> bool:
+    """True when the Go proxy recorded a client disconnect.
+
+    The concrete signal is ``normalized.client_aborted`` (CI dump also set
+    ``stream_truncated=True`` and still populated ``ended_at``). Missing
+    ``ended_at`` is not evidence of cancellation.
+    """
+
+    return any(call.client_aborted for call in calls)

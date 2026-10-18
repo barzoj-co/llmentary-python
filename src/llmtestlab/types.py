@@ -224,6 +224,17 @@ class CapturedCall:
         return usage_detail(self.usage, "reasoning_tokens", "reasoningTokens")
 
     @property
+    def client_aborted(self) -> bool:
+        return self._flag("client_aborted", "clientAborted")
+
+    @property
+    def stream_truncated(self) -> bool:
+        return self._flag("stream_truncated", "streamTruncated")
+
+    def _flag(self, *keys: str) -> bool:
+        return bool_flag(self.normalized_payload, *keys) or bool_flag(self.raw, *keys)
+
+    @property
     def latency_ms(self) -> Optional[float]:
         return numeric_at_any(
             self.raw,
@@ -343,11 +354,13 @@ class SessionTrace:
             finish = f", finish={call.finish_reason}" if call.finish_reason else ""
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
+            aborted = ", client_aborted" if call.client_aborted else ""
+            truncated = ", stream_truncated" if call.stream_truncated else ""
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             lines.append(
                 f"  [{call.index}] api={api_label} model={call.model or '?'} "
-                f"status={status}{http_status}{streamed}{finish}{latency}{ttft} "
-                f"tools=[{tool_names}]"
+                f"status={status}{http_status}{streamed}{aborted}{truncated}{finish}"
+                f"{latency}{ttft} tools=[{tool_names}]"
             )
             if not call.tool_calls:
                 lines.append(f"      call keys={list(call.raw.keys())}")
@@ -679,30 +692,47 @@ def numeric_at_any(
 
 
 def usage_detail(usage: Mapping[str, Any], *keys: str) -> Optional[int]:
+    """Read a usage counter, preferring OpenAI nested details over flattened aliases.
+
+    Go traces flatten ``completion_tokens_details.reasoning_tokens`` to a top-level
+    ``reasoning_tokens`` that is often ``0`` even when the nested details are
+    non-zero. Nested detail objects are therefore searched across every container
+    before falling back to top-level keys such as ``cached_input_tokens``.
+    """
+
     containers = [usage, mapping_at(usage, "raw"), mapping_at(usage, "body")]
+    detail_keys = (
+        "prompt_tokens_details",
+        "promptTokensDetails",
+        "input_tokens_details",
+        "inputTokensDetails",
+        "completion_tokens_details",
+        "completionTokensDetails",
+        "output_tokens_details",
+        "outputTokensDetails",
+    )
     for container in containers:
         if not container:
             continue
-        for container_key in (
-            "prompt_tokens_details",
-            "promptTokensDetails",
-            "input_tokens_details",
-            "inputTokensDetails",
-            "completion_tokens_details",
-            "completionTokensDetails",
-            "output_tokens_details",
-            "outputTokensDetails",
-        ):
+        for container_key in detail_keys:
             details = mapping_at(container, container_key)
             if not details:
                 continue
             parsed = int_or_none(first_present(details, *keys))
             if parsed is not None:
                 return parsed
+    for container in containers:
+        if not container:
+            continue
         parsed = int_or_none(first_present(container, *keys))
         if parsed is not None:
             return parsed
     return None
+
+
+def bool_flag(mapping: Mapping[str, Any], *keys: str) -> bool:
+    value = first_present(mapping, *keys)
+    return value is True
 
 
 def int_or_none(value: Any) -> Optional[int]:

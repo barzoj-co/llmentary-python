@@ -3,7 +3,13 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from e2e_helpers import CHEAP_MODEL, REASONING_MODEL, call_openai, openai_client
+from e2e_helpers import (
+    CHEAP_MODEL,
+    REASONING_MODEL,
+    REASONING_PROMPT,
+    call_openai,
+    openai_client,
+)
 
 from llmtestlab import LabSession
 from llmtestlab.client import new_session_id
@@ -28,12 +34,16 @@ def test_cached_tokens_field_is_parsed(lab: LabSession) -> None:
     trace = lab.wait()
     assert len(trace.calls) == 2, trace.trace_summary()
     parsed = [call.cached_tokens for call in trace.calls]
+    usage = [dict(call.usage) for call in trace.calls]
+    summary = f"cached_tokens={parsed}\nusage={usage}\n{trace.trace_summary()}"
     assert all(value is not None for value in parsed), (
-        f"expected cached_tokens to be parsed from usage details\n"
-        f"usage={[dict(call.usage) for call in trace.calls]}\n"
-        f"{trace.trace_summary()}"
+        f"expected cached_tokens to be parsed from usage details\n{summary}"
     )
-    assert all(value is not None and value >= 0 for value in parsed)
+    assert parsed[0] is not None and parsed[0] >= 0, summary
+    assert parsed[1] is not None and parsed[1] > 0, (
+        "expected a cache hit (cached_tokens > 0) on the second identical prompt\n"
+        f"{summary}"
+    )
 
 
 def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
@@ -41,16 +51,19 @@ def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
     call_openai(
         lambda: client.responses.create(
             model=REASONING_MODEL,
-            input="Reply with the single word ping.",
-            reasoning={"effort": "low"},
-            max_output_tokens=64,
+            input=REASONING_PROMPT,
+            reasoning={"effort": "medium"},
+            max_output_tokens=400,
         )
     )
     trace = lab.query(api_type="responses").expect().trace
     assert trace.calls, trace.trace_summary()
     values = [call.reasoning_tokens for call in trace.calls]
-    # Field presence is the contract: effort=low may legitimately record 0.
-    assert any(value is not None and value >= 0 for value in values), trace.trace_summary()
+    assert any(value is not None and value > 0 for value in values), (
+        f"expected reasoning_tokens > 0 for o4-mini on a multi-step product\n"
+        f"reasoning_tokens={values}\nusage={[dict(call.usage) for call in trace.calls]}\n"
+        f"{trace.trace_summary()}"
+    )
 
 
 def test_concurrent_sessions_are_isolated(lab: LabSession) -> None:
