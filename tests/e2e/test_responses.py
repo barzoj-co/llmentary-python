@@ -12,9 +12,9 @@ from e2e_helpers import (
     INVALID_MODEL,
     INVALID_MODEL_ERROR_CODE,
     INVALID_MODEL_ERROR_TYPE,
+    INVALID_MODEL_STATUS,
     JSON_SCHEMA,
     PARALLEL_MODEL,
-    RESPONSES_INVALID_MODEL_STATUS,
     TIME_RESPONSES,
     WEATHER_RESPONSES,
     assemble_responses_text,
@@ -235,7 +235,7 @@ def test_responses_upstream_invalid_model(lab: LabSession) -> None:
     assert_recorded_error(
         lab.wait(),
         pattern=r"invalid|not.?found|model",
-        http_status=RESPONSES_INVALID_MODEL_STATUS,
+        http_status=INVALID_MODEL_STATUS,
         error_type=INVALID_MODEL_ERROR_TYPE,
         error_code=INVALID_MODEL_ERROR_CODE,
     )

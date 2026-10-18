@@ -18,12 +18,11 @@ REASONING_MODEL = "o4-mini"
 INVALID_MODEL = "ltl-e2e-invalid-model-does-not-exist"
 INVALID_API_KEY = "sk-invalid-ltl-e2e-override"
 INVALID_KEY_HEADERS = {"Authorization": f"Bearer {INVALID_API_KEY}"}
-# Observed OpenAI error envelope through the live proxy:
-# Chat Completions unknown model -> 404; Responses unknown model -> 400.
-# Both use type=invalid_request_error, code=model_not_found.
+# Observed OpenAI error envelope through the live proxy (CI 39127536406):
+# unknown model -> 404, type=invalid_request_error, code=model_not_found
+# (Chat Completions and Responses).
 # Invalid API key -> 401, type=invalid_request_error, code=invalid_api_key.
-CHAT_INVALID_MODEL_STATUS = 404
-RESPONSES_INVALID_MODEL_STATUS = 400
+INVALID_MODEL_STATUS = 404
 INVALID_MODEL_ERROR_TYPE = "invalid_request_error"
 INVALID_MODEL_ERROR_CODE = "model_not_found"
 INVALID_KEY_STATUS = 401
