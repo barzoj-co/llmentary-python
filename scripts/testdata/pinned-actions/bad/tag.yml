@@ -1,0 +1,7 @@
+name: bad-tag
+on: push
+jobs:
+  ok:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4

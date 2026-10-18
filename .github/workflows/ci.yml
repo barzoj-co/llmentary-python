@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +31,9 @@ jobs:
       LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
     steps:
       - name: Checkout Python client
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Fail clearly if llm-test-lab repo token is missing
         run: |
@@ -33,7 +43,7 @@ jobs:
           fi
 
       - name: Checkout llm-test-lab proxy
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: barzoj-co/llm-test-lab
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
@@ -41,7 +51,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
           cache-dependency-path: llm-test-lab/go.sum
@@ -51,7 +61,7 @@ jobs:
         run: go build -o "$LLMTESTLAB_BIN" ./cmd/llmtestlab
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -66,11 +76,26 @@ jobs:
         run: mypy
 
       - name: Unit and fake-upstream integration tests
+        if: matrix.python-version != '3.13'
         run: pytest -m "not e2e"
+
+      - name: Unit and fake-upstream integration tests
+        if: matrix.python-version == '3.13'
+        run: pytest -m "not e2e" --cov --cov-report=xml:coverage.xml
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          files: ./coverage.xml
+          flags: unit
+          fail_ci_if_error: ${{ vars.CODECOV_REQUIRED == 'true' }}
 
   openai-e2e:
     name: OpenAI E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     env:
       LLMTESTLAB_BIN: /tmp/llmtestlab
@@ -83,7 +108,9 @@ jobs:
       LLMTESTLAB_WAIT_TIMEOUT: "30"
     steps:
       - name: Checkout Python client
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Fail clearly if required secrets are missing
         run: |
@@ -97,7 +124,7 @@ jobs:
           fi
 
       - name: Checkout llm-test-lab proxy
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: barzoj-co/llm-test-lab
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
@@ -105,7 +132,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
           cache-dependency-path: llm-test-lab/go.sum
@@ -115,7 +142,7 @@ jobs:
         run: go build -o "$LLMTESTLAB_BIN" ./cmd/llmtestlab
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
           cache: pip

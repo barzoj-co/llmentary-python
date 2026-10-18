@@ -1,0 +1,102 @@
+# Contributing
+
+Thanks for helping with `llm-test-lab` (the Python client and pytest plugin).
+
+By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Security reports go through [SECURITY.md](SECURITY.md), never a public issue.
+
+## Requirements
+
+- Python 3.9 or newer
+- Go 1.26 if you build the proxy locally; otherwise set `LLMTESTLAB_BIN` to a
+  prebuilt `llmtestlab` binary
+- An OpenAI API key only if you run the live e2e suite
+
+## Development install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,openai]"
+```
+
+## Checks
+
+```bash
+ruff check .
+mypy
+pytest -m "not e2e"
+```
+
+Unit tests and fake-upstream integration tests share that pytest selection.
+Integration tests that talk to the real Go proxy are skipped unless
+`LLMTESTLAB_BIN` or `LLMTESTLAB_PROXY_URL` is set.
+
+### Local proxy
+
+Build the proxy from `barzoj-co/llm-test-lab` (Go 1.26):
+
+```bash
+go build -o /tmp/llmtestlab ./cmd/llmtestlab
+export LLMTESTLAB_BIN=/tmp/llmtestlab
+pytest -m "not e2e"
+```
+
+Or attach to an already running proxy with `LLMTESTLAB_PROXY_URL` and
+`LLMTESTLAB_CONTROL_URL`. See [docs/pytest.md](docs/pytest.md).
+
+### Live OpenAI e2e
+
+These tests must actually run. They fail the session if any e2e test is
+skipped.
+
+```bash
+export LLMTESTLAB_E2E=1
+export OPENAI_API_KEY=...
+export LLMTESTLAB_UPSTREAM_BASE_URL=https://api.openai.com/v1
+export LLMTESTLAB_UPSTREAM_API_KEY="$OPENAI_API_KEY"
+export LLMTESTLAB_BIN=/tmp/llmtestlab
+pytest -m e2e -vv
+```
+
+Never print, log, or commit the API key or any `Authorization` / `api-key`
+value.
+
+## Pull requests
+
+- Use a [Conventional Commit](https://www.conventionalcommits.org/) title
+  (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`, …). release-please uses these
+  titles to write [CHANGELOG.md](CHANGELOG.md) and bump the Python package
+  version.
+- Run ruff, mypy, and `pytest -m "not e2e"` before you push.
+- Document only behavior that exists in the tree.
+- Note breaking changes in the PR.
+
+## Hygiene scripts
+
+```bash
+scripts/check-pinned-actions.sh
+scripts/check-pinned-actions.sh --self-test
+scripts/check-workflow-policy.sh
+scripts/check-readme.sh
+```
+
+`actionlint` (with ShellCheck) is what CI runs on `.github/workflows`. Install
+a release from https://github.com/rhysd/actionlint/releases and run:
+
+```bash
+actionlint -shellcheck="$(command -v shellcheck)"
+```
+
+## Dependencies and coverage
+
+Renovate opens grouped dependency PRs (see `renovate.json`). Patch and digest
+updates automerge. The bundled proxy pin in `PROXY_VERSION` does **not**
+automerge.
+
+Coverage is collected on the Python 3.13 CI leg and uploaded to Codecov. The
+Codecov project and patch statuses are informational and do not fail PRs.
+
+## Releases
+
+Maintainers: see [docs/releasing.md](docs/releasing.md).

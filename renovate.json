@@ -1,0 +1,76 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":semanticCommits"],
+  "timezone": "Europe/Amsterdam",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "platformAutomerge": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"],
+    "schedule": ["at any time"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on monday"],
+    "automerge": true
+  },
+  "enabledManagers": ["pep621", "github-actions", "custom.regex"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dependencies", "project.dependencies"],
+      "rangeStrategy": "widen"
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["optional-dependencies", "project.optional-dependencies"],
+      "matchDepNames": ["build", "mypy", "pytest-cov", "ruff", "wheel"],
+      "automerge": true
+    },
+    {
+      "matchDepNames": ["python"],
+      "enabled": false
+    },
+    {
+      "matchFileNames": ["PROXY_VERSION"],
+      "matchDepNames": ["barzoj-co/llm-test-lab"],
+      "groupName": "bundled proxy",
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pin CI tool versions annotated with # renovate:",
+      "managerFilePatterns": ["/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[-a-z]+)(?: depName=(?<depName>\\S+))?(?: packageName=(?<packageName>\\S+))?(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+[A-Za-z0-9_]+\\s*:\\s*[\"']?(?<currentValue>[^\\s\"'#]+)[\"']?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Pin bundled proxy version from barzoj-co/llm-test-lab GitHub releases",
+      "managerFilePatterns": ["/(^|/)PROXY_VERSION$/"],
+      "matchStrings": ["^(?<currentValue>v?[0-9][^\\s]*)\\s*$"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "barzoj-co/llm-test-lab"
+    }
+  ]
+}

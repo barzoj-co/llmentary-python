@@ -1,0 +1,121 @@
+name: Bug report
+description: Report a bug in the Python client or pytest plugin
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for a report. Remove API keys, tokens, and private prompts before
+        you submit. Security issues go to
+        https://github.com/barzoj-co/llm-test-lab-python/security/advisories/new
+        — not here. Proxy bugs go to https://github.com/barzoj-co/llm-test-lab.
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      description: The installed `llm-test-lab` version (`python -c "import llmtestlab; print(llmtestlab.__version__)"`).
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: proxy-version
+    attributes:
+      label: Bundled proxy version
+      description: The `VERSION` file next to the wheel binary, or the `LLMTESTLAB_BIN` path if you did not use a bundled binary.
+      placeholder: "0.1.0 or /path/to/llmtestlab"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: "`python --version`"
+      placeholder: "3.13.2"
+    validations:
+      required: true
+  - type: input
+    id: pytest-version
+    attributes:
+      label: pytest version
+      description: "`pytest --version` (leave blank if you are not using the plugin)"
+      placeholder: "8.4.2"
+    validations:
+      required: false
+  - type: input
+    id: os-arch
+    attributes:
+      label: OS and architecture
+      placeholder: "Ubuntu 24.04 x86_64"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Platform wheel
+        - sdist
+        - Editable (`pip install -e`)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: Upstream LLM provider the proxy talked to.
+      placeholder: OpenAI
+    validations:
+      required: true
+  - type: dropdown
+    id: api
+    attributes:
+      label: API
+      options:
+        - Chat Completions
+        - Responses
+        - Both
+        - Neither / not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: streaming
+    attributes:
+      label: Streaming
+      options:
+        - Yes
+        - No
+        - Both
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest snippet or test that shows the bug. Strip keys and private prompts.
+      placeholder: |
+        def test_example(lab):
+            ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Secrets
+      options:
+        - label: I removed keys and private prompts
+          required: true

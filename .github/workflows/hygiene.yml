@@ -1,0 +1,201 @@
+name: Hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          # renovate: datasource=github-releases depName=rhysd/actionlint
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "${archive}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          tar -xzf "${archive}" actionlint
+          mkdir -p "${HOME}/.local/bin"
+          mv actionlint "${HOME}/.local/bin/actionlint"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Run actionlint
+        run: actionlint -color -shellcheck="$(command -v shellcheck)"
+
+  pinned-actions:
+    name: pinned-actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check pinned actions
+        run: scripts/check-pinned-actions.sh
+
+      - name: Self-test pinned-actions fixtures
+        run: scripts/check-pinned-actions.sh --self-test
+
+      - name: Check workflow policy
+        run: scripts/check-workflow-policy.sh
+
+      - name: Check README badges and repository block
+        run: scripts/check-readme.sh
+
+  renovate-config:
+    name: renovate-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      - name: Validate renovate.json
+        env:
+          # renovate: datasource=npm depName=renovate
+          RENOVATE_VERSION: "44.167.1"
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" renovate-config-validator --strict
+
+  codecov-config:
+    name: codecov-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Validate codecov.yml
+        run: curl --fail --data-binary @codecov.yml https://codecov.io/validate
+
+  labels-dry-run:
+    name: labels (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Validate issue forms and labels.yml
+        env:
+          # renovate: datasource=pypi depName=check-jsonschema
+          CHECK_JSONSCHEMA_VERSION: "0.38.2"
+        run: |
+          python -m pip install "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
+          check-jsonschema --builtin-schema vendor.github-issue-forms \
+            .github/ISSUE_TEMPLATE/bug_report.yml \
+            .github/ISSUE_TEMPLATE/feature_request.yml
+          python - <<'PY'
+          from pathlib import Path
+
+          text = Path(".github/labels.yml").read_text(encoding="utf-8")
+          for label in ("autorelease: pending", "autorelease: tagged"):
+              if label not in text:
+                  raise SystemExit(f"labels.yml is missing {label}")
+          print("labels.yml contains autorelease labels")
+          PY
+
+      - name: Labeler dry run
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          yaml-file: .github/labels.yml
+          skip-delete: true
+          dry-run: true
+
+  release-please-dry-run:
+    name: release-please (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      - name: release-please dry run
+        env:
+          # renovate: datasource=npm depName=release-please
+          RELEASE_PLEASE_VERSION: "17.11.2"
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+          RELEASE_PLEASE_TOKEN: ${{ github.token }}
+        run: |
+          npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
+            --dry-run \
+            --repo-url=barzoj-co/llm-test-lab-python \
+            --target-branch="${TARGET_BRANCH}" \
+            --config-file=release-please-config.json \
+            --manifest-file=.release-please-manifest.json \
+            --token="${RELEASE_PLEASE_TOKEN}"
+
+  publish-dry-run:
+    name: publish (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Build sdist and pure wheel
+        env:
+          # renovate: datasource=pypi depName=twine
+          TWINE_VERSION: "7.0.0"
+        run: |
+          python -m pip install build "twine==${TWINE_VERSION}"
+          python -m build
+          twine check --strict dist/*
+
+      - name: Assert release.yml publish path
+        run: scripts/check-workflow-policy.sh
