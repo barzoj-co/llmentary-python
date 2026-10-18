@@ -5,8 +5,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOWS="${ROOT}/.github/workflows"
+BAD_DIR="${ROOT}/scripts/testdata/workflow-policy/bad"
 
-python3 - "$WORKFLOWS" <<'PY'
+check_workflows() {
+  python3 - "$1" <<'PY'
 from __future__ import annotations
 
 import re
@@ -364,13 +366,46 @@ def check_release_yml(path: Path, doc: dict) -> None:
         err(path, "publish job must use SHA-pinned pypa/gh-action-pypi-publish")
 
 
+def step_dispatches_release(step: dict) -> bool:
+    run = str(step.get("run") or "")
+    return "workflow run release.yml" in run
+
+
+def dispatch_targets_repo(step: dict, job: dict) -> bool:
+    run = str(step.get("run") or "")
+    if re.search(r"(^|\s)--repo(\s|=)", run):
+        return True
+    for env in (step.get("env"), job.get("env")):
+        if isinstance(env, dict) and "GH_REPO" in env:
+            return True
+    return False
+
+
 def check_release_please_yml(path: Path, doc: dict) -> None:
     text = path.read_text(encoding="utf-8")
-    if "workflow run release.yml" not in text and "workflow run release.yml" not in text.replace('"', ""):
-        if "gh workflow run release.yml" not in text:
-            err(path, "release-please.yml must dispatch release.yml")
+    if "gh workflow run release.yml" not in text:
+        err(path, "release-please.yml must dispatch release.yml")
     if "release_created" not in text:
         err(path, "release-please.yml must dispatch only when release_created is true")
+
+    found_dispatch = False
+    jobs = doc.get("jobs") or {}
+    if isinstance(jobs, dict):
+        for job in jobs.values():
+            if not isinstance(job, dict):
+                continue
+            for step in job.get("steps") or []:
+                if not isinstance(step, dict) or not step_dispatches_release(step):
+                    continue
+                found_dispatch = True
+                if not dispatch_targets_repo(step, job):
+                    err(
+                        path,
+                        "release-please dispatch step must set GH_REPO or pass --repo",
+                    )
+    if "gh workflow run release.yml" in text and not found_dispatch:
+        if "GH_REPO:" not in text and "--repo" not in text:
+            err(path, "release-please dispatch step must set GH_REPO or pass --repo")
 
 
 def check_workflow(path: Path) -> None:
@@ -415,3 +450,37 @@ if errors:
     sys.exit(1)
 print(f"workflow policy: {len(paths)} workflow(s) ok")
 PY
+}
+
+self_test() {
+  local output=""
+  local rc=0
+  if [[ ! -d "$BAD_DIR" ]]; then
+    echo "self-test: missing $BAD_DIR" >&2
+    exit 1
+  fi
+  set +e
+  output="$(check_workflows "$BAD_DIR" 2>&1)"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    echo "self-test: expected $BAD_DIR to fail" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+  if ! grep -Eq 'GH_REPO|--repo' <<<"$output"; then
+    echo "self-test: expected a GH_REPO/--repo failure, got:" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+  echo "self-test: rejected missing GH_REPO/--repo"
+  echo "$output"
+  echo "self-test: ok"
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  self_test
+  exit 0
+fi
+
+check_workflows "$WORKFLOWS"

@@ -13,8 +13,8 @@ The Python package version is independent of the bundled proxy version
 3. Merge that release PR. release-please tags `vX.Y.Z` and creates the GitHub
    Release.
 4. Tags created with `GITHUB_TOKEN` do not fire `on: push: tags`. The
-   release-please job therefore dispatches `release.yml` with
-   `gh workflow run release.yml --ref vX.Y.Z`.
+   release-please job therefore dispatches `release.yml` with `GH_REPO`
+   set to this repository and `gh workflow run release.yml --ref "$TAG_NAME"`.
 5. `release.yml` **build** checks that the tag matches `project.version`,
    exports `PROXY_VERSION` as `LLMTESTLAB_RELEASE_VERSION`, builds the sdist
    and verified platform wheels, and runs `twine check --strict`.

@@ -60,6 +60,9 @@ jobs:
       - name: Check workflow policy
         run: scripts/check-workflow-policy.sh
 
+      - name: Self-test workflow-policy fixtures
+        run: scripts/check-workflow-policy.sh --self-test
+
       - name: Check README badges and repository block
         run: scripts/check-readme.sh
 
@@ -204,3 +207,6 @@ jobs:
 
       - name: Assert release.yml publish path
         run: scripts/check-workflow-policy.sh
+
+      - name: Self-test workflow-policy fixtures
+        run: scripts/check-workflow-policy.sh --self-test
