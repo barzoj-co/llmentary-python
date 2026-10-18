@@ -36,6 +36,8 @@ except ImportError:
     sys.exit(2)
 
 E2E_JOB = os.environ["E2E_JOB"]
+E2E_ENVIRONMENT = "openai-e2e"
+OPENAI_SECRET = "OPENAI_API_KEY"
 SKIP_KEYS = {"__line__", "__key_lines__"}
 RAW_SECRET_EXPR = re.compile(r"\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}")
 GITHUB_TOKEN_EXPR = re.compile(r"\$\{\{\s*(?:github\.token|secrets\.GITHUB_TOKEN)\s*\}\}")
@@ -305,6 +307,53 @@ def check_job(path: Path, job_id: str, job: dict) -> None:
             )
 
 
+def job_environment(job: dict) -> str:
+    value = job.get("environment")
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return as_text(value.get("name"))
+    return ""
+
+
+def job_receives_openai(job: dict) -> bool:
+    for text, _line in walk_strings(job):
+        if OPENAI_SECRET in raw_secrets(text):
+            return True
+    return False
+
+
+def check_e2e_job(path: Path, doc: dict) -> None:
+    jobs = doc.get("jobs") or {}
+    if not isinstance(jobs, dict):
+        jobs = {}
+    if path.name == "ci.yml":
+        e2e = jobs.get(E2E_JOB)
+        if not isinstance(e2e, dict) or job_environment(e2e) != E2E_ENVIRONMENT:
+            line = (
+                key_line(jobs, E2E_JOB, lineno(e2e) if isinstance(e2e, dict) else 1)
+                if E2E_JOB in jobs
+                else key_line(doc, "jobs", 1)
+            )
+            err(path, line, "live e2e job must set environment: openai-e2e")
+    for job_id, job in jobs.items():
+        if job_id in SKIP_KEYS or not isinstance(job, dict):
+            continue
+        env_name = job_environment(job)
+        if job_id != E2E_JOB and env_name == E2E_ENVIRONMENT:
+            err(
+                path,
+                key_line(job, "environment", lineno(job)),
+                "environment: openai-e2e is only allowed on the live e2e job",
+            )
+        if job_id != E2E_JOB and job_receives_openai(job):
+            err(
+                path,
+                lineno(job),
+                "OPENAI_API_KEY is only allowed in the live e2e job",
+            )
+
+
 def check_e2e_gate(path: Path, doc: dict) -> None:
     if path.name != "ci.yml":
         return
@@ -348,6 +397,7 @@ def check_workflow(path: Path) -> None:
                 continue
             check_job(path, job_id, job)
     check_e2e_gate(path, doc)
+    check_e2e_job(path, doc)
 
 
 for raw in sys.argv[1:]:

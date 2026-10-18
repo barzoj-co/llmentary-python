@@ -6,10 +6,10 @@ jobs:
     steps:
       - name: presence
         env:
-          HAS_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+          HAS_KEY: ${{ secrets.API_TOKEN != '' }}
         run: test "$HAS_KEY" = true
       - name: tests
         env:
-          HAS_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HAS_KEY: ${{ secrets.API_TOKEN != '' }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
         run: pytest

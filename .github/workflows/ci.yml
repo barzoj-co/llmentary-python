@@ -121,9 +121,9 @@ jobs:
   openai-e2e:
     name: OpenAI E2E
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    # To require maintainer approval for live e2e, add one line here:
-    #   environment: openai-e2e
-    # after Denis creates that environment with its protection rules and moves OPENAI_API_KEY into it.
+    # Required reviewers on this environment gate OPENAI_API_KEY. Unit and
+    # fake-upstream jobs do not use it and run without approval.
+    environment: openai-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
