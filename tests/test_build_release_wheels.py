@@ -159,6 +159,11 @@ def test_select_asset_matches_platform() -> None:
     assert wheels.select_asset(assets, linux).name == "llmentary_0.1.0_linux_amd64.tar.gz"
     assert wheels.select_asset(assets, darwin).name == "llmentary_0.1.0_darwin_arm64.tar.gz"
     assert wheels.select_asset(assets, windows).name == "llmentary_0.1.0_windows_amd64.zip"
+    with pytest.raises(SystemExit, match="No release asset matched"):
+        wheels.select_asset(
+            [wheels.Asset("other_0.1.0_linux_amd64.tar.gz", "https://example/other")],
+            linux,
+        )
 
 
 def test_install_binary_extracts_and_records_version(
