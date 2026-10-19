@@ -1,0 +1,12 @@
+name: reuse
+on:
+  workflow_call:
+jobs:
+  publish:
+    if: github.repository == 'barzoj-co/llm-test-lab-python'
+    permissions:
+      id-token: write
+    environment: pypi
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo publish

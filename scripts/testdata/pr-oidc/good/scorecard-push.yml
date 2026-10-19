@@ -1,0 +1,12 @@
+name: Scorecard
+on:
+  push:
+    branches: [main]
+jobs:
+  scorecard:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo scorecard

@@ -51,6 +51,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install PyYAML for policy scripts
+        env:
+          # renovate: datasource=pypi depName=pyyaml
+          PYYAML_VERSION: "6.0.3"
+        run: |
+          python3 -m venv /tmp/policy-venv
+          /tmp/policy-venv/bin/pip install "pyyaml==${PYYAML_VERSION}"
+          echo /tmp/policy-venv/bin >> "$GITHUB_PATH"
+
       - name: Check pinned actions
         run: scripts/check-pinned-actions.sh
 
@@ -62,6 +71,24 @@ jobs:
 
       - name: Self-test workflow-policy fixtures
         run: scripts/check-workflow-policy.sh --self-test
+
+      - name: Check PR OIDC policy
+        run: scripts/check-pr-oidc.sh
+
+      - name: Self-test PR OIDC fixtures
+        run: scripts/check-pr-oidc.sh --self-test
+
+      - name: Check secret scope
+        run: scripts/check-secret-scope.sh --e2e-job openai-e2e
+
+      - name: Self-test secret-scope fixtures
+        run: scripts/check-secret-scope.sh --self-test
+
+      - name: Self-test e2e-gate
+        run: scripts/e2e-gate.sh --self-test
+
+      - name: Self-test ref-on-main
+        run: scripts/check-ref-on-main.sh --self-test
 
       - name: Check README badges and repository block
         run: scripts/check-readme.sh

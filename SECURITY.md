@@ -59,3 +59,28 @@ pypi-attestations verify pypi \
 ```
 
 or in the PyPI UI under **Verified details** on the project or file page.
+
+## CI secrets and the e2e gate
+
+Live OpenAI tests run in the separate `openai-e2e` job (`OpenAI E2E`). That job
+is the only one that references `environment: openai-e2e` and the only one that
+receives `OPENAI_API_KEY`. Only the `Real OpenAI E2E tests` step gets the key.
+Unit and fake-upstream jobs do not use the environment, so they run without
+approval. `LLMTESTLAB_REPO_TOKEN` stays the private-proxy checkout crutch it is
+today: a boolean presence check plus the `actions/checkout` `token:` input (and
+the release wheel-build step). Install and tooling steps run with no secrets.
+
+`openai-e2e` is skipped for fork PRs. GitHub treats a skipped required check as
+passing, so `e2e-gate` is the required check: it is green only when live e2e
+succeeded. For a fork PR a maintainer reviews the diff, pushes it to a
+same-repo branch, and live e2e runs there. Never use `pull_request_target`.
+
+The `openai-e2e` environment requires maintainer approval on each run that
+needs `OPENAI_API_KEY`. If that approval is rejected or times out, `e2e-gate`
+goes red. That is intended.
+
+On `pull_request`, GitHub runs the workflow and scripts from the PR's own merge
+commit, so a PR that edits `ci.yml` or `scripts/e2e-gate.sh` can make the gate
+pass. The gate catches the normal fork case (e2e skipped, nobody tampered with
+CI). Tampering is caught by review of every `.github/**` and `scripts/**` diff.
+Never "fix" this with `pull_request_target`.

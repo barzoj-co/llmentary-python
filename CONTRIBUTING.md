@@ -62,6 +62,12 @@ pytest -m e2e -vv
 Never print, log, or commit the API key or any `Authorization` / `api-key`
 value.
 
+Same-repo CI runs those tests in the `openai-e2e` job, which uses the
+`openai-e2e` GitHub Environment. Maintainers approve that deployment on each
+PR (and on push to `main`) before `OPENAI_API_KEY` is available to the job.
+Python unit and fake-upstream integration jobs do not use the environment and
+do not wait. `e2e-gate` fails unless live e2e succeeded.
+
 ## Pull requests
 
 - Use a [Conventional Commit](https://www.conventionalcommits.org/) title
@@ -79,6 +85,12 @@ scripts/check-pinned-actions.sh
 scripts/check-pinned-actions.sh --self-test
 scripts/check-workflow-policy.sh
 scripts/check-workflow-policy.sh --self-test
+scripts/check-pr-oidc.sh
+scripts/check-pr-oidc.sh --self-test
+scripts/check-secret-scope.sh --e2e-job openai-e2e
+scripts/check-secret-scope.sh --self-test
+scripts/e2e-gate.sh --self-test
+scripts/check-ref-on-main.sh --self-test
 scripts/check-readme.sh
 ```
 
@@ -96,8 +108,8 @@ updates automerge. The bundled proxy pin in `PROXY_VERSION` does **not**
 automerge.
 
 Coverage is collected on the Python 3.13 CI leg and uploaded to Codecov from a
-dedicated job that holds `id-token: write`. The Codecov project and patch
-statuses are informational and do not fail PRs.
+dedicated tokenless job (no OIDC). The Codecov project and patch statuses are
+informational and do not fail PRs.
 
 ## Releases
 

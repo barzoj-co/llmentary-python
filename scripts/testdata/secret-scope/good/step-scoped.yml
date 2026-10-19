@@ -1,0 +1,10 @@
+name: good
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: tests
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: pytest

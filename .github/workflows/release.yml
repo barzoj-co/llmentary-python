@@ -1,5 +1,9 @@
 name: Release
 
+# workflow_dispatch stays because release-please.yml starts the release on the
+# new tag. Both jobs keep if: startsWith(github.ref, 'refs/tags/v'), so a
+# dispatch on a branch is a no-op and a dispatch on a tag goes through the
+# same ref-on-main check.
 on:
   push:
     tags:
@@ -21,18 +25,21 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-    env:
-      # TODO remove once llm-test-lab is public.
-      LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Tagged commit must be on main
+        run: bash scripts/check-ref-on-main.sh HEAD
+
       - name: Fail clearly if llm-test-lab repo token is missing
+        env:
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
-          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
             echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
             exit 1
           fi
@@ -41,6 +48,7 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
+          # No caches in release jobs.
 
       - name: Assert tag matches package version
         run: |
@@ -73,6 +81,8 @@ jobs:
         run: python -m pip install build wheel "twine==${TWINE_VERSION}"
 
       - name: Build verified platform wheels
+        env:
+          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
         run: python scripts/build_release_wheels.py
 
       - name: Twine check
@@ -95,6 +105,15 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Tagged commit must be on main
+        run: bash scripts/check-ref-on-main.sh HEAD
+
       - name: Download dist artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

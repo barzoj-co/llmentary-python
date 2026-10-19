@@ -1,0 +1,18 @@
+title = "llm-test-lab-python"
+
+[extend]
+useDefault = true
+
+# Synthetic invalid OpenAI key used by live e2e tests (audit 2026-10-18 §4).
+[[allowlists]]
+description = "synthetic invalid OpenAI key in e2e tests (audit 2026-10-18 §4)"
+condition = "AND"
+paths = ['''(^|/)tests/e2e/e2e_helpers\.py$''']
+regexes = ['''sk-invalid''']
+
+# OpenAI-style prefix inside a redaction regex, not a credential (audit 2026-10-18 §4).
+[[allowlists]]
+description = "sk- redaction regex in the Python client (audit 2026-10-18 §4)"
+condition = "AND"
+paths = ['''(^|/)src/llmtestlab/client\.py$''']
+regexes = ['''sk-\[A-Za-z0-9_-]+''']

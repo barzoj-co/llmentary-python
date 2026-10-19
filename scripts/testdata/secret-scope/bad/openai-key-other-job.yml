@@ -1,0 +1,10 @@
+# expect: OPENAI_API_KEY is only allowed in the live e2e job
+name: bad
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pytest

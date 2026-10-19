@@ -226,7 +226,9 @@ def check_top_level_permissions(path: Path, doc: dict) -> None:
         )
 
 
-def check_job_permissions(path: Path, job_id: str, job: dict, workflow_name: str) -> None:
+def check_job_permissions(
+    path: Path, job_id: str, job: dict, workflow_name: str, on: dict
+) -> None:
     perms = permission_map(job.get("permissions"))
     for key, value in perms.items():
         if key not in ALLOWED_PERM_KEYS:
@@ -237,14 +239,20 @@ def check_job_permissions(path: Path, job_id: str, job: dict, workflow_name: str
     name = str(job.get("name") or "")
     is_scorecard = workflow_name == "Scorecard" or name == "Scorecard" or job_id == "scorecard"
     is_codeql = name.startswith("CodeQL") or job_id == "codeql"
-    is_coverage = job_uses_codecov(job)
     is_publish = job_is_publish(job_id, job)
     is_release_please = path.name == "release-please.yml"
     is_label_dry = name == "labels (dry run)"
     is_label_sync = path.name == "labels.yml"
+    pr_triggered = has_pull_request(on) or "pull_request_target" in on
 
-    if perms.get("id-token") == "write" and not (is_publish or is_coverage or is_scorecard):
-        err(path, f"job {job_id}: id-token: write is only allowed on publish, coverage upload, and Scorecard")
+    if perms.get("id-token") == "write":
+        if pr_triggered:
+            err(
+                path,
+                f"job {job_id}: id-token: write is not allowed on PR-triggered workflows",
+            )
+        elif not (is_publish or is_scorecard):
+            err(path, f"job {job_id}: id-token: write is only allowed on publish and Scorecard")
     if perms.get("attestations") == "write" and not is_publish:
         err(path, f"job {job_id}: attestations: write is only allowed on publish")
     if is_publish and perms.get("id-token") != "write":
@@ -443,7 +451,7 @@ def check_workflow(path: Path) -> None:
             continue
         if "timeout-minutes" not in job:
             err(path, f"job {job_id} is missing timeout-minutes")
-        check_job_permissions(path, job_id, job, workflow_name)
+        check_job_permissions(path, job_id, job, workflow_name, on)
     if path.name == "release.yml":
         check_release_yml(path, doc)
     if path.name == "release-please.yml":

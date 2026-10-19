@@ -1,0 +1,16 @@
+name: CI
+on: pull_request
+jobs:
+  e2e:
+    environment: openai-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pytest
+  e2e-gate:
+    if: ${{ always() }}
+    needs: [e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo gate

@@ -1,0 +1,11 @@
+name: bad-job
+on:
+  pull_request:
+jobs:
+  coverage:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -26,8 +26,6 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
       LLMTESTLAB_BIN: /tmp/llmtestlab
-      # TODO remove once llm-test-lab is public.
-      LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
     steps:
       - name: Checkout Python client
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -35,8 +33,10 @@ jobs:
           persist-credentials: false
 
       - name: Fail clearly if llm-test-lab repo token is missing
+        env:
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
-          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
             echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
             exit 1
           fi
@@ -98,7 +98,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -113,24 +112,24 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
-          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          use_oidc: false
+          disable_search: true
           files: ./coverage.xml
           flags: unit
           fail_ci_if_error: ${{ vars.CODECOV_REQUIRED == 'true' }}
 
   openai-e2e:
     name: OpenAI E2E
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Required reviewers on this environment gate OPENAI_API_KEY. Unit and
+    # fake-upstream jobs do not use it and run without approval.
+    environment: openai-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     env:
       LLMTESTLAB_BIN: /tmp/llmtestlab
       LLMTESTLAB_E2E: "1"
-      # TODO remove once llm-test-lab is public.
-      LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       LLMTESTLAB_UPSTREAM_BASE_URL: https://api.openai.com/v1
-      LLMTESTLAB_UPSTREAM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       LLMTESTLAB_WAIT_TIMEOUT: "30"
     steps:
       - name: Checkout Python client
@@ -139,12 +138,15 @@ jobs:
           persist-credentials: false
 
       - name: Fail clearly if required secrets are missing
+        env:
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
+          HAS_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
         run: |
-          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
             echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
             exit 1
           fi
-          if [ -z "$OPENAI_API_KEY" ]; then
+          if [ "$HAS_OPENAI_KEY" != "true" ]; then
             echo "::error title=Missing secret::Add secrets.OPENAI_API_KEY for real OpenAI E2E tests."
             exit 1
           fi
@@ -177,4 +179,26 @@ jobs:
         run: python -m pip install -e ".[dev,openai]"
 
       - name: Real OpenAI E2E tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LLMTESTLAB_UPSTREAM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: pytest -m e2e -vv --tb=short --durations=0
+
+  e2e-gate:
+    name: e2e-gate
+    if: ${{ always() }}
+    needs: [openai-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Require live e2e success
+        env:
+          E2E_RESULT: ${{ needs.openai-e2e.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork == true }}
+        run: bash scripts/e2e-gate.sh
