@@ -1,46 +1,50 @@
-# llm-test-lab Python
+# llmentary
 
-[![CI](https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/barzoj-co/llm-test-lab-python/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llm-test-lab-python)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-python/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-python)
-[![License: MIT](https://img.shields.io/github/license/barzoj-co/llm-test-lab-python)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/llm-test-lab)](https://pypi.org/project/llm-test-lab/)
-[![Python versions](https://img.shields.io/pypi/pyversions/llm-test-lab)](https://pypi.org/project/llm-test-lab/)
+[![CI](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/barzoj-co/llmentary-python/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llmentary-python)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llmentary-python/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llmentary-python)
+[![License: MIT](https://img.shields.io/github/license/barzoj-co/llmentary-python)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/llmentary)](https://pypi.org/project/llmentary/)
+[![Python versions](https://img.shields.io/pypi/pyversions/llmentary)](https://pypi.org/project/llmentary/)
 
-`llm-test-lab` is the Python/pytest client for the
-[`barzoj-co/llm-test-lab`](https://github.com/barzoj-co/llm-test-lab) proxy.
+Python (pytest) client for llmentary: deterministic trace-based integration tests for LLM apps.
+
+Renamed from llm-test-lab (pre-release).
+
+`llmentary` is the Python/pytest client for the
+[`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) proxy.
 It gives Python tests deterministic, trace-based assertions for OpenAI-compatible
 Chat Completions and Responses calls. There is no LLM judge: assertions inspect
 the requests, responses, tool calls, usage, timings, retries, and errors recorded
 by the proxy.
 
 <!-- ltl-repos:start -->
-## llm-test-lab repositories
+## llmentary repositories
 
 | Repository | What |
 |---|---|
-| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) |
-| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` |
-| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin |
-| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest |
+| [llmentary](https://github.com/barzoj-co/llmentary) | Recording proxy binary (Go) |
+| [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
+| [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
+| [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
 <!-- ltl-repos:end -->
 
 ## Install
 
 ```bash
-pip install llm-test-lab
+pip install llmentary
 ```
 
 For pytest fixture support:
 
 ```bash
-pip install "llm-test-lab[pytest]"
+pip install "llmentary[pytest]"
 ```
 
 For the quickstart using `openai-python`:
 
 ```bash
-pip install "llm-test-lab[pytest,openai]"
+pip install "llmentary[pytest,openai]"
 ```
 
 ## Quickstart
@@ -49,17 +53,17 @@ Point the client at an existing proxy. The Go control API listens on a
 separate address (default `127.0.0.1:7778`):
 
 ```bash
-export LLMTESTLAB_PROXY_URL=http://127.0.0.1:7777
-export LLMTESTLAB_CONTROL_URL=http://127.0.0.1:7778
+export LLMENTARY_PROXY_URL=http://127.0.0.1:7777
+export LLMENTARY_CONTROL_URL=http://127.0.0.1:7778
 pytest
 ```
 
 or let the pytest fixture start the proxy:
 
 ```bash
-export LLMTESTLAB_BIN=/path/to/llmtestlab
-export LLMTESTLAB_UPSTREAM_BASE_URL=https://api.openai.com/v1
-export LLMTESTLAB_UPSTREAM_API_KEY="$OPENAI_API_KEY"
+export LLMENTARY_BIN=/path/to/llmentary
+export LLMENTARY_UPSTREAM_BASE_URL=https://api.openai.com/v1
+export LLMENTARY_UPSTREAM_API_KEY="$OPENAI_API_KEY"
 pytest
 ```
 
@@ -114,7 +118,7 @@ the session during teardown.
 ## Binary management
 
 There is no download-on-first-run. Platform wheels bundle a version-pinned Go
-proxy binary taken from the `barzoj-co/llm-test-lab` GoReleaser release named in
+proxy binary taken from the `barzoj-co/llmentary` GoReleaser release named in
 `PROXY_VERSION`. That pin is independent of this Python package version. The
 bundled version is also written to the wheel `VERSION` file. Release packaging
 verifies each archive against `checksums.txt` (sha256) before it is copied into
@@ -122,9 +126,9 @@ the wheel.
 
 Lookup order:
 
-1. `LLMTESTLAB_BIN` — explicit override, including CI builds from source
+1. `LLMENTARY_BIN` — explicit override, including CI builds from source
 2. Binary bundled in the installed platform wheel
-3. `llmtestlab` on `PATH`
+3. `llmentary` on `PATH`
 
 Published wheels:
 
@@ -137,10 +141,10 @@ Published wheels:
 The client starts the proxy with the Go binary's flags: `-listen` for the
 OpenAI-compatible proxy, `-control` for the control API, and
 `-upstream name=https://host/base` (default name `openai`). Override the whole
-command with `LLMTESTLAB_START_COMMAND` if needed:
+command with `LLMENTARY_START_COMMAND` if needed:
 
 ```bash
-export LLMTESTLAB_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
+export LLMENTARY_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
 ```
 
 Available template variables are `{bin}`, `{host}`, `{port}`, `{listen}`,
@@ -176,18 +180,18 @@ See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
 ## CI configuration required
 
 - `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
-  repository `barzoj-co/llm-test-lab`. Used only to check out and build the real
+  repository `barzoj-co/llmentary`. Used only to check out and build the real
   Go proxy in CI, and to fetch GoReleaser assets when building release wheels.
-  TODO: remove once llm-test-lab is public.
+  TODO: remove once llmentary is public.
 - `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
   Those tests actually run (they do not skip) when this secret is present.
-- PyPI Trusted Publishing: configure PyPI project `llm-test-lab` to trust this
+- PyPI Trusted Publishing: configure PyPI project `llmentary` to trust this
   repository's `release.yml` workflow and `pypi` environment for tag `v*`
   releases. No PyPI API token is used. Publish stays gated on
   `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
 
-CI builds the real Go proxy from source (`go build ./cmd/llmtestlab`) and points
-tests at it with `LLMTESTLAB_BIN`. Integration tests talk to a fake OpenAI
+CI builds the real Go proxy from source (`go build ./cmd/llmentary`) and points
+tests at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI
 upstream through that real binary. E2E tests talk to the real OpenAI API
 through the same real binary.
 

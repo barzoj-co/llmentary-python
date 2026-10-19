@@ -5,8 +5,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from llmtestlab.assertions import Expectation
-from llmtestlab.types import SessionTrace, first_present, normalize_api_type
+from llmentary.assertions import Expectation
+from llmentary.types import SessionTrace, first_present, normalize_api_type
 
 GO_CALL_KEYS = [
     "id",

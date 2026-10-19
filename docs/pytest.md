@@ -1,10 +1,10 @@
 # Pytest plugin
 
-The package registers a `pytest11` entry point named `llmtestlab`.
+The package registers a `pytest11` entry point named `llmentary`.
 
 ## Fixtures
 
-### `llmtestlab_proxy`
+### `llmentary_proxy`
 
 Session-scoped fixture that starts a local Go proxy or attaches to an existing
 one.
@@ -12,17 +12,17 @@ one.
 Attach mode:
 
 ```bash
-LLMTESTLAB_PROXY_URL=http://127.0.0.1:7777 \
-LLMTESTLAB_CONTROL_URL=http://127.0.0.1:7778 \
+LLMENTARY_PROXY_URL=http://127.0.0.1:7777 \
+LLMENTARY_CONTROL_URL=http://127.0.0.1:7778 \
 pytest
 ```
 
 Start mode:
 
 ```bash
-LLMTESTLAB_BIN=/path/to/llmtestlab \
-LLMTESTLAB_UPSTREAM_BASE_URL=https://api.openai.com/v1 \
-LLMTESTLAB_UPSTREAM_API_KEY="$OPENAI_API_KEY" \
+LLMENTARY_BIN=/path/to/llmentary \
+LLMENTARY_UPSTREAM_BASE_URL=https://api.openai.com/v1 \
+LLMENTARY_UPSTREAM_API_KEY="$OPENAI_API_KEY" \
 pytest
 ```
 
@@ -45,22 +45,22 @@ def test_something(lab):
 
 | Pytest option | Environment | Purpose |
 | --- | --- | --- |
-| `--llmtestlab-bin` | `LLMTESTLAB_BIN` | Path to proxy binary |
-| `--llmtestlab-proxy-url` | `LLMTESTLAB_PROXY_URL` | Attach to existing proxy |
-| `--llmtestlab-upstream-url` | `LLMTESTLAB_UPSTREAM_BASE_URL` | Upstream OpenAI-compatible base URL |
-| `--llmtestlab-upstream-api-key` | `LLMTESTLAB_UPSTREAM_API_KEY` | Upstream API key |
-| `--llmtestlab-control-token` | `LLMTESTLAB_CONTROL_TOKEN` | Bearer token for control API |
-| `--llmtestlab-control-url` | `LLMTESTLAB_CONTROL_URL` | Control API URL when attaching |
-| `--llmtestlab-wait-timeout` | `LLMTESTLAB_WAIT_TIMEOUT` | Session wait timeout in seconds |
-| `--llmtestlab-quiet-for` | `LLMTESTLAB_QUIET_FOR` | Quiet period before wait returns |
+| `--llmentary-bin` | `LLMENTARY_BIN` | Path to proxy binary |
+| `--llmentary-proxy-url` | `LLMENTARY_PROXY_URL` | Attach to existing proxy |
+| `--llmentary-upstream-url` | `LLMENTARY_UPSTREAM_BASE_URL` | Upstream OpenAI-compatible base URL |
+| `--llmentary-upstream-api-key` | `LLMENTARY_UPSTREAM_API_KEY` | Upstream API key |
+| `--llmentary-control-token` | `LLMENTARY_CONTROL_TOKEN` | Bearer token for control API |
+| `--llmentary-control-url` | `LLMENTARY_CONTROL_URL` | Control API URL when attaching |
+| `--llmentary-wait-timeout` | `LLMENTARY_WAIT_TIMEOUT` | Session wait timeout in seconds |
+| `--llmentary-quiet-for` | `LLMENTARY_QUIET_FOR` | Quiet period before wait returns |
 
 ## Custom binary command
 
 If the Go proxy binary needs a different CLI shape, set
-`LLMTESTLAB_START_COMMAND`.
+`LLMENTARY_START_COMMAND`.
 
 ```bash
-export LLMTESTLAB_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
+export LLMENTARY_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
 ```
 
 Template variables:
@@ -77,13 +77,13 @@ Template variables:
 
 ## Providing a fake upstream in tests
 
-Projects can provide session-scoped fixtures named `llmtestlab_upstream_url`,
-`llmtestlab_upstream_api_key`, and `llmtestlab_control_token`. The plugin uses
+Projects can provide session-scoped fixtures named `llmentary_upstream_url`,
+`llmentary_upstream_api_key`, and `llmentary_control_token`. The plugin uses
 them in preference to CLI options.
 
 ```python
 @pytest.fixture(scope="session")
-def llmtestlab_upstream_url(fake_openai_server):
+def llmentary_upstream_url(fake_openai_server):
     return fake_openai_server.url
 ```
 

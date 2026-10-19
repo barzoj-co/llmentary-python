@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Describe the problem and the change you want. Proxy-side features belong
-        in https://github.com/barzoj-co/llm-test-lab.
+        in https://github.com/barzoj-co/llmentary.
   - type: textarea
     id: problem
     attributes:

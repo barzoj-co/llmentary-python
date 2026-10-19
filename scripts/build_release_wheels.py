@@ -28,9 +28,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
-REPO = "barzoj-co/llm-test-lab"
+REPO = "barzoj-co/llmentary"
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PACKAGE_BIN_DIR = Path("src/llmtestlab/bin")
+PACKAGE_BIN_DIR = Path("src/llmentary/bin")
 AGPL_LICENSE_FILE = REPO_ROOT / "licenses" / "AGPL-3.0.txt"
 PLATFORM_WHEEL_LICENSE = "MIT AND AGPL-3.0-only"
 AGPL_LICENSE_FILE_FIELD = "License-File: licenses/AGPL-3.0.txt"
@@ -45,11 +45,11 @@ class Target:
 
 
 TARGETS = [
-    Target("linux", ("amd64", "x86_64"), "manylinux2014_x86_64", "llmtestlab"),
-    Target("linux", ("arm64", "aarch64"), "manylinux2014_aarch64", "llmtestlab"),
-    Target("darwin", ("amd64", "x86_64"), "macosx_11_0_x86_64", "llmtestlab"),
-    Target("darwin", ("arm64", "aarch64"), "macosx_11_0_arm64", "llmtestlab"),
-    Target("windows", ("amd64", "x86_64"), "win_amd64", "llmtestlab.exe"),
+    Target("linux", ("amd64", "x86_64"), "manylinux2014_x86_64", "llmentary"),
+    Target("linux", ("arm64", "aarch64"), "manylinux2014_aarch64", "llmentary"),
+    Target("darwin", ("amd64", "x86_64"), "macosx_11_0_x86_64", "llmentary"),
+    Target("darwin", ("arm64", "aarch64"), "macosx_11_0_arm64", "llmentary"),
+    Target("windows", ("amd64", "x86_64"), "win_amd64", "llmentary.exe"),
 ]
 
 
@@ -73,12 +73,12 @@ class NoRedirectHandler(HTTPRedirectHandler):
 
 
 def main() -> None:
-    version = os.environ.get("LLMTESTLAB_RELEASE_VERSION")
+    version = os.environ.get("LLMENTARY_RELEASE_VERSION")
     if not version:
-        raise SystemExit("LLMTESTLAB_RELEASE_VERSION is required")
-    token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        raise SystemExit("LLMENTARY_RELEASE_VERSION is required")
+    token = os.environ.get("LLMENTARY_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise SystemExit("LLMTESTLAB_REPO_TOKEN or GITHUB_TOKEN is required")
+        raise SystemExit("LLMENTARY_REPO_TOKEN or GITHUB_TOKEN is required")
 
     release = fetch_release(version, token)
     assets = release_assets(release)
@@ -181,7 +181,9 @@ def select_asset(assets: list[Asset], target: Target) -> Asset:
         if re.search(r"\.(tar\.gz|zip)$", asset.name, flags=re.IGNORECASE)
     ]
     for asset in candidates:
-        name = asset.name.lower()
+        name = Path(asset.name).name.lower()
+        if not name.startswith("llmentary_"):
+            continue
         if target.goos in name and any(alias in name for alias in target.arch_aliases):
             return asset
     names = ", ".join(asset.name for asset in candidates)
@@ -198,7 +200,7 @@ def download_asset(url: str, token: str) -> bytes:
 
 
 def download_bytes(url: str, *, token: Optional[str], accept: str, follow_redirects: bool) -> bytes:
-    headers = {"Accept": accept, "User-Agent": "llm-test-lab-python-release"}
+    headers = {"Accept": accept, "User-Agent": "llmentary-python-release"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)

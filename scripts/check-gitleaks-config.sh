@@ -42,13 +42,13 @@ self_test() {
     exit 1
   fi
 
-  mkdir -p "${tmp}/leaky/tests/e2e" "${tmp}/leaky/src/llmtestlab"
+  mkdir -p "${tmp}/leaky/tests/e2e" "${tmp}/leaky/src/llmentary"
   local openai_key github_pat openai_marker
   openai_marker="$(python3 -c 'import base64; print(base64.b64encode(b"OpenAI").decode())')"
   openai_key="sk-$(random_alnum 20)${openai_marker}$(random_alnum 20)"
   github_pat="ghp_$(random_alnum 36)"
   printf '%s\n' "${openai_key}" >"${tmp}/leaky/tests/e2e/not-really-allowlisted.py"
-  printf '%s\n' "${github_pat}" >"${tmp}/leaky/src/llmtestlab/not-really-allowlisted.py"
+  printf '%s\n' "${github_pat}" >"${tmp}/leaky/src/llmentary/not-really-allowlisted.py"
   unset openai_key github_pat openai_marker
 
   set +e
@@ -59,15 +59,15 @@ self_test() {
   echo "case realistic-keys-under-allowlisted-paths: rc=${rc}"
   echo "${output}"
   if [[ "${rc}" -eq 0 ]]; then
-    echo "self-test: realistic keys under tests/e2e/ and src/llmtestlab/ were not flagged" >&2
+    echo "self-test: realistic keys under tests/e2e/ and src/llmentary/ were not flagged" >&2
     exit 1
   fi
   if ! grep -F -q "tests/e2e/not-really-allowlisted.py" "${tmp}/leaky-report.json"; then
     echo "self-test: OpenAI-shaped key under tests/e2e/ was not flagged" >&2
     exit 1
   fi
-  if ! grep -F -q "src/llmtestlab/not-really-allowlisted.py" "${tmp}/leaky-report.json"; then
-    echo "self-test: GitHub PAT under src/llmtestlab/ was not flagged" >&2
+  if ! grep -F -q "src/llmentary/not-really-allowlisted.py" "${tmp}/leaky-report.json"; then
+    echo "self-test: GitHub PAT under src/llmentary/ was not flagged" >&2
     exit 1
   fi
   echo "self-test: ok"

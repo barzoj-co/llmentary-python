@@ -24,7 +24,7 @@ Regex = Union[str, Pattern[str]]
 
 
 class Expectation:
-    """Fluent deterministic assertions over a llm-test-lab session trace."""
+    """Fluent deterministic assertions over an llmentary session trace."""
 
     def __init__(self, trace: SessionTrace) -> None:
         self.trace = trace

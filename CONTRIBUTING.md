@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping with `llm-test-lab` (the Python client and pytest plugin).
+Thanks for helping with `llmentary` (the Python client and pytest plugin).
 
 By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 Security reports go through [SECURITY.md](SECURITY.md), never a public issue.
@@ -8,8 +8,8 @@ Security reports go through [SECURITY.md](SECURITY.md), never a public issue.
 ## Requirements
 
 - Python 3.9 or newer
-- Go 1.26 if you build the proxy locally; otherwise set `LLMTESTLAB_BIN` to a
-  prebuilt `llmtestlab` binary
+- Go 1.26 if you build the proxy locally; otherwise set `LLMENTARY_BIN` to a
+  prebuilt `llmentary` binary
 - An OpenAI API key only if you run the live e2e suite
 
 ## Development install
@@ -30,20 +30,20 @@ pytest -m "not e2e"
 
 Unit tests and fake-upstream integration tests share that pytest selection.
 Integration tests that talk to the real Go proxy are skipped unless
-`LLMTESTLAB_BIN` or `LLMTESTLAB_PROXY_URL` is set.
+`LLMENTARY_BIN` or `LLMENTARY_PROXY_URL` is set.
 
 ### Local proxy
 
-Build the proxy from `barzoj-co/llm-test-lab` (Go 1.26):
+Build the proxy from `barzoj-co/llmentary` (Go 1.26):
 
 ```bash
-go build -o /tmp/llmtestlab ./cmd/llmtestlab
-export LLMTESTLAB_BIN=/tmp/llmtestlab
+go build -o /tmp/llmentary ./cmd/llmentary
+export LLMENTARY_BIN=/tmp/llmentary
 pytest -m "not e2e"
 ```
 
-Or attach to an already running proxy with `LLMTESTLAB_PROXY_URL` and
-`LLMTESTLAB_CONTROL_URL`. See [docs/pytest.md](docs/pytest.md).
+Or attach to an already running proxy with `LLMENTARY_PROXY_URL` and
+`LLMENTARY_CONTROL_URL`. See [docs/pytest.md](docs/pytest.md).
 
 ### Live OpenAI e2e
 
@@ -51,11 +51,11 @@ These tests must actually run. They fail the session if any e2e test is
 skipped.
 
 ```bash
-export LLMTESTLAB_E2E=1
+export LLMENTARY_E2E=1
 export OPENAI_API_KEY=...
-export LLMTESTLAB_UPSTREAM_BASE_URL=https://api.openai.com/v1
-export LLMTESTLAB_UPSTREAM_API_KEY="$OPENAI_API_KEY"
-export LLMTESTLAB_BIN=/tmp/llmtestlab
+export LLMENTARY_UPSTREAM_BASE_URL=https://api.openai.com/v1
+export LLMENTARY_UPSTREAM_API_KEY="$OPENAI_API_KEY"
+export LLMENTARY_BIN=/tmp/llmentary
 pytest -m e2e -vv
 ```
 

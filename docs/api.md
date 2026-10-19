@@ -5,7 +5,7 @@
 ### `ControlClient`
 
 ```python
-from llmtestlab import ControlClient
+from llmentary import ControlClient
 
 control = ControlClient("http://127.0.0.1:7778", token=None)
 control.health()
@@ -26,7 +26,7 @@ uses:
 - `GET /sessions/{id}/otlp`
 
 For non-loopback proxies, pass the bearer token as `token` or set
-`LLMTESTLAB_CONTROL_TOKEN`.
+`LLMENTARY_CONTROL_TOKEN`.
 
 ### `LabSession`
 
@@ -37,8 +37,8 @@ Useful properties:
 - `lab.session_id`
 - `lab.base_url`: proxy URL
 - `lab.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
-- `lab.headers`: `X-Test-Session` plus W3C `baggage` with `llmtestlab.session.id`
-- `lab.baggage`: `llmtestlab.session.id=<session-id>`
+- `lab.headers`: `X-Test-Session` plus W3C `baggage` with `llmentary.session.id`
+- `lab.baggage`: `llmentary.session.id=<session-id>`
 
 Methods:
 

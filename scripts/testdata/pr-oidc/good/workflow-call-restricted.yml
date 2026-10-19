@@ -3,7 +3,7 @@ on:
   workflow_call:
 jobs:
   publish:
-    if: github.repository == 'barzoj-co/llm-test-lab-python'
+    if: github.repository == 'barzoj-co/llmentary-python'
     permissions:
       id-token: write
     environment: pypi

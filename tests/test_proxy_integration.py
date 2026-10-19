@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from llmtestlab import LabSession
+from llmentary import LabSession
 
 
 @pytest.mark.integration

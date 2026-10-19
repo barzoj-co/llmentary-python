@@ -50,7 +50,7 @@
     },
     {
       "matchFileNames": ["PROXY_VERSION"],
-      "matchDepNames": ["barzoj-co/llm-test-lab"],
+      "matchDepNames": ["barzoj-co/llmentary"],
       "groupName": "bundled proxy",
       "automerge": false
     }
@@ -66,11 +66,11 @@
     },
     {
       "customType": "regex",
-      "description": "Pin bundled proxy version from barzoj-co/llm-test-lab GitHub releases",
+      "description": "Pin bundled proxy version from barzoj-co/llmentary GitHub releases",
       "managerFilePatterns": ["/(^|/)PROXY_VERSION$/"],
       "matchStrings": ["^(?<currentValue>v?[0-9][^\\s]*)\\s*$"],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "barzoj-co/llm-test-lab"
+      "depNameTemplate": "barzoj-co/llmentary"
     }
   ]
 }

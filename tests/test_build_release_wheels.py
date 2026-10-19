@@ -43,11 +43,11 @@ def test_safe_extract_tar_rejects_symlink(tmp_path: Path) -> None:
 
 def test_parse_goreleaser_checksums() -> None:
     checksums = wheels.parse_checksums(
-        b"abc123  llmtestlab_Linux_x86_64.tar.gz\ndef456 *llmtestlab_Darwin_arm64.tar.gz\n"
+        b"abc123  llmentary_0.1.0_linux_amd64.tar.gz\ndef456 *llmentary_0.1.0_darwin_arm64.tar.gz\n"
     )
     assert checksums == {
-        "llmtestlab_Linux_x86_64.tar.gz": "abc123",
-        "llmtestlab_Darwin_arm64.tar.gz": "def456",
+        "llmentary_0.1.0_linux_amd64.tar.gz": "abc123",
+        "llmentary_0.1.0_darwin_arm64.tar.gz": "def456",
     }
 
 
@@ -68,19 +68,19 @@ def _record_line(name: str, data: bytes) -> str:
 
 
 def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
-    wheel_path = tmp_path / "llm_test_lab-0.1.0-py3-none-any.whl"
+    wheel_path = tmp_path / "llmentary-0.1.0-py3-none-any.whl"
     metadata = (
-        b"Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        b"Metadata-Version: 2.4\nName: llmentary\nLicense-Expression: MIT\n"
         b"License-File: LICENSE\n"
         b"Classifier: License :: OSI Approved :: MIT License\n"
     )
     init = b"x = 1\n"
-    dist_info = "llm_test_lab-0.1.0.dist-info"
+    dist_info = "llmentary-0.1.0.dist-info"
     stale_record = (
         "\n".join(
             [
                 _record_line(f"{dist_info}/METADATA", metadata),
-                _record_line("llmtestlab/__init__.py", init),
+                _record_line("llmentary/__init__.py", init),
                 f"{dist_info}/RECORD,,",
             ]
         )
@@ -88,7 +88,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
     )
     with zipfile.ZipFile(wheel_path, "w") as zf:
         zf.writestr(f"{dist_info}/METADATA", metadata)
-        zf.writestr("llmtestlab/__init__.py", init)
+        zf.writestr("llmentary/__init__.py", init)
         zf.writestr(f"{dist_info}/RECORD", stale_record)
     wheels.apply_platform_wheel_license(wheel_path)
     with zipfile.ZipFile(wheel_path) as zf:
@@ -98,7 +98,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
             name: zf.read(name)
             for name in (
                 f"{dist_info}/METADATA",
-                "llmtestlab/__init__.py",
+                "llmentary/__init__.py",
                 f"{dist_info}/licenses/AGPL-3.0.txt",
             )
         }
@@ -122,7 +122,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
 
 def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:
     rewritten = wheels.rewrite_wheel_license_metadata(
-        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "Metadata-Version: 2.4\nName: llmentary\nLicense-Expression: MIT\n"
         "License-File: LICENSE\n"
         "Classifier: License :: OSI Approved :: MIT License\n"
     )
@@ -135,7 +135,7 @@ def test_rewrite_wheel_license_metadata_sets_combined_spdx() -> None:
 
 def test_rewrite_wheel_license_metadata_inserts_before_description_body() -> None:
     rewritten = wheels.rewrite_wheel_license_metadata(
-        "Metadata-Version: 2.4\nName: llm-test-lab\nLicense-Expression: MIT\n"
+        "Metadata-Version: 2.4\nName: llmentary\nLicense-Expression: MIT\n"
         "\nLong description that is not a header.\n"
     )
     header, separator, body = rewritten.partition("\n\n")
@@ -149,16 +149,21 @@ def test_rewrite_wheel_license_metadata_inserts_before_description_body() -> Non
 def test_select_asset_matches_platform() -> None:
     assets = [
         wheels.Asset("checksums.txt", "https://example/checksums.txt"),
-        wheels.Asset("llmtestlab_Linux_x86_64.tar.gz", "https://example/linux"),
-        wheels.Asset("llmtestlab_Darwin_arm64.tar.gz", "https://example/darwin"),
-        wheels.Asset("llmtestlab_Windows_x86_64.zip", "https://example/windows"),
+        wheels.Asset("llmentary_0.1.0_linux_amd64.tar.gz", "https://example/linux"),
+        wheels.Asset("llmentary_0.1.0_darwin_arm64.tar.gz", "https://example/darwin"),
+        wheels.Asset("llmentary_0.1.0_windows_amd64.zip", "https://example/windows"),
     ]
     linux = next(target for target in wheels.TARGETS if target.wheel_tag == "manylinux2014_x86_64")
     darwin = next(target for target in wheels.TARGETS if target.wheel_tag == "macosx_11_0_arm64")
     windows = next(target for target in wheels.TARGETS if target.wheel_tag == "win_amd64")
-    assert wheels.select_asset(assets, linux).name == "llmtestlab_Linux_x86_64.tar.gz"
-    assert wheels.select_asset(assets, darwin).name == "llmtestlab_Darwin_arm64.tar.gz"
-    assert wheels.select_asset(assets, windows).name == "llmtestlab_Windows_x86_64.zip"
+    assert wheels.select_asset(assets, linux).name == "llmentary_0.1.0_linux_amd64.tar.gz"
+    assert wheels.select_asset(assets, darwin).name == "llmentary_0.1.0_darwin_arm64.tar.gz"
+    assert wheels.select_asset(assets, windows).name == "llmentary_0.1.0_windows_amd64.zip"
+    with pytest.raises(SystemExit, match="No release asset matched"):
+        wheels.select_asset(
+            [wheels.Asset("other_0.1.0_linux_amd64.tar.gz", "https://example/other")],
+            linux,
+        )
 
 
 def test_install_binary_extracts_and_records_version(
@@ -167,19 +172,19 @@ def test_install_binary_extracts_and_records_version(
     monkeypatch.chdir(tmp_path)
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-        info = tarfile.TarInfo(name="llmtestlab")
+        info = tarfile.TarInfo(name="llmentary")
         payload = b"#!/bin/sh\necho proxy\n"
         info.size = len(payload)
         tar.addfile(info, io.BytesIO(payload))
     target = wheels.TARGETS[0]
-    wheels.PACKAGE_BIN_DIR = tmp_path / "src" / "llmtestlab" / "bin"
+    wheels.PACKAGE_BIN_DIR = tmp_path / "src" / "llmentary" / "bin"
     wheels.install_binary(
         archive.getvalue(),
-        "llmtestlab_linux_amd64.tar.gz",
+        "llmentary_0.1.0_linux_amd64.tar.gz",
         target,
         version="1.2.3",
     )
-    installed = wheels.PACKAGE_BIN_DIR / target.wheel_tag / "llmtestlab"
+    installed = wheels.PACKAGE_BIN_DIR / target.wheel_tag / "llmentary"
     assert installed.is_file()
     dest = wheels.PACKAGE_BIN_DIR / target.wheel_tag
     assert (dest / "VERSION").read_text(encoding="utf-8") == "1.2.3\n"
@@ -274,9 +279,9 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     for name in ("pyproject.toml", "README.md", "LICENSE"):
         shutil.copy2(ROOT / name, project_root / name)
     shutil.copytree(ROOT / "src", project_root / "src")
-    bin_dir = project_root / "src" / "llmtestlab" / "bin" / platform_tag
+    bin_dir = project_root / "src" / "llmentary" / "bin" / platform_tag
     bin_dir.mkdir(parents=True, exist_ok=True)
-    binary = bin_dir / "llmtestlab"
+    binary = bin_dir / "llmentary"
     binary.write_bytes(b"dummy-proxy")
     binary.chmod(0o755)
     shutil.copy2(ROOT / "licenses" / "AGPL-3.0.txt", bin_dir / "AGPL-3.0.txt")
@@ -297,8 +302,8 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
         )
         metadata = zf.read(metadata_name)
         agpl = zf.read(agpl_name)
-    assert f"llmtestlab/bin/{platform_tag}/llmtestlab" in names
-    assert f"llmtestlab/bin/{platform_tag}/AGPL-3.0.txt" in names
+    assert f"llmentary/bin/{platform_tag}/llmentary" in names
+    assert f"llmentary/bin/{platform_tag}/AGPL-3.0.txt" in names
     assert agpl_name in names
     assert b"License-Expression: MIT AND AGPL-3.0-only" in metadata
     assert b"License-File: licenses/AGPL-3.0.txt" in metadata

@@ -22,11 +22,11 @@ from .binary import BinaryResolutionError, find_binary
 from .types import SessionTrace, normalize_api_type
 
 SESSION_HEADER = "X-Test-Session"
-BAGGAGE_SESSION_KEY = "llmtestlab.session.id"
+BAGGAGE_SESSION_KEY = "llmentary.session.id"
 
 
 class ControlClient:
-    """Client for the llm-test-lab control API."""
+    """Client for the llmentary control API."""
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class ControlClient:
                 last_error = exc
                 time.sleep(interval)
         raise TimeoutError(
-            f"llm-test-lab did not become healthy at {self.base_url}"
+            f"llmentary did not become healthy at {self.base_url}"
         ) from last_error
 
     def get_session(self, session_id: str) -> SessionTrace:
@@ -142,7 +142,7 @@ class ControlClient:
 
 @dataclass
 class ProxyHandle:
-    """Running or attached llm-test-lab proxy."""
+    """Running or attached llmentary proxy."""
 
     url: str
     control: ControlClient
@@ -262,14 +262,14 @@ def start_proxy(
     startup_timeout: float = 10.0,
     env: Optional[Mapping[str, str]] = None,
 ) -> Iterator[ProxyHandle]:
-    """Start or attach to a llm-test-lab proxy."""
+    """Start or attach to an llmentary proxy."""
 
     merged_env = dict(os.environ)
     if env:
         merged_env.update(env)
 
-    attached_url = proxy_url or merged_env.get("LLMTESTLAB_PROXY_URL")
-    token = token or merged_env.get("LLMTESTLAB_CONTROL_TOKEN")
+    attached_url = proxy_url or merged_env.get("LLMENTARY_PROXY_URL")
+    token = token or merged_env.get("LLMENTARY_CONTROL_TOKEN")
     if attached_url:
         control_url = default_control_url(attached_url, merged_env)
         control = ControlClient(control_url, token=token)
@@ -282,13 +282,13 @@ def start_proxy(
         return
 
     bin_path = binary or find_binary(env=merged_env)
-    host = merged_env.get("LLMTESTLAB_HOST", "127.0.0.1")
-    port = int(merged_env.get("LLMTESTLAB_PORT") or free_port(host))
-    control_port = int(merged_env.get("LLMTESTLAB_CONTROL_PORT") or free_port(host))
+    host = merged_env.get("LLMENTARY_HOST", "127.0.0.1")
+    port = int(merged_env.get("LLMENTARY_PORT") or free_port(host))
+    control_port = int(merged_env.get("LLMENTARY_CONTROL_PORT") or free_port(host))
     url = f"http://{host}:{port}"
     control_url = f"http://{host}:{control_port}"
-    resolved_upstream = upstream_url or merged_env.get("LLMTESTLAB_UPSTREAM_BASE_URL")
-    resolved_api_key = upstream_api_key or merged_env.get("LLMTESTLAB_UPSTREAM_API_KEY")
+    resolved_upstream = upstream_url or merged_env.get("LLMENTARY_UPSTREAM_BASE_URL")
+    resolved_api_key = upstream_api_key or merged_env.get("LLMENTARY_UPSTREAM_API_KEY")
     apply_upstream_api_key(merged_env, resolved_api_key)
     command = build_start_command(
         bin_path=bin_path,
@@ -304,7 +304,7 @@ def start_proxy(
         TextIO,
         tempfile.NamedTemporaryFile(
             mode="w+",
-            prefix="llmtestlab-proxy-",
+            prefix="llmentary-proxy-",
             suffix=".log",
             encoding="utf-8",
             delete=False,
@@ -331,7 +331,7 @@ def start_proxy(
         except BaseException as exc:
             output = read_process_output(process, log_file=log_file)
             raise RuntimeError(
-                "llm-test-lab failed to start with command "
+                "llmentary failed to start with command "
                 f"{redact_command(command)!r}.\n{redact_secrets(output)}"
             ) from exc
         yield handle
@@ -352,10 +352,10 @@ def build_start_command(
 ) -> list[str]:
     listen = f"{host}:{port}"
     control_listen = f"{host}:{control_port}"
-    upstream_name = env.get("LLMTESTLAB_UPSTREAM_NAME", "openai")
+    upstream_name = env.get("LLMENTARY_UPSTREAM_NAME", "openai")
     normalized_upstream = normalize_upstream_url(upstream_url) if upstream_url else ""
     upstream_mapping = f"{upstream_name}={normalized_upstream}" if normalized_upstream else ""
-    template = env.get("LLMTESTLAB_START_COMMAND")
+    template = env.get("LLMENTARY_START_COMMAND")
     if template:
         rendered = template.format(
             bin=str(bin_path),
@@ -403,7 +403,7 @@ def apply_upstream_api_key(env: dict[str, str], api_key: Optional[str]) -> None:
     if not api_key:
         return
     env["OPENAI_API_KEY"] = api_key
-    env["LLMTESTLAB_UPSTREAM_API_KEY"] = api_key
+    env["LLMENTARY_UPSTREAM_API_KEY"] = api_key
 
 
 def encode_baggage_value(value: str) -> str:
@@ -417,7 +417,7 @@ def encode_baggage_value(value: str) -> str:
 
 
 def default_control_url(proxy_url: str, env: Mapping[str, str]) -> str:
-    configured = env.get("LLMTESTLAB_CONTROL_URL")
+    configured = env.get("LLMENTARY_CONTROL_URL")
     if configured:
         return configured.rstrip("/")
     parsed = urlparse(proxy_url)

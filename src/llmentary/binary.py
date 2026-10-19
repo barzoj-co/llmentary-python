@@ -10,17 +10,17 @@ from typing import Optional
 
 
 class BinaryResolutionError(RuntimeError):
-    """Raised when the llm-test-lab proxy binary cannot be located."""
+    """Raised when the llmentary proxy binary cannot be located."""
 
 
 def find_binary(*, env: Optional[dict[str, str]] = None) -> Path:
-    """Resolve the llm-test-lab Go proxy binary.
+    """Resolve the llmentary Go proxy binary.
 
     Lookup order:
 
-    1. ``LLMTESTLAB_BIN``
+    1. ``LLMENTARY_BIN``
     2. Binary bundled in a platform-specific wheel
-    3. ``llmtestlab`` on ``PATH``
+    3. ``llmentary`` on ``PATH``
 
     Runtime downloads are disabled. Platform wheels ship a version-pinned copy of
     the Go proxy. The bundled proxy version is recorded in the wheel ``VERSION``
@@ -29,25 +29,25 @@ def find_binary(*, env: Optional[dict[str, str]] = None) -> Path:
     """
 
     env_map: Mapping[str, str] = env if env is not None else os.environ
-    configured = env_map.get("LLMTESTLAB_BIN")
+    configured = env_map.get("LLMENTARY_BIN")
     if configured:
         path = Path(configured).expanduser()
         if path.is_file():
             return ensure_executable(path)
-        raise BinaryResolutionError(f"LLMTESTLAB_BIN points to a missing file: {path}")
+        raise BinaryResolutionError(f"LLMENTARY_BIN points to a missing file: {path}")
 
     bundled = bundled_binary()
     if bundled is not None:
         return ensure_executable(bundled)
 
-    path_value = shutil.which("llmtestlab", path=env_map.get("PATH"))
+    path_value = shutil.which("llmentary", path=env_map.get("PATH"))
     if path_value:
         return Path(path_value)
 
     raise BinaryResolutionError(
-        "Could not find llm-test-lab proxy binary. Set LLMTESTLAB_BIN, install a "
-        "platform-specific llm-test-lab wheel that bundles the proxy, or put "
-        "'llmtestlab' on PATH. Runtime downloads are disabled."
+        "Could not find llmentary proxy binary. Set LLMENTARY_BIN, install a "
+        "platform-specific llmentary wheel that bundles the proxy, or put "
+        "'llmentary' on PATH. Runtime downloads are disabled."
     )
 
 
@@ -72,7 +72,7 @@ def bundled_platform_tag() -> Optional[str]:
 
 
 def binary_name() -> str:
-    return "llmtestlab.exe" if os.name == "nt" else "llmtestlab"
+    return "llmentary.exe" if os.name == "nt" else "llmentary"
 
 
 def goreleaser_platform() -> tuple[str, str]:

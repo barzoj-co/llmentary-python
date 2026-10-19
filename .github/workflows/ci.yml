@@ -25,39 +25,39 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
-      LLMTESTLAB_BIN: /tmp/llmtestlab
+      LLMENTARY_BIN: /tmp/llmentary
     steps:
       - name: Checkout Python client
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
-      - name: Fail clearly if llm-test-lab repo token is missing
+      - name: Fail clearly if llmentary repo token is missing
         env:
           HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
           if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
+            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
             exit 1
           fi
 
-      - name: Checkout llm-test-lab proxy
+      - name: Checkout llmentary proxy
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          repository: barzoj-co/llm-test-lab
+          repository: barzoj-co/llmentary
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          path: llm-test-lab
+          path: llmentary-proxy
           persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
-          cache-dependency-path: llm-test-lab/go.sum
+          cache-dependency-path: llmentary-proxy/go.sum
 
-      - name: Build llm-test-lab proxy
-        working-directory: llm-test-lab
-        run: go build -o "$LLMTESTLAB_BIN" ./cmd/llmtestlab
+      - name: Build llmentary proxy
+        working-directory: llmentary-proxy
+        run: go build -o "$LLMENTARY_BIN" ./cmd/llmentary
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -127,10 +127,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      LLMTESTLAB_BIN: /tmp/llmtestlab
-      LLMTESTLAB_E2E: "1"
-      LLMTESTLAB_UPSTREAM_BASE_URL: https://api.openai.com/v1
-      LLMTESTLAB_WAIT_TIMEOUT: "30"
+      LLMENTARY_BIN: /tmp/llmentary
+      LLMENTARY_E2E: "1"
+      LLMENTARY_UPSTREAM_BASE_URL: https://api.openai.com/v1
+      LLMENTARY_WAIT_TIMEOUT: "30"
     steps:
       - name: Checkout Python client
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -143,7 +143,7 @@ jobs:
           HAS_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
         run: |
           if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
+            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
             exit 1
           fi
           if [ "$HAS_OPENAI_KEY" != "true" ]; then
@@ -151,23 +151,23 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout llm-test-lab proxy
+      - name: Checkout llmentary proxy
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          repository: barzoj-co/llm-test-lab
+          repository: barzoj-co/llmentary
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          path: llm-test-lab
+          path: llmentary-proxy
           persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
-          cache-dependency-path: llm-test-lab/go.sum
+          cache-dependency-path: llmentary-proxy/go.sum
 
-      - name: Build llm-test-lab proxy
-        working-directory: llm-test-lab
-        run: go build -o "$LLMTESTLAB_BIN" ./cmd/llmtestlab
+      - name: Build llmentary proxy
+        working-directory: llmentary-proxy
+        run: go build -o "$LLMENTARY_BIN" ./cmd/llmentary
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -181,7 +181,7 @@ jobs:
       - name: Real OpenAI E2E tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          LLMTESTLAB_UPSTREAM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LLMENTARY_UPSTREAM_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: pytest -m e2e -vv --tb=short --durations=0
 
   e2e-gate:

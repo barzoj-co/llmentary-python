@@ -7,4 +7,4 @@ build/
 .ruff_cache/
 .pytest_cache/
 .venv/
-src/llmtestlab/bin/
+src/llmentary/bin/

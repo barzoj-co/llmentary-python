@@ -5,7 +5,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from llmtestlab.client import free_port
+from llmentary.client import free_port
 
 
 class FakeOpenAIServer:

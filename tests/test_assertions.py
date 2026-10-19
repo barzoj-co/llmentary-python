@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from llmtestlab.assertions import Expectation, SoftExpectation
-from llmtestlab.types import SessionTrace
+from llmentary.assertions import Expectation, SoftExpectation
+from llmentary.types import SessionTrace
 
 
 def trace() -> SessionTrace:
@@ -130,7 +130,7 @@ def test_model_assertion_accepts_openai_snapshot_id() -> None:
 
 
 def test_failure_includes_trace_summary() -> None:
-    with pytest.raises(AssertionError, match="llm-test-lab session test-session"):
+    with pytest.raises(AssertionError, match="llmentary session test-session"):
         Expectation(trace()).tool_called("missing_tool")
 
 
