@@ -1,4 +1,4 @@
-title = "llm-test-lab-python"
+title = "llmentary-python"
 
 [extend]
 useDefault = true
@@ -14,5 +14,5 @@ regexes = ['''sk-invalid''']
 [[allowlists]]
 description = "sk- redaction regex in the Python client (audit 2026-10-18 §4)"
 condition = "AND"
-paths = ['''(^|/)src/llmtestlab/client\.py$''']
+paths = ['''(^|/)src/llmentary/client\.py$''']
 regexes = ['''sk-\[A-Za-z0-9_-]+''']

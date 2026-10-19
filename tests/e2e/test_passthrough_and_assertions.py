@@ -12,8 +12,8 @@ from e2e_helpers import (
     openai_invalid_model_errors,
 )
 
-from llmtestlab import LabSession
-from llmtestlab.assertions import Expectation
+from llmentary import LabSession
+from llmentary.assertions import Expectation
 
 pytestmark = pytest.mark.e2e
 

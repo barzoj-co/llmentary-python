@@ -1,4 +1,4 @@
-"""Python client for llm-test-lab deterministic LLM integration tests."""
+"""Python client for llmentary deterministic LLM integration tests."""
 
 from importlib.metadata import PackageNotFoundError, version
 
@@ -8,7 +8,7 @@ from .client import ControlClient, LabSession, ProxyHandle, Query, start_proxy
 from .types import APIType, SessionTrace
 
 try:
-    __version__ = version("llm-test-lab")
+    __version__ = version("llmentary")
 except PackageNotFoundError:
     __version__ = "0.1.0"  # x-release-please-version
 

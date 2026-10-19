@@ -341,11 +341,11 @@ class SessionTrace:
     def trace_summary(self) -> str:
         if not self.calls:
             return (
-                f"llm-test-lab session {self.session_id}: no captured calls "
+                f"llmentary session {self.session_id}: no captured calls "
                 f"(payload keys={list(self.raw.keys())})"
             )
 
-        lines = [f"llm-test-lab session {self.session_id}: {len(self.calls)} captured call(s)"]
+        lines = [f"llmentary session {self.session_id}: {len(self.calls)} captured call(s)"]
         for call in self.calls:
             tool_names = ", ".join(tool.name for tool in call.tool_calls) or "-"
             status = "error" if call.error or call.mid_stream_error else "ok"

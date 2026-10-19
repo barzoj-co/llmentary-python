@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GOOD_DIR="${ROOT}/scripts/testdata/pr-oidc/good"
 BAD_DIR="${ROOT}/scripts/testdata/pr-oidc/bad"
-EXPECTED_REPO="barzoj-co/llm-test-lab-python"
+EXPECTED_REPO="barzoj-co/llmentary-python"
 
 scan_paths() {
   local path

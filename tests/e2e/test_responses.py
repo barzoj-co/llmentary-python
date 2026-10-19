@@ -33,7 +33,7 @@ from e2e_helpers import (
     tool_argument_json,
 )
 
-from llmtestlab import LabSession
+from llmentary import LabSession
 
 pytestmark = pytest.mark.e2e
 

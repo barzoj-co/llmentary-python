@@ -8,9 +8,9 @@ from typing import Any, TypeVar
 
 import pytest
 
-from llmtestlab import LabSession
-from llmtestlab.assertions import Expectation
-from llmtestlab.types import CapturedCall, SessionTrace
+from llmentary import LabSession
+from llmentary.assertions import Expectation
+from llmentary.types import CapturedCall, SessionTrace
 
 CHEAP_MODEL = "gpt-4.1-nano"
 PARALLEL_MODEL = "gpt-4.1-mini"
@@ -46,10 +46,10 @@ T = TypeVar("T")
 
 
 def require_e2e() -> None:
-    if os.environ.get("LLMTESTLAB_E2E") != "1":
-        pytest.skip("set LLMTESTLAB_E2E=1 to run real OpenAI E2E tests")
+    if os.environ.get("LLMENTARY_E2E") != "1":
+        pytest.skip("set LLMENTARY_E2E=1 to run real OpenAI E2E tests")
     if not os.environ.get("OPENAI_API_KEY"):
-        pytest.fail("OPENAI_API_KEY is required when LLMTESTLAB_E2E=1")
+        pytest.fail("OPENAI_API_KEY is required when LLMENTARY_E2E=1")
 
 
 def openai_client(lab: LabSession, *, api_key: str | None = None) -> Any:

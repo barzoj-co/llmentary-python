@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llm-test-lab"
+name = "llmentary"
 version = "0.1.0"
-description = "Python and pytest client for deterministic llm-test-lab trace assertions"
+description = "Python (pytest) client for llmentary: deterministic trace-based integration tests for LLM apps"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -42,26 +42,26 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/barzoj-co/llm-test-lab-python"
-Repository = "https://github.com/barzoj-co/llm-test-lab-python"
-Issues = "https://github.com/barzoj-co/llm-test-lab-python/issues"
+Homepage = "https://github.com/barzoj-co/llmentary-python"
+Repository = "https://github.com/barzoj-co/llmentary-python"
+Issues = "https://github.com/barzoj-co/llmentary-python/issues"
 
 [project.entry-points.pytest11]
-llmtestlab = "llmtestlab.pytest_plugin"
+llmentary = "llmentary.pytest_plugin"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/llmtestlab"]
+packages = ["src/llmentary"]
 # Release wheels inject a version-pinned Go proxy under bin/; keep VCS-ignored.
 artifacts = [
-  "src/llmtestlab/bin/*/llmtestlab",
-  "src/llmtestlab/bin/*/llmtestlab.exe",
-  "src/llmtestlab/bin/*/VERSION",
-  "src/llmtestlab/bin/*/AGPL-3.0.txt",
+  "src/llmentary/bin/*/llmentary",
+  "src/llmentary/bin/*/llmentary.exe",
+  "src/llmentary/bin/*/VERSION",
+  "src/llmentary/bin/*/AGPL-3.0.txt",
 ]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-  "/src/llmtestlab/bin",
+  "/src/llmentary/bin",
 ]
 
 [tool.ruff]
@@ -90,7 +90,7 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [tool.coverage.run]
-source = ["llmtestlab"]
+source = ["llmentary"]
 branch = true
 
 [tool.coverage.report]
@@ -100,6 +100,6 @@ show_missing = true
 addopts = "-ra"
 testpaths = ["tests"]
 markers = [
-  "integration: tests that require the real llm-test-lab Go binary",
-  "e2e: tests that call the real OpenAI API through llm-test-lab",
+  "integration: tests that require the real llmentary Go binary",
+  "e2e: tests that call the real OpenAI API through llmentary",
 ]

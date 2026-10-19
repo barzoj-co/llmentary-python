@@ -12,86 +12,86 @@ from .client import LabSession, ProxyHandle, new_session_id, start_proxy
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    group = parser.getgroup("llmtestlab")
+    group = parser.getgroup("llmentary")
     group.addoption(
-        "--llmtestlab-bin",
+        "--llmentary-bin",
         action="store",
         default=None,
-        help="Path to the llm-test-lab proxy binary (also LLMTESTLAB_BIN).",
+        help="Path to the llmentary proxy binary (also LLMENTARY_BIN).",
     )
     group.addoption(
-        "--llmtestlab-proxy-url",
+        "--llmentary-proxy-url",
         action="store",
         default=None,
-        help="Attach to an existing llm-test-lab proxy URL (also LLMTESTLAB_PROXY_URL).",
+        help="Attach to an existing llmentary proxy URL (also LLMENTARY_PROXY_URL).",
     )
     group.addoption(
-        "--llmtestlab-upstream-url",
+        "--llmentary-upstream-url",
         action="store",
         default=None,
         help="OpenAI-compatible upstream base URL for a started proxy.",
     )
     group.addoption(
-        "--llmtestlab-upstream-api-key",
+        "--llmentary-upstream-api-key",
         action="store",
         default=None,
         help="OpenAI-compatible upstream API key for a started proxy.",
     )
     group.addoption(
-        "--llmtestlab-control-token",
+        "--llmentary-control-token",
         action="store",
         default=None,
         help="Bearer token for non-loopback control API access.",
     )
     group.addoption(
-        "--llmtestlab-control-url",
+        "--llmentary-control-url",
         action="store",
         default=None,
-        help="Control API URL when attaching to an existing proxy (also LLMTESTLAB_CONTROL_URL).",
+        help="Control API URL when attaching to an existing proxy (also LLMENTARY_CONTROL_URL).",
     )
     group.addoption(
-        "--llmtestlab-wait-timeout",
+        "--llmentary-wait-timeout",
         action="store",
         type=float,
-        default=float(os.environ.get("LLMTESTLAB_WAIT_TIMEOUT", "5")),
+        default=float(os.environ.get("LLMENTARY_WAIT_TIMEOUT", "5")),
         help="Seconds to wait for session quiescence before assertions.",
     )
     group.addoption(
-        "--llmtestlab-quiet-for",
+        "--llmentary-quiet-for",
         action="store",
         type=float,
-        default=float(os.environ.get("LLMTESTLAB_QUIET_FOR", "0.2")),
+        default=float(os.environ.get("LLMENTARY_QUIET_FOR", "0.2")),
         help="Seconds the session must be quiet before wait returns.",
     )
 
 
 @pytest.fixture(scope="session")
-def llmtestlab_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
-    """Start the llm-test-lab proxy or attach to ``LLMTESTLAB_PROXY_URL``."""
+def llmentary_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
+    """Start the llmentary proxy or attach to ``LLMENTARY_PROXY_URL``."""
 
-    option_bin = request.config.getoption("--llmtestlab-bin")
+    option_bin = request.config.getoption("--llmentary-bin")
     if option_bin:
-        os.environ["LLMTESTLAB_BIN"] = str(option_bin)
+        os.environ["LLMENTARY_BIN"] = str(option_bin)
 
-    upstream_url = optional_fixture_value(request, "llmtestlab_upstream_url")
-    upstream_api_key = optional_fixture_value(request, "llmtestlab_upstream_api_key")
-    token = optional_fixture_value(request, "llmtestlab_control_token")
+    upstream_url = optional_fixture_value(request, "llmentary_upstream_url")
+    upstream_api_key = optional_fixture_value(request, "llmentary_upstream_api_key")
+    token = optional_fixture_value(request, "llmentary_control_token")
 
     configured_upstream_url = upstream_url or request.config.getoption(
-        "--llmtestlab-upstream-url"
+        "--llmentary-upstream-url"
     )
     configured_upstream_api_key = upstream_api_key or request.config.getoption(
-        "--llmtestlab-upstream-api-key"
+        "--llmentary-upstream-api-key"
     )
-    configured_token = token or request.config.getoption("--llmtestlab-control-token")
-    control_url = request.config.getoption("--llmtestlab-control-url")
+    configured_token = token or request.config.getoption("--llmentary-control-token")
+    control_url = request.config.getoption("--llmentary-control-url")
     if control_url:
-        os.environ["LLMTESTLAB_CONTROL_URL"] = str(control_url)
+        os.environ["LLMENTARY_CONTROL_URL"] = str(control_url)
 
     with start_proxy(
         upstream_url=str(configured_upstream_url or "") or None,
         upstream_api_key=str(configured_upstream_api_key or "") or None,
-        proxy_url=request.config.getoption("--llmtestlab-proxy-url"),
+        proxy_url=request.config.getoption("--llmentary-proxy-url"),
         token=str(configured_token or "") or None,
         binary=Path(option_bin) if option_bin else None,
     ) as proxy:
@@ -99,15 +99,15 @@ def llmtestlab_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
 
 
 @pytest.fixture
-def lab(request: pytest.FixtureRequest, llmtestlab_proxy: ProxyHandle) -> Iterator[LabSession]:
-    """Unique llm-test-lab recording session for one pytest test function."""
+def lab(request: pytest.FixtureRequest, llmentary_proxy: ProxyHandle) -> Iterator[LabSession]:
+    """Unique llmentary recording session for one pytest test function."""
 
     test_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", request.node.name).strip("-.")
     session = LabSession(
         session_id=new_session_id(test_name),
-        proxy=llmtestlab_proxy,
-        wait_timeout=float(request.config.getoption("--llmtestlab-wait-timeout")),
-        quiet_for=float(request.config.getoption("--llmtestlab-quiet-for")),
+        proxy=llmentary_proxy,
+        wait_timeout=float(request.config.getoption("--llmentary-wait-timeout")),
+        quiet_for=float(request.config.getoption("--llmentary-quiet-for")),
     )
     try:
         yield session

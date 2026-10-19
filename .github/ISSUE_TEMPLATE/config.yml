@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/barzoj-co/llm-test-lab-python/security/advisories/new
+    url: https://github.com/barzoj-co/llmentary-python/security/advisories/new
     about: Never file a public issue for a security report. Use GitHub private reporting.
   - name: Proxy bugs
-    url: https://github.com/barzoj-co/llm-test-lab/issues
-    about: Bugs in the recording proxy binary belong in barzoj-co/llm-test-lab.
+    url: https://github.com/barzoj-co/llmentary/issues
+    about: Bugs in the recording proxy binary belong in barzoj-co/llmentary.
   - name: Questions and ideas
-    url: https://github.com/barzoj-co/llm-test-lab/discussions
-    about: Ask questions and discuss ideas with the llm-test-lab community.
+    url: https://github.com/barzoj-co/llmentary/discussions
+    about: Ask questions and discuss ideas with the llmentary community.

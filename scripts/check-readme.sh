@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail if the README is missing the required badge URLs, the canonical
-# llm-test-lab repository table, or the MIT license one-liner.
+# llmentary repository table, or the MIT license one-liner.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,16 +12,16 @@ if [[ ! -f "$README" ]]; then
 fi
 
 badges=(
-  'https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml/badge.svg?branch=main'
-  'https://github.com/barzoj-co/llm-test-lab-python/actions/workflows/ci.yml'
-  'https://codecov.io/gh/barzoj-co/llm-test-lab-python/graph/badge.svg'
-  'https://codecov.io/gh/barzoj-co/llm-test-lab-python'
-  'https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-python/badge'
-  'https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-python'
-  'https://img.shields.io/github/license/barzoj-co/llm-test-lab-python'
-  'https://img.shields.io/pypi/v/llm-test-lab'
-  'https://pypi.org/project/llm-test-lab/'
-  'https://img.shields.io/pypi/pyversions/llm-test-lab'
+  'https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml/badge.svg?branch=main'
+  'https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml'
+  'https://codecov.io/gh/barzoj-co/llmentary-python/graph/badge.svg'
+  'https://codecov.io/gh/barzoj-co/llmentary-python'
+  'https://api.scorecard.dev/projects/github.com/barzoj-co/llmentary-python/badge'
+  'https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llmentary-python'
+  'https://img.shields.io/github/license/barzoj-co/llmentary-python'
+  'https://img.shields.io/pypi/v/llmentary'
+  'https://pypi.org/project/llmentary/'
+  'https://img.shields.io/pypi/pyversions/llmentary'
 )
 
 missing=0
@@ -33,18 +33,18 @@ for url in "${badges[@]}"; do
 done
 
 canonical_block='<!-- ltl-repos:start -->
-## llm-test-lab repositories
+## llmentary repositories
 
 | Repository | What |
 |---|---|
-| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) |
-| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` |
-| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin |
-| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest |
+| [llmentary](https://github.com/barzoj-co/llmentary) | Recording proxy binary (Go) |
+| [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
+| [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
+| [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
 <!-- ltl-repos:end -->'
 
 if ! grep -F -q -- "$canonical_block" "$README"; then
-  echo "README.md is missing or altered the canonical llm-test-lab repositories block" >&2
+  echo "README.md is missing or altered the canonical llmentary repositories block" >&2
   missing=1
 fi
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 from test_go_session_schema import chat_tool_request, chat_tool_response, go_call
 
-from llmtestlab.client import ControlClient
+from llmentary.client import ControlClient
 
 
 def test_wait_session_falls_back_to_get_when_calls_empty() -> None:

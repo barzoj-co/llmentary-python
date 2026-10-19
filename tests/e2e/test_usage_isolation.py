@@ -11,8 +11,8 @@ from e2e_helpers import (
     openai_client,
 )
 
-from llmtestlab import LabSession
-from llmtestlab.client import new_session_id
+from llmentary import LabSession
+from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
 

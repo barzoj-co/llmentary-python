@@ -35,12 +35,12 @@ jobs:
       - name: Tagged commit must be on main
         run: bash scripts/check-ref-on-main.sh HEAD
 
-      - name: Fail clearly if llm-test-lab repo token is missing
+      - name: Fail clearly if llmentary repo token is missing
         env:
           HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
           if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llm-test-lab."
+            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
             exit 1
           fi
 
@@ -72,7 +72,7 @@ jobs:
             echo "::error title=Missing PROXY_VERSION::PROXY_VERSION is empty."
             exit 1
           fi
-          echo "LLMTESTLAB_RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "LLMENTARY_RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
 
       - name: Install build tools
         env:
@@ -82,7 +82,7 @@ jobs:
 
       - name: Build verified platform wheels
         env:
-          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
         run: python scripts/build_release_wheels.py
 
       - name: Twine check
