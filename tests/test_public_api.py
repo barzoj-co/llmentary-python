@@ -38,7 +38,9 @@ def test_package_exports_llmentary_session_not_lab() -> None:
 
 
 def test_plugin_registers_llmentary_fixture_only() -> None:
-    assert hasattr(pytest_plugin.llmentary, "_pytestfixturefunction")
+    marker = getattr(pytest_plugin.llmentary, "_fixture_function_marker", None)
+    assert marker is not None
+    assert getattr(marker, "scope", None) == "function"
     assert not hasattr(pytest_plugin, "lab")
 
 

@@ -302,4 +302,6 @@ def test_chat_cancel_mid_stream_keeps_proxy_healthy(llmentary: LlmentarySession)
             max_tokens=8,
         )
     )
-    llmentary.query(api_type="chat_completions").expect().prompt_contains("single word ok").no_errors()
+    llmentary.query(api_type="chat_completions").expect().prompt_contains(
+        "single word ok"
+    ).no_errors()
