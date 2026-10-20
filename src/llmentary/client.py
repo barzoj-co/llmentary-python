@@ -10,7 +10,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 from urllib.parse import quote, urlparse
@@ -20,6 +20,14 @@ import httpx
 from .assertions import Expectation, SoftExpectation
 from .binary import BinaryResolutionError, find_binary
 from .types import SessionTrace, normalize_api_type
+from .wait import (
+    default_wait_quiet,
+    default_wait_timeout,
+    resolve_wait_quiet,
+    resolve_wait_timeout,
+    wait_query_string,
+    wait_timeout_error,
+)
 
 SESSION_HEADER = "X-Test-Session"
 BAGGAGE_SESSION_KEY = "llmentary.session.id"
@@ -91,25 +99,23 @@ class ControlClient:
         self,
         session_id: str,
         *,
-        timeout: float = 5.0,
-        quiet_for: float = 0.2,
+        timeout: Optional[float] = None,
+        quiet: Optional[float] = None,
+        quiet_for: Optional[float] = None,
     ) -> SessionTrace:
-        params = {"timeout": f"{timeout}s", "quiet_for": f"{quiet_for}s"}
-        url = f"{self.base_url}/sessions/{session_id}/wait"
-        request_timeout = timeout + quiet_for + 5
-        response = self._client.get(
-            url,
-            params=params,
-            headers=self.headers,
-            timeout=request_timeout,
-        )
-        if response.status_code == 405:
-            response = self._client.post(
-                url,
-                params=params,
-                headers=self.headers,
-                timeout=request_timeout,
-            )
+        resolved_timeout = resolve_wait_timeout(timeout)
+        resolved_quiet = resolve_wait_quiet(quiet, quiet_for)
+        query = wait_query_string(resolved_timeout, resolved_quiet)
+        url = f"{self.base_url}/sessions/{session_id}/wait?{query}"
+        request_timeout = resolved_timeout + resolved_quiet + 5
+        try:
+            response = self._wait_request("GET", url, request_timeout)
+            if response.status_code == 405:
+                response = self._wait_request("POST", url, request_timeout)
+        except httpx.TimeoutException as exc:
+            raise self._wait_timeout(session_id, resolved_timeout) from exc
+        if response.status_code == 504:
+            raise self._wait_timeout(session_id, resolved_timeout, response)
         response.raise_for_status()
         if response.content:
             try:
@@ -121,6 +127,35 @@ class ControlClient:
                 if trace.calls:
                     return trace
         return self.get_session(session_id)
+
+    def _wait_request(self, method: str, url: str, request_timeout: float) -> httpx.Response:
+        return self._client.request(
+            method,
+            url,
+            headers=self.headers,
+            timeout=request_timeout,
+        )
+
+    def _wait_timeout(
+        self,
+        session_id: str,
+        timeout: float,
+        response: Optional[httpx.Response] = None,
+    ) -> BaseException:
+        payload: Optional[Mapping[str, Any]] = None
+        if response is not None and response.content:
+            try:
+                parsed = response.json()
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, Mapping):
+                payload = parsed
+        if payload is None:
+            try:
+                payload = self.get_session(session_id).raw
+            except (httpx.HTTPError, OSError, TypeError):
+                payload = {}
+        return wait_timeout_error(session_id, timeout, payload)
 
     def delete_session(self, session_id: str) -> None:
         response = self._client.delete(
@@ -174,8 +209,8 @@ class Session:
 
     session_id: str
     proxy: ProxyHandle
-    wait_timeout: float = 5.0
-    quiet_for: float = 0.2
+    wait_timeout: float = field(default_factory=default_wait_timeout)
+    quiet_for: float = field(default_factory=default_wait_quiet)
 
     @property
     def base_url(self) -> str:
@@ -201,12 +236,15 @@ class Session:
         self,
         *,
         timeout: Optional[float] = None,
+        quiet: Optional[float] = None,
         quiet_for: Optional[float] = None,
     ) -> SessionTrace:
         return self.proxy.control.wait_session(
             self.session_id,
             timeout=timeout if timeout is not None else self.wait_timeout,
-            quiet_for=quiet_for if quiet_for is not None else self.quiet_for,
+            quiet=resolve_wait_quiet(quiet, quiet_for)
+            if quiet is not None or quiet_for is not None
+            else self.quiet_for,
         )
 
     def trace(self) -> SessionTrace:

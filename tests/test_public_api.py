@@ -61,6 +61,7 @@ def test_readme_is_user_facing() -> None:
     assert headings == [
         "## Install",
         "## Quickstart",
+        "## Waiting for calls",
         "## Assertions",
         "## llmentary repositories",
         "## License",
