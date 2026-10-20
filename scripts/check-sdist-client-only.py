@@ -37,7 +37,6 @@ def assert_sdist_find_binary_message(sdist: Path, work: Path) -> str:
             "install",
             "--target",
             str(target),
-            "--no-deps",
             "--quiet",
             str(sdist),
         ],
