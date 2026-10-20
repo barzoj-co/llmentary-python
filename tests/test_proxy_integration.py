@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 
@@ -105,3 +107,25 @@ def test_responses_tool_flow_through_real_proxy(llmentary: Session) -> None:
     llmentary.query(api_type="responses").expect().tool_called("get_weather").args_subset(
         "get_weather", {"city": "Paris"}
     ).tool_result_fed_back("get_weather").response_json_valid().no_errors()
+
+
+@pytest.mark.integration
+def test_wait_honours_quiet_after_finished_call(llmentary: Session) -> None:
+    with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
+        response = client.post(
+            "/chat/completions",
+            json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "ping"}],
+            },
+        )
+        response.raise_for_status()
+
+    started = time.monotonic()
+    trace = llmentary.wait(timeout=5, quiet=0.1)
+    elapsed = time.monotonic() - started
+    assert trace.calls, trace.trace_summary()
+    assert elapsed < 0.4, (
+        f"wait with quiet=100ms returned in {elapsed:.3f}s; "
+        "the 500ms proxy default would have failed this"
+    )

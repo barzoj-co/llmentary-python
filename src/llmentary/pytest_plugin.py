@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Optional
 
 import pytest
 
 from .client import ProxyHandle, Session, new_session_id, start_proxy
+from .wait import default_wait_quiet, default_wait_timeout, parse_duration
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -52,16 +53,21 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--llmentary-wait-timeout",
         action="store",
-        type=float,
-        default=float(os.environ.get("LLMENTARY_WAIT_TIMEOUT", "5")),
-        help="Seconds to wait for session quiescence before assertions.",
+        type=_cli_duration("LLMENTARY_WAIT_TIMEOUT"),
+        default=default_wait_timeout(),
+        help="Wait timeout (Go duration or seconds; default 30s, also LLMENTARY_WAIT_TIMEOUT).",
     )
     group.addoption(
+        "--llmentary-wait-quiet",
         "--llmentary-quiet-for",
         action="store",
-        type=float,
-        default=float(os.environ.get("LLMENTARY_QUIET_FOR", "0.2")),
-        help="Seconds the session must be quiet before wait returns.",
+        dest="llmentary_wait_quiet",
+        type=_cli_duration("LLMENTARY_WAIT_QUIET"),
+        default=default_wait_quiet(),
+        help=(
+            "Quiet period before wait returns (Go duration or seconds; default 500ms, "
+            "also LLMENTARY_WAIT_QUIET). --llmentary-quiet-for is a deprecated alias."
+        ),
     )
 
 
@@ -109,12 +115,19 @@ def llmentary(
         session_id=new_session_id(test_name),
         proxy=llmentary_proxy,
         wait_timeout=float(request.config.getoption("--llmentary-wait-timeout")),
-        quiet_for=float(request.config.getoption("--llmentary-quiet-for")),
+        quiet_for=float(request.config.getoption("llmentary_wait_quiet")),
     )
     try:
         yield session
     finally:
         session.cleanup()
+
+
+def _cli_duration(name: str) -> Callable[[str], float]:
+    def parse(value: str) -> float:
+        return parse_duration(value, name=name)
+
+    return parse
 
 
 def optional_fixture_value(request: pytest.FixtureRequest, name: str) -> Optional[object]:

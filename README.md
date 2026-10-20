@@ -102,6 +102,29 @@ The function-scoped `llmentary` fixture returns a `Session`: it creates a unique
 session id, exposes headers with `X-Test-Session`, waits for proxy quiescence
 before assertions, and deletes the session during teardown.
 
+## Waiting for calls
+
+`wait` asks the proxy to return the session trace once the session has been
+idle for `quiet`, or to fail when `timeout` elapses. The proxy only reads these
+query parameters:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `timeout` | `30s` | Maximum time to wait for the session to become quiet |
+| `quiet` | `500ms` | How long the session must stay idle before wait returns |
+
+Override the defaults with environment variables. Each accepts a Go duration
+(`45s`, `200ms`) or a bare number of seconds (`45`, `0.2`):
+
+| Environment | Default |
+| --- | --- |
+| `LLMENTARY_WAIT_TIMEOUT` | `30s` |
+| `LLMENTARY_WAIT_QUIET` | `500ms` |
+
+The client HTTP deadline is `timeout + quiet + 5s`, so the client cannot abort
+before the proxy answers. A timeout is an error: `wait timed out after 30s on
+session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
+
 ## Assertions
 
 ```python

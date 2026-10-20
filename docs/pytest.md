@@ -51,8 +51,9 @@ def test_something(llmentary):
 | `--llmentary-upstream-api-key` | `LLMENTARY_UPSTREAM_API_KEY` | Upstream API key |
 | `--llmentary-control-token` | `LLMENTARY_CONTROL_TOKEN` | Bearer token for control API |
 | `--llmentary-control-url` | `LLMENTARY_CONTROL_URL` | Control API URL when attaching |
-| `--llmentary-wait-timeout` | `LLMENTARY_WAIT_TIMEOUT` | Session wait timeout in seconds |
-| `--llmentary-quiet-for` | `LLMENTARY_QUIET_FOR` | Quiet period before wait returns |
+| `--llmentary-wait-timeout` | `LLMENTARY_WAIT_TIMEOUT` | Wait timeout (Go duration or seconds; default `30s`) |
+| `--llmentary-wait-quiet` | `LLMENTARY_WAIT_QUIET` | Quiet period (Go duration or seconds; default `500ms`) |
+| `--llmentary-quiet-for` | `LLMENTARY_QUIET_FOR` | Deprecated alias of `--llmentary-wait-quiet` |
 
 ## Custom binary command
 

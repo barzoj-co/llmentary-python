@@ -9,7 +9,7 @@ from llmentary import ControlClient
 
 control = ControlClient("http://127.0.0.1:7778", token=None)
 control.health()
-trace = control.wait_session("session-id", timeout=5, quiet_for=0.2)
+trace = control.wait_session("session-id", timeout=30, quiet=0.5)
 control.delete_session("session-id")
 otlp_bytes = control.otlp("session-id")
 ```
@@ -20,7 +20,7 @@ uses:
 
 - `GET /healthz`
 - `GET /sessions/{id}`
-- `GET /sessions/{id}/wait?timeout=...&quiet_for=...`
+- `GET /sessions/{id}/wait?timeout=30s&quiet=500ms`
 - fallback `POST /sessions/{id}/wait`
 - `DELETE /sessions/{id}`
 - `GET /sessions/{id}/otlp`
@@ -42,7 +42,10 @@ Useful properties:
 
 Methods:
 
-- `llmentary.wait(timeout=None, quiet_for=None)`: wait for quiescence and return a trace
+- `llmentary.wait(timeout=None, quiet=None)`: wait for quiescence and return a trace.
+  `quiet_for` remains a deprecated alias of `quiet`. Defaults are `timeout=30s`
+  and `quiet=500ms` (`LLMENTARY_WAIT_TIMEOUT` / `LLMENTARY_WAIT_QUIET`). A 504
+  raises `WaitTimeoutError`.
 - `llmentary.trace()`: fetch the current trace without waiting
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session

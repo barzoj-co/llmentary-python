@@ -74,6 +74,29 @@ def test_chat_streaming_plain_text(llmentary: Session) -> None:
     assert_assembled_matches_recorded(assembled, call.response_text)
 
 
+def test_wait_defaults_after_openai_streaming(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=8,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+    )
+    assembled = assemble_chat_text(stream)
+    trace = llmentary.wait()
+    assert_streamed(trace)
+    assert trace.calls, trace.trace_summary()
+    expect = llmentary.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
+    assert_plain_text_recorded(expect)
+    expect.finish_reason("stop")
+    call = first_call(trace)
+    assert_assembled_matches_recorded(assembled, call.response_text)
+
+
 def test_chat_forced_tool_then_result(llmentary: Session) -> None:
     client = openai_client(llmentary)
     first = call_openai(
