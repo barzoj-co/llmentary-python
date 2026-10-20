@@ -111,31 +111,13 @@ def main() -> None:
         raw.mkdir(parents=True)
         subprocess.run([sys.executable, "-m", "build", "--wheel", "--outdir", str(raw)], check=True)
         wheel = one(raw.glob("*.whl"))
-        before_tags = {path.name for path in dist.glob("*.whl")}
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "wheel",
-                "tags",
-                "--platform-tag",
-                target.wheel_tag,
-                "--remove",
-                "--wheel-dir",
-                str(dist),
-                str(wheel),
-            ],
-            check=True,
-        )
-        tagged = one(path for path in dist.glob("*.whl") if path.name not in before_tags)
+        tagged = retag_wheel(wheel, target.wheel_tag, dist)
         apply_platform_wheel_license(tagged)
 
     shutil.rmtree(raw, ignore_errors=True)
     shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
-    built = sorted(path.name for path in dist.iterdir() if path.is_file())
-    print("Built:")
-    for name in built:
-        print(f"  {name}")
+    assert_platform_wheels(dist)
+    print_built_artifacts(dist)
 
 
 def fetch_release(version: str, token: str) -> dict[str, Any]:
@@ -401,6 +383,91 @@ def one(paths: Iterable[Path]) -> Path:
     if len(items) != 1:
         raise SystemExit(f"Expected exactly one wheel, found {len(items)}")
     return items[0]
+
+
+def retag_wheel(wheel: Path, platform_tag: str, dest_dir: Path) -> Path:
+    """Retag a wheel with the current `wheel tags` CLI and move it into dest_dir.
+
+    `wheel tags` writes next to the source file and has no `--wheel-dir`.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "wheel",
+            "tags",
+            "--platform-tag",
+            platform_tag,
+            "--remove",
+            str(wheel),
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if len(names) != 1:
+        raise SystemExit(f"wheel tags should print one filename, got {names!r}")
+    produced = wheel.parent / Path(names[0]).name
+    if not produced.is_file():
+        raise SystemExit(f"wheel tags reported {names[0]!r} but {produced} is missing")
+    destination = dest_dir / produced.name
+    if produced.resolve() != destination.resolve():
+        shutil.move(str(produced), str(destination))
+    return destination
+
+
+def read_wheel_file_tags(wheel_path: Path) -> list[str]:
+    with zipfile.ZipFile(wheel_path) as zf:
+        name = next(
+            (
+                entry.replace("\\", "/")
+                for entry in zf.namelist()
+                if entry.replace("\\", "/").endswith(".dist-info/WHEEL")
+            ),
+            None,
+        )
+        if name is None:
+            raise SystemExit(f"{wheel_path.name} has no WHEEL metadata")
+        return [
+            line.split(":", 1)[1].strip()
+            for line in zf.read(name).decode("utf-8").splitlines()
+            if line.startswith("Tag:")
+        ]
+
+
+def platform_tag_from_wheel_name(name: str) -> str:
+    if not name.endswith(".whl"):
+        raise SystemExit(f"not a wheel: {name}")
+    return name[:-4].rsplit("-", 1)[-1]
+
+
+def assert_platform_wheels(dist: Path) -> None:
+    wheels = sorted(path for path in dist.glob("*.whl"))
+    expected = {target.wheel_tag for target in TARGETS}
+    found = {platform_tag_from_wheel_name(wheel.name): wheel for wheel in wheels}
+    missing = expected - found.keys()
+    extra = set(found) - expected
+    if missing or extra:
+        raise SystemExit(
+            f"platform wheels mismatch: missing={sorted(missing)} extra={sorted(extra)}"
+        )
+    for platform, wheel in sorted(found.items()):
+        tags = read_wheel_file_tags(wheel)
+        if not any(tag.endswith(f"-{platform}") for tag in tags):
+            raise SystemExit(
+                f"{wheel.name} tags {tags} do not include platform {platform}"
+            )
+
+
+def print_built_artifacts(dist: Path) -> None:
+    print("Built:")
+    for path in sorted(item for item in dist.iterdir() if item.is_file()):
+        if path.suffix == ".whl":
+            tags = ",".join(read_wheel_file_tags(path))
+            print(f"  {path.name}  tags={tags}")
+        else:
+            print(f"  {path.name}")
 
 
 if __name__ == "__main__":

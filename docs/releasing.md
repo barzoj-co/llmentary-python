@@ -17,7 +17,11 @@ The Python package version is independent of the bundled proxy version
    set to this repository and `gh workflow run release.yml --ref "$TAG_NAME"`.
 5. `release.yml` **build** checks that the tag matches `project.version`,
    exports `PROXY_VERSION` as `LLMENTARY_RELEASE_VERSION`, builds the sdist
-   and verified platform wheels, and runs `twine check --strict`.
+   and verified platform wheels with pinned `build`/`wheel`/`twine` versions,
+   runs `twine check --strict`, and inspects the wheel tags. The PR/main
+   `publish (dry run)` job in `hygiene.yml` uses the same
+   `python scripts/build_release_wheels.py` invocation and the same pinned
+   tool versions.
 6. **publish** runs only when `vars.PYPI_PUBLISH_ENABLED` is `true`. It uses
    OIDC trusted publishing (no PyPI API token) and the action's default PEP 740
    attestations.

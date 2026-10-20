@@ -207,15 +207,32 @@ jobs:
             --manifest-file=.release-please-manifest.json \
             --token="${RELEASE_PLEASE_TOKEN}"
 
+  # Same pinned tools and scripts/build_release_wheels.py invocation as release.yml.
+  # Forks and Dependabot do not receive LLMTESTLAB_REPO_TOKEN.
   publish-dry-run:
     name: publish (dry run)
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.user.login != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+
+      - name: Fail clearly if llmentary repo token is missing
+        env:
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
+        run: |
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
+            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -223,14 +240,35 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      - name: Build sdist and pure wheel
+      - name: Export bundled proxy version
+        run: |
+          version="$(tr -d '[:space:]' < PROXY_VERSION)"
+          if [ -z "$version" ]; then
+            echo "::error title=Missing PROXY_VERSION::PROXY_VERSION is empty."
+            exit 1
+          fi
+          echo "LLMENTARY_RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Install build tools
         env:
+          # renovate: datasource=pypi depName=build
+          BUILD_VERSION: "1.6.1"
+          # renovate: datasource=pypi depName=wheel
+          WHEEL_VERSION: "0.48.0"
           # renovate: datasource=pypi depName=twine
           TWINE_VERSION: "7.0.0"
-        run: |
-          python -m pip install build "twine==${TWINE_VERSION}"
-          python -m build
-          twine check --strict dist/*
+        run: python -m pip install "build==${BUILD_VERSION}" "wheel==${WHEEL_VERSION}" "twine==${TWINE_VERSION}"
+
+      - name: Build verified platform wheels
+        env:
+          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+        run: python scripts/build_release_wheels.py
+
+      - name: Twine check
+        run: twine check --strict dist/*
+
+      - name: Inspect wheel tags
+        run: bash scripts/inspect-release-wheels.sh
 
       - name: Assert release.yml publish path
         run: scripts/check-workflow-policy.sh
