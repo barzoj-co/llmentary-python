@@ -300,8 +300,11 @@ def assert_clean_release_version(binary: Path, version: str) -> None:
         raise SystemExit(f"{binary} --version failed: {text or completed.returncode}")
     if "+dirty" in first:
         raise SystemExit(f"{binary} --version is dirty: {first}")
-    if version not in first:
-        raise SystemExit(f"{binary} --version {first!r} does not contain {version}")
+    expected = version[1:] if version.startswith("v") else version
+    tokens = first.split()
+    reported = tokens[1] if len(tokens) > 1 else ""
+    if reported.lstrip("v") != expected:
+        raise SystemExit(f"{binary} --version {first!r} does not report {expected}")
 
 
 def verify_asset_checksum(name: str, data: bytes, checksums: dict[str, str]) -> None:

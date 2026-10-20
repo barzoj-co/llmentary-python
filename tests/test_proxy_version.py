@@ -32,5 +32,8 @@ def test_installed_proxy_version_is_clean_0_2_0() -> None:
     assert completed.returncode == 0, completed.stderr
     text = (completed.stdout or completed.stderr).strip()
     first = text.splitlines()[0] if text else ""
-    assert f"llmentary {pin}" in first, first
+    tokens = first.split()
+    reported = tokens[1] if len(tokens) > 1 else ""
+    assert tokens[:1] == ["llmentary"], first
+    assert reported.lstrip("v") == pin, first
     assert "+dirty" not in first, first

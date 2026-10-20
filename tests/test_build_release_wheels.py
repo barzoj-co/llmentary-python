@@ -221,6 +221,20 @@ def test_assert_clean_release_version_accepts_release(tmp_path: Path) -> None:
     )
     binary.chmod(0o755)
     wheels.assert_clean_release_version(binary, "0.2.0")
+    wheels.assert_clean_release_version(binary, "v0.2.0")
+
+
+def test_assert_clean_release_version_requires_exact_token(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text("#!/bin/sh\necho 'llmentary 10.2.0 (abc)'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    with pytest.raises(SystemExit, match=r"does not report 0\.2\.0"):
+        wheels.assert_clean_release_version(binary, "0.2.0")
+
+    binary.write_text("#!/bin/sh\necho 'llmentary 0.2.0-3-gabc123 (abc)'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    with pytest.raises(SystemExit, match=r"does not report 0\.2\.0"):
+        wheels.assert_clean_release_version(binary, "0.2.0")
 
 
 def test_verify_asset_checksum_matches_and_rejects() -> None:
