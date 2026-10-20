@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/barzoj-co/llmentary-python/compare/v0.1.0...v0.1.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* build release wheels with current wheel tags CLI ([#11](https://github.com/barzoj-co/llmentary-python/issues/11)) ([8cfae98](https://github.com/barzoj-co/llmentary-python/commit/8cfae986af00c6dec26a9fca526be6cbb39bab67))
+
 ## 0.1.0 (2026-10-19)
 
 
