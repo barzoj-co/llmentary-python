@@ -461,12 +461,7 @@ class CapturedCall:
         return f"{count} violation" if count == 1 else f"{count} violations"
 
     def call_number(self) -> str:
-        seq = first_present(self.raw, "seq")
-        if isinstance(seq, int) and not isinstance(seq, bool):
-            return str(seq)
-        if isinstance(seq, str) and seq:
-            return seq
-        return str(self.index)
+        return str(self.sequence_number())
 
 
 @dataclass(frozen=True)
@@ -969,7 +964,7 @@ def tool_call_from_raw(value: Any, index: int) -> ToolCall:
         name=str(name or ""),
         arguments=parsed_args,
         raw_arguments=args if isinstance(args, str) else None,
-        call_id=string_or_none(first_present(raw, "id", "call_id", "callId")),
+        call_id=string_or_none(first_present(raw, "call_id", "callId", "id")),
         index=index,
         raw=raw,
     )

@@ -338,9 +338,7 @@ class Expectation:
                 return self
             tool_ids = {tool.call_id for tool in invoked if tool.call_id}
             for later_call in later:
-                contents = tool_result_contents(later_call, name, tool_ids)
-                prompt = later_call.prompt_text
-                if any(content in prompt for content in contents):
+                if tool_result_contents(later_call, name, tool_ids):
                     return self
             self._assert(
                 False,
@@ -443,16 +441,7 @@ class Expectation:
         if calls is None:
             return self.trace.calls
         wanted = {int(value) for value in calls}
-        selected: list[CapturedCall] = []
-        for call in self.trace.calls:
-            seq = first_present(call.raw, "seq")
-            if isinstance(seq, int) and not isinstance(seq, bool):
-                if seq in wanted:
-                    selected.append(call)
-                continue
-            if call.index in wanted:
-                selected.append(call)
-        return selected
+        return [call for call in self.trace.calls if call.sequence_number() in wanted]
 
     def _tool_calls(self) -> Sequence[ToolCall]:
         return [tool for call in self.trace.calls for tool in call.tool_calls]

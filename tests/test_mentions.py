@@ -166,6 +166,46 @@ def test_tool_result_in_prompt_and_mentions_fail_on_mutated_trace() -> None:
         Expectation(mutated).final_response_mentions_any("sunny")
 
 
+def test_tool_result_in_prompt_accepts_result_outside_prompt_text() -> None:
+    trace = SessionTrace.from_payload(
+        "normalized-result",
+        {
+            "calls": [
+                {
+                    "response": {
+                        "output": [
+                            {
+                                "type": "function_call",
+                                "id": "fc_item",
+                                "call_id": "call_weather",
+                                "name": "get_weather",
+                                "arguments": "{}",
+                            }
+                        ]
+                    }
+                },
+                {
+                    "request": {"messages": [{"role": "user", "content": "continue"}]},
+                    "normalized": {
+                        "request": {
+                            "input": [
+                                {
+                                    "type": "function_call_output",
+                                    "call_id": "call_weather",
+                                    "output": "sunny",
+                                }
+                            ]
+                        }
+                    },
+                },
+            ]
+        },
+    )
+    assert "sunny" not in trace.calls[1].prompt_text
+    assert trace.calls[0].tool_calls[0].call_id == "call_weather"
+    Expectation(trace).tool_result_in_prompt("get_weather")
+
+
 def test_final_response_mentions_any_ignores_response_envelope() -> None:
     envelope_only = SessionTrace.from_payload(
         "envelope",

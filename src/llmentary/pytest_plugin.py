@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from .binary import BinaryResolutionError
-from .client import ProxyHandle, Session, new_session_id, start_proxy
+from .client import ProxyHandle, Session, SessionNotFound, new_session_id, start_proxy
 from .wait import default_wait_quiet, default_wait_timeout, parse_duration
 
 
@@ -153,7 +153,7 @@ def pytest_runtest_makereport(
 def green_run_call_summary(session: Session) -> Optional[str]:
     try:
         trace = session.trace()
-    except (httpx.HTTPError, OSError, TypeError):
+    except (SessionNotFound, httpx.HTTPError, OSError, TypeError):
         return None
     if not trace.calls:
         return None

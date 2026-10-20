@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import httpx
 
-from llmentary.client import Session
+from llmentary.client import Session, SessionNotFound
 from llmentary.pytest_plugin import green_run_call_summary
 from llmentary.types import SessionTrace
 
@@ -33,3 +33,7 @@ def test_green_run_call_summary_skips_empty_or_missing() -> None:
         response=httpx.Response(404),
     )
     assert green_run_call_summary(missing) is None
+
+    gone = Mock(spec=Session)
+    gone.trace.side_effect = SessionNotFound("gone")
+    assert green_run_call_summary(gone) is None
