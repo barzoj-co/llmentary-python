@@ -93,6 +93,9 @@ jobs:
       - name: Check README badges and repository block
         run: scripts/check-readme.sh
 
+      - name: Self-test License-File checker
+        run: python3 scripts/check-dist-license-files.py --self-test
+
   renovate-config:
     name: renovate-config
     runs-on: ubuntu-latest
@@ -266,6 +269,9 @@ jobs:
 
       - name: Twine check
         run: twine check --strict dist/*
+
+      - name: Check License-File paths
+        run: python scripts/check-dist-license-files.py dist
 
       - name: Inspect wheel tags
         run: bash scripts/inspect-release-wheels.sh

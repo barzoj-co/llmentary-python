@@ -338,6 +338,19 @@ def wheel_record_digest(data: bytes) -> str:
     return "sha256=" + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
+def wheel_license_path(dist_info: str, license_file: str) -> str:
+    """Return the PEP 639 wheel path for a License-File entry.
+
+    Core metadata stores the project-root-relative path (``licenses/AGPL-3.0.txt``).
+    In a wheel that file must live at ``<dist-info>/licenses/<path>``, so the
+    AGPL text is ``<dist-info>/licenses/licenses/AGPL-3.0.txt``.
+    """
+    relative = license_file.replace("\\", "/").lstrip("/")
+    if not relative or relative.startswith("../") or "/../" in f"/{relative}/":
+        raise SystemExit(f"Refusing unsafe License-File path: {license_file}")
+    return f"{dist_info}/licenses/{relative}"
+
+
 def apply_platform_wheel_license(wheel_path: Path) -> None:
     if not AGPL_LICENSE_FILE.is_file():
         raise SystemExit("Missing licenses/AGPL-3.0.txt")
@@ -362,7 +375,7 @@ def apply_platform_wheel_license(wheel_path: Path) -> None:
     if dist_info is None:
         raise SystemExit(f"{wheel_path.name} has no METADATA")
     for relative, payload in license_files.items():
-        contents.setdefault(f"{dist_info}/{relative}", payload)
+        contents.setdefault(wheel_license_path(dist_info, relative), payload)
     record_name = f"{dist_info}/RECORD"
     record_lines = [
         f"{name},{wheel_record_digest(data)},{len(data)}"
