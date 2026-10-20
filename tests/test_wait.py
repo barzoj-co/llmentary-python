@@ -83,6 +83,7 @@ def test_duration_from_env_defaults_and_overrides(monkeypatch: pytest.MonkeyPatc
 def test_wait_query_string_defaults_and_configured() -> None:
     assert wait_query_string(30.0, 0.5) == "timeout=30s&quiet=500ms"
     assert wait_query_string(90.0, 0.2) == "timeout=90s&quiet=200ms"
+    assert wait_query_string(5.0, 0.1, min_calls=2) == "timeout=5s&quiet=100ms&min_calls=2"
 
 
 def _wait_payload(session_id: str, *, ended: bool = True, seq: int = 1) -> dict[str, object]:
@@ -124,9 +125,30 @@ def test_wait_session_sends_timeout_and_quiet_query_string(
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         client = ControlClient("http://127.0.0.1:7778", client=http)
-        client.wait_session(session_id, **kwargs)
+        client.wait_session(
+            session_id,
+            timeout=kwargs.get("timeout"),
+            quiet=kwargs.get("quiet"),
+            quiet_for=kwargs.get("quiet_for"),
+        )
 
     assert recorded == [query]
+
+
+def test_wait_session_sends_min_calls() -> None:
+    session_id = "sess-min"
+    recorded: list[str] = []
+    payload = _wait_payload(session_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(_query_string(request))
+        return httpx.Response(200, json=payload)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        client.wait_session(session_id, timeout=5, quiet=0.1, min_calls=2)
+
+    assert recorded == ["timeout=5s&quiet=100ms&min_calls=2"]
 
 
 def test_wait_session_timeout_error_message() -> None:

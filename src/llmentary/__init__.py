@@ -4,8 +4,22 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .assertions import Expectation, SoftExpectation
 from .binary import BinaryResolutionError, find_binary
-from .client import ControlClient, ProxyHandle, Query, Session, start_proxy
-from .types import APIType, SessionTrace
+from .client import (
+    ControlClient,
+    ProxyHandle,
+    Query,
+    Session,
+    SessionNotFound,
+    start_proxy,
+)
+from .types import (
+    APIType,
+    IgnoredField,
+    SessionInfo,
+    SessionTrace,
+    SpecViolation,
+    Validation,
+)
 from .wait import WaitTimeoutError
 
 try:
@@ -18,11 +32,16 @@ __all__ = [
     "BinaryResolutionError",
     "ControlClient",
     "Expectation",
+    "IgnoredField",
     "ProxyHandle",
     "Query",
     "Session",
+    "SessionInfo",
+    "SessionNotFound",
     "SessionTrace",
     "SoftExpectation",
+    "SpecViolation",
+    "Validation",
     "WaitTimeoutError",
     "__version__",
     "find_binary",

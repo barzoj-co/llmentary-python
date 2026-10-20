@@ -55,6 +55,65 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class Validation:
+    """Per-call spec-validation metadata (was it checked, and how)."""
+
+    mode: Optional[str] = None
+    profile: Optional[str] = None
+    spec_sha: Optional[str] = None
+    schema_subset_retrieved: Optional[str] = None
+    request_checked: Optional[bool] = None
+    response_checked: Optional[bool] = None
+    skipped_reason: Optional[str] = None
+    duration_us: Optional[int] = None
+    truncated: Optional[bool] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SpecViolation:
+    """One spec-validation finding from ``normalized.spec_violations``."""
+
+    side: Optional[str] = None
+    source: Optional[str] = None
+    path: Optional[str] = None
+    pointer: Optional[str] = None
+    keyword: Optional[str] = None
+    message: Optional[str] = None
+    profile: Optional[str] = None
+    schema_ref: Optional[str] = None
+    offset: Optional[int] = None
+    event_index: Optional[int] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class IgnoredField:
+    """One ignored-field warning from ``normalized.ignored_fields``."""
+
+    side: Optional[str] = None
+    path: Optional[str] = None
+    pointer: Optional[str] = None
+    kind: Optional[str] = None
+    severity: Optional[str] = None
+    message: Optional[str] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SessionInfo:
+    """Cheap session list row from ``GET /sessions`` (no call bodies)."""
+
+    id: str
+    calls: int = 0
+    active: int = 0
+    sources: tuple[str, ...] = ()
+    first_started_at: Optional[str] = None
+    last_ended_at: Optional[str] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class CapturedCall:
     """A single upstream LLM call as returned by the control API.
 
@@ -323,6 +382,63 @@ class CapturedCall:
             results.extend(extract_tool_results(normalized))
         return results
 
+    @property
+    def validation(self) -> Optional[Validation]:
+        """Metadata: whether spec validation ran. Not a finding list."""
+
+        for source in (self.normalized_payload, self.raw):
+            if not isinstance(source, Mapping) or "validation" not in source:
+                continue
+            value = source.get("validation")
+            if isinstance(value, Mapping):
+                return validation_from_mapping(value)
+        return None
+
+    @property
+    def spec_violations(self) -> Optional[list[SpecViolation]]:
+        """Findings, or ``None`` when validation was not run (key absent)."""
+
+        raw_list = optional_list_field(
+            self.normalized_payload, "spec_violations", "specViolations"
+        )
+        if raw_list is None:
+            raw_list = optional_list_field(self.raw, "spec_violations", "specViolations")
+        if raw_list is None:
+            return None
+        return [spec_violation_from_mapping(item) for item in raw_list]
+
+    @property
+    def ignored_fields(self) -> Optional[list[IgnoredField]]:
+        """Ignored-field warnings, or ``None`` when the key is absent."""
+
+        raw_list = optional_list_field(
+            self.normalized_payload, "ignored_fields", "ignoredFields"
+        )
+        if raw_list is None:
+            raw_list = optional_list_field(self.raw, "ignored_fields", "ignoredFields")
+        if raw_list is None:
+            return None
+        return [ignored_field_from_mapping(item) for item in raw_list]
+
+    def spec_status_label(self) -> str:
+        """``clean``, ``N violations``, or ``not checked`` for ``trace_summary``."""
+
+        items = self.spec_violations
+        if items is None:
+            return "not checked"
+        if not items:
+            return "clean"
+        count = len(items)
+        return f"{count} violation" if count == 1 else f"{count} violations"
+
+    def call_number(self) -> str:
+        seq = first_present(self.raw, "seq")
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            return str(seq)
+        if isinstance(seq, str) and seq:
+            return seq
+        return str(self.index)
+
 
 @dataclass(frozen=True)
 class SessionTrace:
@@ -357,10 +473,11 @@ class SessionTrace:
             aborted = ", client_aborted" if call.client_aborted else ""
             truncated = ", stream_truncated" if call.stream_truncated else ""
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
+            spec = f", spec: {call.spec_status_label()}"
             lines.append(
                 f"  [{call.index}] api={api_label} model={call.model or '?'} "
                 f"status={status}{http_status}{streamed}{aborted}{truncated}{finish}"
-                f"{latency}{ttft} tools=[{tool_names}]"
+                f"{latency}{ttft} tools=[{tool_names}]{spec}"
             )
             if not call.tool_calls:
                 lines.append(f"      call keys={list(call.raw.keys())}")
@@ -383,6 +500,22 @@ class SessionTrace:
         if model:
             calls = [call for call in calls if model_matches(call.model, model)]
         return SessionTrace(session_id=self.session_id, raw=self.raw, calls=calls)
+
+    def spec_violations(self) -> list[SpecViolation]:
+        found: list[SpecViolation] = []
+        for call in self.calls:
+            items = call.spec_violations
+            if items:
+                found.extend(items)
+        return found
+
+    def ignored_fields(self) -> list[IgnoredField]:
+        found: list[IgnoredField] = []
+        for call in self.calls:
+            items = call.ignored_fields
+            if items:
+                found.extend(items)
+        return found
 
 
 def model_matches(actual: Optional[str], expected: str) -> bool:
@@ -883,3 +1016,121 @@ def stringify_value(value: Any) -> str:
 
 def string_or_none(value: Any) -> Optional[str]:
     return value if isinstance(value, str) else None
+
+
+def optional_list_field(mapping: Mapping[str, Any], *keys: str) -> Optional[list[Any]]:
+    if not isinstance(mapping, Mapping):
+        return None
+    for key in keys:
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return list(value)
+        return None
+    return None
+
+
+def optional_str(mapping: Mapping[str, Any], *keys: str) -> Optional[str]:
+    value = first_present(mapping, *keys)
+    return value if isinstance(value, str) else None
+
+
+def optional_bool(mapping: Mapping[str, Any], *keys: str) -> Optional[bool]:
+    value = first_present(mapping, *keys)
+    return value if isinstance(value, bool) else None
+
+
+def optional_int(mapping: Mapping[str, Any], *keys: str) -> Optional[int]:
+    value = first_present(mapping, *keys)
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def validation_from_mapping(raw: Mapping[str, Any]) -> Validation:
+    mapping = coerce_mapping(raw)
+    return Validation(
+        mode=optional_str(mapping, "mode"),
+        profile=optional_str(mapping, "profile"),
+        spec_sha=optional_str(mapping, "spec_sha", "specSHA", "specSha"),
+        schema_subset_retrieved=optional_str(
+            mapping, "schema_subset_retrieved", "schemaSubsetRetrieved"
+        ),
+        request_checked=optional_bool(mapping, "request_checked", "requestChecked"),
+        response_checked=optional_bool(mapping, "response_checked", "responseChecked"),
+        skipped_reason=optional_str(mapping, "skipped_reason", "skippedReason"),
+        duration_us=optional_int(mapping, "duration_us", "durationUs"),
+        truncated=optional_bool(mapping, "truncated"),
+        raw=mapping,
+    )
+
+
+def spec_violation_from_mapping(raw: Any) -> SpecViolation:
+    mapping = coerce_mapping(raw)
+    return SpecViolation(
+        side=optional_str(mapping, "side"),
+        source=optional_str(mapping, "source"),
+        path=optional_str(mapping, "path"),
+        pointer=optional_str(mapping, "pointer"),
+        keyword=optional_str(mapping, "keyword"),
+        message=optional_str(mapping, "message"),
+        profile=optional_str(mapping, "profile"),
+        schema_ref=optional_str(mapping, "schema_ref", "schemaRef"),
+        offset=optional_int(mapping, "offset"),
+        event_index=optional_int(mapping, "event_index", "eventIndex"),
+        raw=mapping,
+    )
+
+
+def ignored_field_from_mapping(raw: Any) -> IgnoredField:
+    mapping = coerce_mapping(raw)
+    return IgnoredField(
+        side=optional_str(mapping, "side"),
+        path=optional_str(mapping, "path"),
+        pointer=optional_str(mapping, "pointer"),
+        kind=optional_str(mapping, "kind", "keyword"),
+        severity=optional_str(mapping, "severity"),
+        message=optional_str(mapping, "message"),
+        raw=mapping,
+    )
+
+
+def session_info_from_mapping(raw: Mapping[str, Any]) -> SessionInfo:
+    mapping = coerce_mapping(raw)
+    session_id = optional_str(mapping, "id", "session_id", "sessionId") or ""
+    calls_value = mapping.get("calls")
+    if isinstance(calls_value, list):
+        call_count = len(calls_value)
+    else:
+        call_count = optional_int(mapping, "calls") or 0
+    sources_value = mapping.get("sources")
+    sources = (
+        tuple(str(item) for item in sources_value if item is not None)
+        if isinstance(sources_value, list)
+        else ()
+    )
+    return SessionInfo(
+        id=session_id,
+        calls=call_count,
+        active=optional_int(mapping, "active") or 0,
+        sources=sources,
+        first_started_at=optional_str(
+            mapping, "first_started_at", "firstStartedAt"
+        ),
+        last_ended_at=optional_str(mapping, "last_ended_at", "lastEndedAt"),
+        raw=mapping,
+    )
+
+
+def zero_calls_message(session_id: str, known_ids: Sequence[str] = ()) -> str:
+    listed = ", ".join(known_ids) if known_ids else "(none)"
+    return (
+        f"no calls recorded for session {session_id}; known sessions: {listed}"
+    )

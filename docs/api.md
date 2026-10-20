@@ -9,9 +9,11 @@ from llmentary import ControlClient
 
 control = ControlClient("http://127.0.0.1:7778", token=None)
 control.health()
-trace = control.wait_session("session-id", timeout=30, quiet=0.5)
+sessions = control.list_sessions()
+trace = control.wait_session("session-id", timeout=30, quiet=0.5, min_calls=2)
 control.delete_session("session-id")
 otlp_bytes = control.otlp("session-id")
+version = control.version()
 ```
 
 The Go proxy serves OpenAI-compatible traffic on `-listen` and the control API
@@ -19,11 +21,17 @@ on a separate `-control` address (default `127.0.0.1:7778`). The control client
 uses:
 
 - `GET /healthz`
+- `GET /config` (includes `version` and the effective upstreams)
+- `GET /sessions` and `GET /sessions?source=…`
 - `GET /sessions/{id}`
-- `GET /sessions/{id}/wait?timeout=30s&quiet=500ms`
+- `GET /sessions/{id}/wait?timeout=30s&quiet=500ms&min_calls=2`
 - fallback `POST /sessions/{id}/wait`
 - `DELETE /sessions/{id}`
 - `GET /sessions/{id}/otlp`
+
+`GET /sessions/{id}` and `GET /sessions/{id}/otlp` raise `SessionNotFound` on
+404. Expect helpers on a session with zero calls fail with
+`no calls recorded for session <id>; known sessions: …`.
 
 For non-loopback proxies, pass the bearer token as `token` or set
 `LLMENTARY_CONTROL_TOKEN`.
@@ -42,11 +50,13 @@ Useful properties:
 
 Methods:
 
-- `llmentary.wait(timeout=None, quiet=None)`: wait for quiescence and return a trace.
-  `quiet_for` remains a deprecated alias of `quiet`. Defaults are `timeout=30s`
-  and `quiet=500ms` (`LLMENTARY_WAIT_TIMEOUT` / `LLMENTARY_WAIT_QUIET`). A 504
-  raises `WaitTimeoutError`.
+- `llmentary.wait(timeout=None, quiet=None, min_calls=None)`: wait for
+  quiescence and return a trace. `quiet_for` remains a deprecated alias of
+  `quiet`. Defaults are `timeout=30s` and `quiet=500ms`
+  (`LLMENTARY_WAIT_TIMEOUT` / `LLMENTARY_WAIT_QUIET`). `min_calls` waits until
+  that many finished calls exist. A 504 raises `WaitTimeoutError`.
 - `llmentary.trace()`: fetch the current trace without waiting
+- `llmentary.list_sessions()`: cheap session list from `GET /sessions`
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session
 - `llmentary.expect(soft=False)`: wait, then return an expectation object
@@ -134,6 +144,31 @@ expect.response_json_schema({"type": "object", "required": ["answer"]})
 JSON assertions inspect model output text only (`output_text`, Chat
 `choices[].message.content`, Responses `output[].content`), not the HTTP
 response envelope.
+
+### Spec validation
+
+`validation` is metadata (was the call checked, and how). `spec_violations`
+and `ignored_fields` are findings. `[]` means checked and clean; a missing key
+means validation was not run.
+
+| Field | Meaning |
+| --- | --- |
+| `call.validation` | Frozen `Validation` metadata, or `None` |
+| `call.spec_violations` | `list[SpecViolation]` or `None` if not checked |
+| `call.ignored_fields` | `list[IgnoredField]` or `None` if not checked |
+| `trace.spec_violations()` | Flattened findings from checked calls |
+
+```python
+expect.no_spec_violations()
+expect.no_spec_violations(side="request", ignore_paths=("/foo",), allow_unvalidated=False)
+expect.no_ignored_fields()
+```
+
+`no_spec_violations` and `no_ignored_fields` are never vacuous: they fail with
+`validation was not run` when nothing was checked, unless
+`allow_unvalidated=True`. Finding failures use
+`<call#> <api_family> <side> <path>: <message> — <hint>`.
+`trace_summary()` adds `spec: clean | N violations | not checked` per call.
 
 ## Trace payload handling
 

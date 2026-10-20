@@ -9,6 +9,7 @@ from llmentary.client import (
     build_start_command,
     default_control_url,
     encode_baggage_value,
+    normalize_upstream_url,
     redact_command,
 )
 
@@ -32,10 +33,32 @@ def test_build_start_command_matches_go_cli(tmp_path: Path) -> None:
         "-control",
         "127.0.0.1:7778",
         "-upstream",
-        "openai=http://127.0.0.1:9",
+        "openai=http://127.0.0.1:9/v1",
         "-control-token",
         "secret",
     ]
+
+
+def test_build_start_command_omits_upstream_when_unset(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    command = build_start_command(
+        bin_path=binary,
+        host="127.0.0.1",
+        port=7777,
+        control_port=7778,
+        upstream_url=None,
+        upstream_api_key=None,
+        token=None,
+        env={},
+    )
+    assert command == [
+        str(binary),
+        "-listen",
+        "127.0.0.1:7777",
+        "-control",
+        "127.0.0.1:7778",
+    ]
+    assert "-upstream" not in command
 
 
 def test_build_start_command_template(tmp_path: Path) -> None:
@@ -61,8 +84,17 @@ def test_build_start_command_template(tmp_path: Path) -> None:
         "-control",
         "127.0.0.1:10",
         "-upstream",
-        "openai=http://upstream",
+        "openai=http://upstream/v1",
     ]
+
+
+def test_normalize_upstream_url_keeps_v1_suffix() -> None:
+    assert normalize_upstream_url("https://api.openai.com/v1") == "https://api.openai.com/v1"
+    assert normalize_upstream_url("https://api.openai.com/v1/") == "https://api.openai.com/v1"
+    assert normalize_upstream_url("https://api.openai.com") == "https://api.openai.com"
+    assert (
+        normalize_upstream_url("https://openrouter.ai/api/v1") == "https://openrouter.ai/api/v1"
+    )
 
 
 def test_redact_command_hides_control_token() -> None:

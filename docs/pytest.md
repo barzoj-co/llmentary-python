@@ -28,7 +28,9 @@ pytest
 
 The fixture health-checks `GET /healthz` before yielding and terminates the
 started process at the end of the test session. Attached proxies are not
-terminated.
+terminated. If no upstream URL is set, the proxy defaults to
+`openai=https://api.openai.com/v1`. The client does not strip a trailing
+`/v1` from `LLMENTARY_UPSTREAM_BASE_URL`.
 
 ### `llmentary`
 

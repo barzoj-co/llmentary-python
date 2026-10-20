@@ -12,7 +12,9 @@ class FakeOpenAIServer:
     def __init__(self) -> None:
         self.host = "127.0.0.1"
         self.port = free_port(self.host)
+        self.received_paths: list[str] = []
         self.server = ThreadingHTTPServer((self.host, self.port), FakeOpenAIHandler)
+        self.server.received_paths = self.received_paths  # type: ignore[attr-defined]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     @property
@@ -36,6 +38,9 @@ class FakeOpenAIHandler(BaseHTTPRequestHandler):
         self.send_json({"ok": True})
 
     def do_POST(self) -> None:
+        paths = getattr(self.server, "received_paths", None)
+        if isinstance(paths, list):
+            paths.append(self.path)
         body = self.read_json()
         if self.path.endswith("/chat/completions"):
             self.handle_chat(body)

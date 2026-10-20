@@ -41,12 +41,14 @@ class WaitTimeoutError(TimeoutError):
         timeout: float,
         calls: int,
         active: int,
+        min_calls: Optional[int] = None,
     ) -> None:
         super().__init__(message)
         self.session_id = session_id
         self.timeout = timeout
         self.calls = calls
         self.active = active
+        self.min_calls = min_calls
 
 
 def format_go_duration(seconds: float) -> str:
@@ -129,13 +131,18 @@ def resolve_wait_quiet(
     return default_wait_quiet()
 
 
-def wait_query_string(timeout: float, quiet: float) -> str:
-    return urlencode(
-        {
-            "timeout": format_go_duration(timeout),
-            "quiet": format_go_duration(quiet),
-        }
-    )
+def wait_query_string(
+    timeout: float,
+    quiet: float,
+    min_calls: Optional[int] = None,
+) -> str:
+    params: dict[str, str] = {
+        "timeout": format_go_duration(timeout),
+        "quiet": format_go_duration(quiet),
+    }
+    if min_calls is not None:
+        params["min_calls"] = str(int(min_calls))
+    return urlencode(params)
 
 
 def count_active_calls(payload: Mapping[str, Any], trace: SessionTrace) -> int:
@@ -157,9 +164,24 @@ def wait_timeout_error(
     payload: Optional[Mapping[str, Any]] = None,
 ) -> WaitTimeoutError:
     raw = payload or {}
-    trace = SessionTrace.from_payload(session_id, raw)
-    calls = len(trace.calls)
-    active = count_active_calls(raw, trace)
+    error = raw.get("error") if isinstance(raw.get("error"), Mapping) else {}
+    error_mapping = error if isinstance(error, Mapping) else {}
+    nested_session = raw.get("session")
+    session_payload = nested_session if isinstance(nested_session, Mapping) else raw
+    trace = SessionTrace.from_payload(session_id, session_payload)
+    calls_seen = error_mapping.get("calls_seen")
+    calls = (
+        int(calls_seen)
+        if isinstance(calls_seen, int) and not isinstance(calls_seen, bool)
+        else len(trace.calls)
+    )
+    min_calls_value = error_mapping.get("min_calls")
+    min_calls = (
+        int(min_calls_value)
+        if isinstance(min_calls_value, int) and not isinstance(min_calls_value, bool)
+        else None
+    )
+    active = count_active_calls(session_payload, trace)
     message = (
         f"wait timed out after {format_go_duration(timeout)} on session {session_id} "
         f"({calls} calls so far, still active: {active}). "
@@ -171,4 +193,5 @@ def wait_timeout_error(
         timeout=timeout,
         calls=calls,
         active=active,
+        min_calls=min_calls,
     )

@@ -29,8 +29,11 @@ doctor` prints what this install resolved.
 
 The client starts the proxy with the Go binary's flags: `-listen` for the
 OpenAI-compatible proxy, `-control` for the control API, and
-`-upstream name=https://host/base` (default name `openai`). Override the whole
-command with `LLMENTARY_START_COMMAND` if needed:
+`-upstream name=https://host/base` (default name `openai`). A trailing `/v1`
+on the upstream URL is passed through; the proxy owns the overlap-join rule
+that prevents `/v1/v1`. With no upstream setting the proxy defaults to
+`openai=https://api.openai.com/v1`. Override the whole command with
+`LLMENTARY_START_COMMAND` if needed:
 
 ```bash
 export LLMENTARY_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
