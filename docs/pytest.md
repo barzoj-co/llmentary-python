@@ -106,6 +106,20 @@ def test_openai(llmentary):
     )
 ```
 
+When the client is constructed at import time and cannot take headers, set
+`OPENAI_BASE_URL` to `llmentary.path_base_url()` before importing the app. See
+the proxy [black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
+
+```python
+import os
+from openai import OpenAI
+
+
+def test_path_session(llmentary):
+    os.environ["OPENAI_BASE_URL"] = llmentary.path_base_url()
+    client = OpenAI()
+```
+
 ### httpx
 
 ```python

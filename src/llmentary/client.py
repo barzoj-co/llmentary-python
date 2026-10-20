@@ -10,7 +10,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 from urllib.parse import quote, urlparse
@@ -323,6 +323,20 @@ class Session:
     def openai_base_url(self) -> str:
         return f"{self.proxy.url.rstrip('/')}/v1"
 
+    def path_base_url(self, upstream: Optional[str] = None) -> str:
+        """OpenAI-compatible base URL that attributes calls via ``/s/{session}/``.
+
+        Use this when the service under test cannot send ``X-Test-Session``.
+        ``upstream=None`` yields ``{proxy}/s/{id}/v1``. A named upstream yields
+        ``{proxy}/s/{id}/u/{name}``.
+        """
+
+        root = self.proxy.url.rstrip("/")
+        session = quote(self.session_id, safe="")
+        if upstream:
+            return f"{root}/s/{session}/u/{upstream}"
+        return f"{root}/s/{session}/v1"
+
     @property
     def headers(self) -> dict[str, str]:
         return {SESSION_HEADER: self.session_id, "baggage": self.baggage}
@@ -372,8 +386,25 @@ class Session:
     ) -> Query:
         return Query(self, api_type=api_type, model=model)
 
-    def expect(self, *, soft: bool = False) -> Expectation:
+    def mark(self) -> int:
+        """Record the current max call sequence number for ``expect(since=...)``."""
+
+        try:
+            trace = self.trace()
+        except SessionNotFound:
+            return 0
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return 0
+            raise
+        if not trace.calls:
+            return 0
+        return max(call.sequence_number() for call in trace.calls)
+
+    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
         trace = self._trace_or_zero_calls()
+        if since is not None:
+            trace = trace.since(since)
         return SoftExpectation(trace) if soft else Expectation(trace)
 
     @contextlib.contextmanager
@@ -414,11 +445,30 @@ class Query:
     session: Session
     api_type: Optional[str] = None
     model: Optional[str] = None
+    offers_tool_name: Optional[str] = None
+    include_tools: Optional[bool] = None
+    since_seq: Optional[int] = None
 
-    def expect(self, *, soft: bool = False) -> Expectation:
+    def offers_tool(self, name: str) -> Query:
+        return replace(self, offers_tool_name=name)
+
+    def with_tools(self) -> Query:
+        return replace(self, include_tools=True)
+
+    def without_tools(self) -> Query:
+        return replace(self, include_tools=False)
+
+    def since(self, mark: int) -> Query:
+        return replace(self, since_seq=mark)
+
+    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
+        mark = self.since_seq if since is None else since
         trace = self.session._trace_or_zero_calls().filtered(
             api_type=normalize_api_type(self.api_type) if self.api_type else None,
             model=self.model,
+            offers_tool=self.offers_tool_name,
+            with_tools=self.include_tools,
+            since=mark,
         )
         return SoftExpectation(trace) if soft else Expectation(trace)
 
