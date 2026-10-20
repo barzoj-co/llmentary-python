@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/barzoj-co/llmentary-python/compare/v0.1.1...v0.2.0) (2026-10-20)
+
+
+### Features
+
+* rename lab API to llmentary and slim README ([#10](https://github.com/barzoj-co/llmentary-python/issues/10)) ([e14b350](https://github.com/barzoj-co/llmentary-python/commit/e14b350e0b793d7e6e240bc26893082c41302aa1))
+
+
+### Bug Fixes
+
+* place bundled AGPL at the PEP 639 License-File path ([#13](https://github.com/barzoj-co/llmentary-python/issues/13)) ([45210e1](https://github.com/barzoj-co/llmentary-python/commit/45210e1715707424554bd7764bb28a786dfe1060))
+
 ## [0.1.1](https://github.com/barzoj-co/llmentary-python/compare/v0.1.0...v0.1.1) (2026-10-20)
 
 
