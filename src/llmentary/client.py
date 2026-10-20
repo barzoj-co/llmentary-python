@@ -19,8 +19,15 @@ import httpx
 
 from .assertions import Expectation, SoftExpectation
 from .binary import find_binary
-from .types import SessionTrace, normalize_api_type
+from .types import (
+    SessionInfo,
+    SessionTrace,
+    normalize_api_type,
+    session_info_from_mapping,
+    zero_calls_message,
+)
 from .wait import (
+    WaitTimeoutError,
     default_wait_quiet,
     default_wait_timeout,
     resolve_wait_quiet,
@@ -31,6 +38,22 @@ from .wait import (
 
 SESSION_HEADER = "X-Test-Session"
 BAGGAGE_SESSION_KEY = "llmentary.session.id"
+
+
+class SessionNotFound(LookupError):
+    """Raised when a control-API GET returns 404 ``session_not_found``."""
+
+    def __init__(
+        self,
+        session_id: str,
+        message: str = "",
+        *,
+        known_ids: Sequence[str] = (),
+    ) -> None:
+        text = message or zero_calls_message(session_id, known_ids)
+        super().__init__(text)
+        self.session_id = session_id
+        self.known_ids = tuple(known_ids)
 
 
 class ControlClient:
@@ -84,11 +107,48 @@ class ControlClient:
             f"llmentary did not become healthy at {self.base_url}"
         ) from last_error
 
+    def config(self) -> Mapping[str, Any]:
+        response = self._client.get(f"{self.base_url}/config", headers=self.headers)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise TypeError(f"Unexpected config payload: {payload!r}")
+        return payload
+
+    def version(self) -> str:
+        payload = self.config()
+        value = payload.get("version")
+        if isinstance(value, str) and value:
+            return value
+        raise TypeError(f"GET /config did not include a version string: {payload!r}")
+
+    def list_sessions(self, *, source: Optional[str] = None) -> list[SessionInfo]:
+        params = {"source": source} if source else None
+        response = self._client.get(
+            f"{self.base_url}/sessions",
+            headers=self.headers,
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise TypeError(f"Unexpected sessions payload: {payload!r}")
+        raw_sessions = payload.get("sessions")
+        if raw_sessions is None:
+            raw_sessions = payload.get("items")
+        if raw_sessions is None:
+            return []
+        if not isinstance(raw_sessions, list):
+            raise TypeError(f"Unexpected sessions list: {raw_sessions!r}")
+        return [session_info_from_mapping(coerce_session_row(item)) for item in raw_sessions]
+
     def get_session(self, session_id: str) -> SessionTrace:
         response = self._client.get(
             f"{self.base_url}/sessions/{session_id}",
             headers=self.headers,
         )
+        if response.status_code == 404:
+            raise self._session_not_found(session_id, response)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, Mapping):
@@ -102,10 +162,11 @@ class ControlClient:
         timeout: Optional[float] = None,
         quiet: Optional[float] = None,
         quiet_for: Optional[float] = None,
+        min_calls: Optional[int] = None,
     ) -> SessionTrace:
         resolved_timeout = resolve_wait_timeout(timeout)
         resolved_quiet = resolve_wait_quiet(quiet, quiet_for)
-        query = wait_query_string(resolved_timeout, resolved_quiet)
+        query = wait_query_string(resolved_timeout, resolved_quiet, min_calls=min_calls)
         url = f"{self.base_url}/sessions/{session_id}/wait?{query}"
         request_timeout = resolved_timeout + resolved_quiet + 5
         try:
@@ -116,17 +177,26 @@ class ControlClient:
             raise self._wait_timeout(session_id, resolved_timeout) from exc
         if response.status_code == 504:
             raise self._wait_timeout(session_id, resolved_timeout, response)
+        if response.status_code == 404:
+            raise self._session_not_found(session_id, response)
         response.raise_for_status()
+        payload: Optional[Mapping[str, Any]] = None
         if response.content:
             try:
-                payload = response.json()
+                parsed = response.json()
             except ValueError:
-                payload = None
-            if isinstance(payload, Mapping):
-                trace = SessionTrace.from_payload(session_id, payload)
+                parsed = None
+            if isinstance(parsed, Mapping):
+                payload = parsed
+                trace = SessionTrace.from_payload(session_id, parsed)
                 if trace.calls:
                     return trace
-        return self.get_session(session_id)
+        try:
+            return self.get_session(session_id)
+        except SessionNotFound:
+            if payload is not None:
+                return SessionTrace.from_payload(session_id, payload)
+            return SessionTrace.from_payload(session_id, {"id": session_id, "calls": []})
 
     def _wait_request(self, method: str, url: str, request_timeout: float) -> httpx.Response:
         return self._client.request(
@@ -153,9 +223,40 @@ class ControlClient:
         if payload is None:
             try:
                 payload = self.get_session(session_id).raw
+            except SessionNotFound:
+                payload = {}
             except (httpx.HTTPError, OSError, TypeError):
                 payload = {}
         return wait_timeout_error(session_id, timeout, payload)
+
+    def _session_not_found(
+        self,
+        session_id: str,
+        response: httpx.Response,
+    ) -> SessionNotFound:
+        error = control_error_payload(response)
+        message = ""
+        if error:
+            raw_message = error.get("message")
+            if isinstance(raw_message, str):
+                message = raw_message
+        known_ids = self._known_session_ids()
+        if known_ids and not message_lists_known_ids(message, known_ids):
+            suffix = f"known sessions: {', '.join(known_ids)}"
+            message = (
+                f"{message}; {suffix}"
+                if message
+                else zero_calls_message(session_id, known_ids)
+            )
+        elif not message:
+            message = zero_calls_message(session_id, known_ids)
+        return SessionNotFound(session_id, message, known_ids=known_ids)
+
+    def _known_session_ids(self) -> list[str]:
+        try:
+            return [item.id for item in self.list_sessions() if item.id]
+        except (httpx.HTTPError, OSError, TypeError, ValueError):
+            return []
 
     def delete_session(self, session_id: str) -> None:
         response = self._client.delete(
@@ -171,6 +272,8 @@ class ControlClient:
             f"{self.base_url}/sessions/{session_id}/otlp",
             headers=self.headers,
         )
+        if response.status_code == 404:
+            raise self._session_not_found(session_id, response)
         response.raise_for_status()
         return cast(bytes, response.content)
 
@@ -238,6 +341,7 @@ class Session:
         timeout: Optional[float] = None,
         quiet: Optional[float] = None,
         quiet_for: Optional[float] = None,
+        min_calls: Optional[int] = None,
     ) -> SessionTrace:
         return self.proxy.control.wait_session(
             self.session_id,
@@ -245,10 +349,14 @@ class Session:
             quiet=resolve_wait_quiet(quiet, quiet_for)
             if quiet is not None or quiet_for is not None
             else self.quiet_for,
+            min_calls=min_calls,
         )
 
     def trace(self) -> SessionTrace:
         return self.proxy.control.get_session(self.session_id)
+
+    def list_sessions(self, *, source: Optional[str] = None) -> list[SessionInfo]:
+        return self.proxy.control.list_sessions(source=source)
 
     def cleanup(self) -> None:
         self.proxy.control.delete_session(self.session_id)
@@ -265,14 +373,40 @@ class Session:
         return Query(self, api_type=api_type, model=model)
 
     def expect(self, *, soft: bool = False) -> Expectation:
-        trace = self.wait()
+        trace = self._trace_or_zero_calls()
         return SoftExpectation(trace) if soft else Expectation(trace)
 
     @contextlib.contextmanager
     def soft_expect(self) -> Iterator[SoftExpectation]:
-        expectation = SoftExpectation(self.wait())
+        expectation = SoftExpectation(self._trace_or_zero_calls())
         yield expectation
         expectation.assert_all()
+
+    def _trace_or_zero_calls(self) -> SessionTrace:
+        try:
+            trace = self.wait()
+        except WaitTimeoutError as exc:
+            if exc.calls == 0:
+                raise AssertionError(self._zero_calls_error()) from exc
+            raise
+        except SessionNotFound as exc:
+            raise AssertionError(self._zero_calls_error()) from exc
+        if not trace.calls:
+            raise AssertionError(self._zero_calls_error(trace))
+        return trace
+
+    def _zero_calls_error(self, trace: Optional[SessionTrace] = None) -> str:
+        known = self._known_session_ids()
+        message = zero_calls_message(self.session_id, known)
+        if trace is None:
+            return message
+        return f"{message}\n\n{trace.trace_summary()}"
+
+    def _known_session_ids(self) -> list[str]:
+        try:
+            return [item.id for item in self.list_sessions() if item.id]
+        except (httpx.HTTPError, OSError, TypeError, ValueError):
+            return []
 
 
 @dataclass
@@ -282,7 +416,7 @@ class Query:
     model: Optional[str] = None
 
     def expect(self, *, soft: bool = False) -> Expectation:
-        trace = self.session.wait().filtered(
+        trace = self.session._trace_or_zero_calls().filtered(
             api_type=normalize_api_type(self.api_type) if self.api_type else None,
             model=self.model,
         )
@@ -418,17 +552,14 @@ def build_start_command(
 
 
 def normalize_upstream_url(url: str) -> str:
-    """Map OpenAI-style base URLs to the Go proxy `name=origin` form.
+    """Pass the upstream URL through without rewriting its path.
 
-    The proxy concatenates the inbound request path onto the upstream origin, so
-    `https://api.openai.com/v1` plus `/v1/chat/completions` 404s. Strip a
-    trailing `/v1`.
+    The proxy owns the overlap-join rule that prevents ``/v1/v1``. Both
+    ``https://api.openai.com`` and ``https://api.openai.com/v1`` are valid and
+    must be forwarded unchanged so the three clients share one join table.
     """
 
-    cleaned = url.strip().rstrip("/")
-    if cleaned.endswith("/v1"):
-        cleaned = cleaned[: -len("/v1")].rstrip("/")
-    return cleaned
+    return url.strip().rstrip("/")
 
 
 def apply_upstream_api_key(env: dict[str, str], api_key: Optional[str]) -> None:
@@ -502,6 +633,43 @@ def read_process_output(process: subprocess.Popen[str], *, log_file: TextIO) -> 
 
 def new_session_id(prefix: str = "pytest") -> str:
     return f"{prefix}-{uuid.uuid4().hex}"
+
+
+def control_error_payload(response: httpx.Response) -> Optional[Mapping[str, Any]]:
+    if not response.content:
+        return None
+    try:
+        parsed = response.json()
+    except ValueError:
+        return None
+    if not isinstance(parsed, Mapping):
+        return None
+    error = parsed.get("error")
+    return error if isinstance(error, Mapping) else parsed
+
+
+def coerce_session_row(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def message_lists_known_ids(message: str, known_ids: Sequence[str]) -> bool:
+    """True when each known id is listed after ``known sessions:``, not merely mentioned."""
+
+    if not known_ids:
+        return True
+    marker = "known sessions:"
+    position = message.lower().rfind(marker)
+    if position < 0:
+        return False
+    tail = message[position + len(marker) :]
+    tokens = {
+        token.strip().strip('"')
+        for token in tail.replace(";", ",").split(",")
+        if token.strip()
+    }
+    return all(known_id in tokens for known_id in known_ids)
 
 
 def require_binary_for_tests() -> Path:

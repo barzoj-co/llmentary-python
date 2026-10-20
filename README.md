@@ -121,6 +121,7 @@ query parameters:
 | --- | --- | --- |
 | `timeout` | `30s` | Maximum time to wait for the session to become quiet |
 | `quiet` | `500ms` | How long the session must stay idle before wait returns |
+| `min_calls` | `0` | Wait until this many finished calls exist, then for `quiet` |
 
 Override the defaults with environment variables. Each accepts a Go duration
 (`45s`, `200ms`) or a bare number of seconds (`45`, `0.2`):
@@ -150,10 +151,12 @@ Supported deterministic assertions include tool calls (`tool_called`,
 `parallel_tool_calls`, `tool_result_fed_back`), request and finish metadata
 (`model`, `request_param`, `finish_reason`), usage and timing (`tokens`,
 `latency`, `ttft`, `retries`, `no_retries`), errors (`no_errors`, `has_error`,
-`mid_stream_error`), and prompt or response text (`prompt_contains`,
+`mid_stream_error`), prompt or response text (`prompt_contains`,
 `prompt_regex`, `response_contains`, `response_regex`, `response_json_valid`,
-`response_json_schema`). Failures raise `AssertionError` with the session trace
-summary.
+`response_json_schema`), and spec observability (`no_spec_violations`,
+`no_ignored_fields`). Failures raise `AssertionError` with the session trace
+summary. Use `llmentary.list_sessions()` when a wait or expect fails with
+zero calls, so the message can name the known session ids.
 
 See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
 

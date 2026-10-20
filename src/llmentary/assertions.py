@@ -11,9 +11,12 @@ from jsonschema.validators import Draft202012Validator
 
 from .types import (
     CapturedCall,
+    IgnoredField,
     SessionTrace,
+    SpecViolation,
     ToolCall,
     as_mapping,
+    first_present,
     model_matches,
     sequence_at,
     stringify_value,
@@ -289,6 +292,110 @@ class Expectation:
         self._assert(False, "expected at least one JSON response to satisfy schema")
         return self
 
+    def no_spec_violations(
+        self,
+        side: Optional[str] = None,
+        calls: Optional[Sequence[int]] = None,
+        ignore_paths: Sequence[str] = (),
+        ignore_keywords: Sequence[str] = (),
+        allow_unvalidated: bool = False,
+    ) -> Expectation:
+        """Fail when checked calls have spec findings. Never vacuous.
+
+        Schema findings live on ``normalized.spec_violations``. The LTL-API-2
+        unknown nested message field is recorded as
+        ``ignored_fields`` with ``kind=unknown_request_field`` (OpenAI accepts
+        it and ignores it). Those are findings for this assertion too; JS
+        ``noSpecViolations`` fails the same live L2 case.
+        """
+
+        selected = self._select_calls(calls)
+        findings: list[str] = []
+        checked = 0
+        for call in selected:
+            items = call.spec_violations
+            unknown = unknown_request_fields(call)
+            if items is None and not unknown:
+                continue
+            if not selected_side_was_checked(call, side):
+                continue
+            checked += 1
+            for item in items or ():
+                if side and (item.side or "").lower() != side.lower():
+                    continue
+                if path_is_ignored(item.path, item.pointer, ignore_paths):
+                    continue
+                if item.keyword and item.keyword in ignore_keywords:
+                    continue
+                findings.append(format_spec_finding(call, item))
+            for ignored in unknown:
+                item_side = ignored.side or "request"
+                if side and item_side.lower() != side.lower():
+                    continue
+                if path_is_ignored(ignored.path, ignored.pointer, ignore_paths):
+                    continue
+                kind = ignored.kind or ""
+                if kind and kind in ignore_keywords:
+                    continue
+                findings.append(format_ignored_finding(call, ignored))
+        if findings:
+            self._assert(False, "\n".join(findings))
+            return self
+        if checked == 0 and not allow_unvalidated:
+            self._assert(False, "validation was not run")
+        return self
+
+    def no_ignored_fields(
+        self,
+        side: Optional[str] = None,
+        calls: Optional[Sequence[int]] = None,
+        ignore_paths: Sequence[str] = (),
+        ignore_keywords: Sequence[str] = (),
+        allow_unvalidated: bool = False,
+    ) -> Expectation:
+        """Fail when checked calls recorded ignored fields. Never vacuous."""
+
+        selected = self._select_calls(calls)
+        findings: list[str] = []
+        checked = 0
+        for call in selected:
+            items = call.ignored_fields
+            if items is None:
+                if not call_was_validated(call):
+                    continue
+                items = []
+            checked += 1
+            for item in items:
+                if side and (item.side or "").lower() != side.lower():
+                    continue
+                if path_is_ignored(item.path, item.pointer, ignore_paths):
+                    continue
+                kind = item.kind or ""
+                if kind and kind in ignore_keywords:
+                    continue
+                findings.append(format_ignored_finding(call, item))
+        if findings:
+            self._assert(False, "\n".join(findings))
+            return self
+        if checked == 0 and not allow_unvalidated:
+            self._assert(False, "validation was not run")
+        return self
+
+    def _select_calls(self, calls: Optional[Sequence[int]]) -> Sequence[CapturedCall]:
+        if calls is None:
+            return self.trace.calls
+        wanted = {int(value) for value in calls}
+        selected: list[CapturedCall] = []
+        for call in self.trace.calls:
+            seq = first_present(call.raw, "seq")
+            if isinstance(seq, int) and not isinstance(seq, bool):
+                if seq in wanted:
+                    selected.append(call)
+                continue
+            if call.index in wanted:
+                selected.append(call)
+        return selected
+
     def _tool_calls(self) -> Sequence[ToolCall]:
         return [tool for call in self.trace.calls for tool in call.tool_calls]
 
@@ -385,6 +492,83 @@ def model_output_text_candidates(call: CapturedCall) -> list[str]:
             candidates.append(stringify_value(item_map.get("content")))
 
     return [candidate for candidate in candidates if candidate]
+
+
+def call_was_validated(call: CapturedCall) -> bool:
+    validation = call.validation
+    if validation is None:
+        return False
+    if validation.request_checked is True or validation.response_checked is True:
+        return True
+    return bool(validation.mode and validation.mode != "off")
+
+
+def selected_side_was_checked(call: CapturedCall, side: Optional[str]) -> bool:
+    """Whether validation ran for ``side`` (or any side when ``side`` is None)."""
+
+    if side is None:
+        return True
+    validation = call.validation
+    if validation is None:
+        return True
+    wanted = side.lower()
+    if wanted == "request":
+        return validation.request_checked is not False
+    if wanted == "response":
+        return validation.response_checked is not False
+    return True
+
+
+def path_is_ignored(
+    path: Optional[str],
+    pointer: Optional[str],
+    ignore_paths: Sequence[str],
+) -> bool:
+    if not ignore_paths:
+        return False
+    candidates = [value for value in (path, pointer) if value]
+    for ignore in ignore_paths:
+        if not ignore:
+            continue
+        ignore_slash = ignore if ignore.startswith("/") else f"/{ignore}"
+        ignore_bare = ignore.lstrip("/")
+        for candidate in candidates:
+            if candidate in {ignore, ignore_slash, ignore_bare}:
+                return True
+            candidate_slash = candidate if candidate.startswith("/") else f"/{candidate}"
+            if candidate_slash == ignore_slash:
+                return True
+    return False
+
+
+def format_spec_finding(call: CapturedCall, item: SpecViolation) -> str:
+    api = first_present(call.raw, "api_family", "apiFamily") or call.api_type or "?"
+    path = item.pointer or item.path or "?"
+    message = item.message or item.keyword or "spec violation"
+    hint = item.keyword or item.source or "spec"
+    return f"{call.call_number()} {api} {item.side or '?'} {path}: {message} — {hint}"
+
+
+def unknown_request_fields(call: CapturedCall) -> list[IgnoredField]:
+    """Ignored fields the relaxed profile records instead of schema violations."""
+
+    items = call.ignored_fields
+    if not items:
+        return []
+    return [
+        item
+        for item in items
+        if (item.kind or "").lower() == "unknown_request_field"
+    ]
+
+
+def format_ignored_finding(call: CapturedCall, item: IgnoredField) -> str:
+    api = first_present(call.raw, "api_family", "apiFamily") or call.api_type or "?"
+    path = item.pointer or item.path or item.key or "?"
+    message = item.message or item.hint or item.kind or "ignored field"
+    hint = item.kind or item.severity or "ignored"
+    side = item.side or ("request" if (item.kind or "") == "unknown_request_field" else "?")
+    return f"{call.call_number()} {api} {side} {path}: {message} — {hint}"
 
 
 def aggregate_usage(calls: Sequence[CapturedCall]) -> dict[str, int]:
