@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import io
+import re
 import shutil
 import subprocess
 import sys
@@ -309,3 +310,120 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
     assert b"License-File: licenses/AGPL-3.0.txt" in metadata
     assert b"Classifier: License ::" not in metadata
     assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl
+
+
+def _write_minimal_wheel(path: Path, *, platform_tag: str = "any") -> None:
+    dist_info = "llmentary-0.1.0.dist-info"
+    wheel_meta = (
+        "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
+        f"Tag: py3-none-{platform_tag}\n"
+    ).encode()
+    metadata = b"Metadata-Version: 2.4\nName: llmentary\nVersion: 0.1.0\n"
+    payload = b"x = 1\n"
+    record = (
+        "\n".join(
+            [
+                _record_line(f"{dist_info}/WHEEL", wheel_meta),
+                _record_line(f"{dist_info}/METADATA", metadata),
+                _record_line("llmentary/__init__.py", payload),
+                f"{dist_info}/RECORD,,",
+            ]
+        )
+        + "\n"
+    )
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(f"{dist_info}/WHEEL", wheel_meta)
+        zf.writestr(f"{dist_info}/METADATA", metadata)
+        zf.writestr("llmentary/__init__.py", payload)
+        zf.writestr(f"{dist_info}/RECORD", record)
+
+
+def test_retag_wheel_uses_current_cli_without_wheel_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src_dir = tmp_path / "raw"
+    dest_dir = tmp_path / "dist"
+    src_dir.mkdir()
+    dest_dir.mkdir()
+    source = src_dir / "llmentary-0.1.0-py3-none-any.whl"
+    _write_minimal_wheel(source)
+    commands: list[list[str]] = []
+    real_run = subprocess.run
+
+    def spy(cmd: list[str], **kwargs: Any) -> Any:
+        commands.append(list(cmd))
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(wheels.subprocess, "run", spy)
+    tagged = wheels.retag_wheel(source, "manylinux2014_x86_64", dest_dir)
+    assert tagged == dest_dir / "llmentary-0.1.0-py3-none-manylinux2014_x86_64.whl"
+    assert tagged.is_file()
+    assert not source.exists()
+    assert commands, "wheel tags was not invoked"
+    assert "--wheel-dir" not in commands[0]
+    assert commands[0][1:4] == ["-m", "wheel", "tags"]
+    assert "--platform-tag" in commands[0]
+    assert wheels.read_wheel_file_tags(tagged) == ["py3-none-manylinux2014_x86_64"]
+
+
+def test_assert_platform_wheels_requires_every_target(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for target in wheels.TARGETS:
+        _write_minimal_wheel(
+            dist / f"llmentary-0.1.0-py3-none-{target.wheel_tag}.whl",
+            platform_tag=target.wheel_tag,
+        )
+    wheels.assert_platform_wheels(dist)
+    extra = dist / "llmentary-0.1.0-py3-none-any.whl"
+    _write_minimal_wheel(extra)
+    with pytest.raises(SystemExit, match="extra="):
+        wheels.assert_platform_wheels(dist)
+    extra.unlink()
+    missing = dist / f"llmentary-0.1.0-py3-none-{wheels.TARGETS[0].wheel_tag}.whl"
+    missing.unlink()
+    with pytest.raises(SystemExit, match="missing="):
+        wheels.assert_platform_wheels(dist)
+
+
+def test_print_built_artifacts_lists_filenames_and_tags(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "llmentary-0.1.0.tar.gz").write_bytes(b"sdist")
+    wheel_path = dist / "llmentary-0.1.0-py3-none-manylinux2014_x86_64.whl"
+    _write_minimal_wheel(wheel_path, platform_tag="manylinux2014_x86_64")
+    wheels.print_built_artifacts(dist)
+    output = capsys.readouterr().out
+    assert "llmentary-0.1.0.tar.gz" in output
+    assert "llmentary-0.1.0-py3-none-manylinux2014_x86_64.whl" in output
+    assert "tags=py3-none-manylinux2014_x86_64" in output
+
+
+def _workflow_pins(text: str, name: str) -> list[str]:
+    return re.findall(rf'{name}: "([^"]+)"', text)
+
+
+def test_publish_dry_run_matches_release_wheel_build() -> None:
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    hygiene = (ROOT / ".github/workflows/hygiene.yml").read_text(encoding="utf-8")
+    for name in ("BUILD_VERSION", "WHEEL_VERSION", "TWINE_VERSION"):
+        release_pins = _workflow_pins(release, name)
+        hygiene_pins = _workflow_pins(hygiene, name)
+        assert release_pins, f"release.yml is missing {name}"
+        assert hygiene_pins, f"hygiene.yml is missing {name}"
+        assert set(release_pins) == set(hygiene_pins)
+        assert len(set(release_pins)) == 1
+    for needle in (
+        "python scripts/build_release_wheels.py",
+        "twine check --strict dist/*",
+        "bash scripts/inspect-release-wheels.sh",
+        (
+            'python -m pip install "build==${BUILD_VERSION}" '
+            '"wheel==${WHEEL_VERSION}" "twine==${TWINE_VERSION}"'
+        ),
+    ):
+        assert needle in release
+        assert needle in hygiene
+    assert "name: publish (dry run)" in hygiene
