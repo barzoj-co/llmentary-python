@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from typing import Optional, cast
 
 import httpx
@@ -8,6 +9,7 @@ from test_go_session_schema import chat_tool_request, chat_tool_response, go_cal
 
 from llmentary import WaitTimeoutError
 from llmentary.client import ControlClient
+from llmentary.pytest_plugin import _cli_duration
 from llmentary.wait import (
     DEFAULT_WAIT_QUIET,
     DEFAULT_WAIT_TIMEOUT,
@@ -18,6 +20,12 @@ from llmentary.wait import (
     parse_duration,
     wait_query_string,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_wait_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("LLMENTARY_WAIT_TIMEOUT", "LLMENTARY_WAIT_QUIET", "LLMENTARY_QUIET_FOR"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.mark.parametrize(
@@ -51,6 +59,12 @@ def test_parse_duration_table(raw: str, expected: float) -> None:
 def test_parse_duration_invalid_names_variable() -> None:
     with pytest.raises(ValueError, match="LLMENTARY_WAIT_QUIET"):
         parse_duration("nope", name="LLMENTARY_WAIT_QUIET")
+
+
+def test_cli_duration_keeps_variable_name() -> None:
+    parse = _cli_duration("LLMENTARY_WAIT_TIMEOUT")
+    with pytest.raises(argparse.ArgumentTypeError, match="LLMENTARY_WAIT_TIMEOUT"):
+        parse("nope")
 
 
 def test_duration_from_env_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch) -> None:

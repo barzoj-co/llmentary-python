@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import re
 from collections.abc import Callable, Iterator
@@ -125,7 +126,10 @@ def llmentary(
 
 def _cli_duration(name: str) -> Callable[[str], float]:
     def parse(value: str) -> float:
-        return parse_duration(value, name=name)
+        try:
+            return parse_duration(value, name=name)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from exc
 
     return parse
 
