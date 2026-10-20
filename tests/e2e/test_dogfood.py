@@ -54,13 +54,25 @@ def test_wait_min_calls_async(llmentary: Session) -> None:
     worker = threading.Thread(target=later_calls)
     worker.start()
     try:
-        trace = llmentary.wait(timeout=30, quiet=0.5, min_calls=2)
+        llmentary.wait(timeout=30, quiet=0.5, min_calls=2)
     finally:
         worker.join(timeout=40)
     assert not thread_error, thread_error[0]
-    assert len(trace.calls) == 2, trace.trace_summary()
-    assert all(call.usage for call in trace.calls), trace.trace_summary()
-    assert all((call.http_status or 0) == 200 for call in trace.calls), trace.trace_summary()
+    # min_calls counts every finished attempt, including 429 retries. Evaluate
+    # the intended APIs from successful calls after the worker finishes.
+    trace = llmentary.trace()
+    successful = [
+        call
+        for call in trace.calls
+        if (call.http_status or 0) == 200 and call.usage and not call.error
+    ]
+    chat = [call for call in successful if call.api_type == "chat_completions"]
+    responses = [call for call in successful if call.api_type == "responses"]
+    assert chat and responses, trace.trace_summary()
+    intended = [chat[0], responses[0]]
+    assert len(intended) == 2, trace.trace_summary()
+    assert all(call.usage for call in intended), trace.trace_summary()
+    assert all((call.http_status or 0) == 200 for call in intended), trace.trace_summary()
 
 
 def test_default_upstream_no_explicit_setting() -> None:

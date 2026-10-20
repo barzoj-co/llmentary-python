@@ -97,6 +97,9 @@ class IgnoredField:
     kind: Optional[str] = None
     severity: Optional[str] = None
     message: Optional[str] = None
+    hint: Optional[str] = None
+    key: Optional[str] = None
+    action: Optional[str] = None
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -1098,6 +1101,9 @@ def ignored_field_from_mapping(raw: Any) -> IgnoredField:
         kind=optional_str(mapping, "kind", "keyword"),
         severity=optional_str(mapping, "severity"),
         message=optional_str(mapping, "message"),
+        hint=optional_str(mapping, "hint"),
+        key=optional_str(mapping, "key"),
+        action=optional_str(mapping, "action"),
         raw=mapping,
     )
 

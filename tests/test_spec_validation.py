@@ -43,6 +43,23 @@ ENUM_IGNORED: dict[str, Any] = {
     "message": "vendor extension is ignored",
 }
 
+# Live OpenAI records this on ignored_fields, not spec_violations (LTL-API-2 L2).
+L2_UNKNOWN_NESTED: dict[str, Any] = {
+    "path": "messages[0].content[0].ltl_unknown_nested",
+    "pointer": "/messages/0/content/0/ltl_unknown_nested",
+    "key": "ltl_unknown_nested",
+    "kind": "unknown_request_field",
+    "context": "chat.message",
+    "effective_strict": False,
+    "upstream_behavior": "silently_ignored",
+    "severity": "warning",
+    "action": "reject_in_enforce",
+    "hint": (
+        "The live OpenAI API accepts this field and silently ignores it. "
+        "Remove it, or it will never reach the model."
+    ),
+}
+
 
 def _call(
     *,
@@ -210,6 +227,56 @@ def test_select_calls_uses_seq_not_conflicting_index() -> None:
     Expectation(_trace(dirty, clean)).no_spec_violations(calls=[2])
     with pytest.raises(AssertionError, match="/foo"):
         Expectation(_trace(dirty, clean)).no_spec_violations(calls=[1])
+
+
+def test_unknown_request_field_fails_no_spec_violations() -> None:
+    trace = _trace(
+        _call(
+            normalized={
+                "validation": {
+                    "mode": "warn",
+                    "profile": "relaxed",
+                    "request_checked": True,
+                    "response_checked": True,
+                },
+                "spec_violations": [],
+                "ignored_fields": [L2_UNKNOWN_NESTED],
+            }
+        )
+    )
+    call = trace.calls[0]
+    assert call.spec_violations == []
+    fields = call.ignored_fields
+    assert fields is not None
+    assert fields[0].kind == "unknown_request_field"
+    assert fields[0].key == "ltl_unknown_nested"
+    assert fields[0].hint is not None
+    with pytest.raises(AssertionError) as caught:
+        Expectation(trace).no_spec_violations()
+    message = str(caught.value)
+    assert "validation was not run" not in message
+    assert " — " in message
+    assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
+    Expectation(trace).no_spec_violations(ignore_keywords=("unknown_request_field",))
+    Expectation(trace).no_spec_violations(ignore_paths=("/messages/0/content/0/ltl_unknown_nested",))
+    Expectation(trace).no_spec_violations(side="response")
+    with pytest.raises(AssertionError, match="ltl_unknown"):
+        Expectation(trace).no_spec_violations(side="request")
+
+
+def test_enum_ignored_fields_do_not_fail_no_spec_violations() -> None:
+    trace = _trace(
+        _call(
+            normalized={
+                "validation": {"mode": "warn"},
+                "spec_violations": [],
+                "ignored_fields": [ENUM_IGNORED],
+            }
+        )
+    )
+    Expectation(trace).no_spec_violations()
+    with pytest.raises(AssertionError, match="enumDescriptions"):
+        Expectation(trace).no_ignored_fields()
 
 
 def test_trace_summary_includes_spec_status() -> None:

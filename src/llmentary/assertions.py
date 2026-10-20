@@ -300,17 +300,25 @@ class Expectation:
         ignore_keywords: Sequence[str] = (),
         allow_unvalidated: bool = False,
     ) -> Expectation:
-        """Fail when checked calls have spec findings. Never vacuous."""
+        """Fail when checked calls have spec findings. Never vacuous.
+
+        Schema findings live on ``normalized.spec_violations``. The LTL-API-2
+        unknown nested message field is recorded as
+        ``ignored_fields`` with ``kind=unknown_request_field`` (OpenAI accepts
+        it and ignores it). Those are findings for this assertion too; JS
+        ``noSpecViolations`` fails the same live L2 case.
+        """
 
         selected = self._select_calls(calls)
         findings: list[str] = []
         checked = 0
         for call in selected:
             items = call.spec_violations
-            if items is None:
+            unknown = unknown_request_fields(call)
+            if items is None and not unknown:
                 continue
             checked += 1
-            for item in items:
+            for item in items or ():
                 if side and (item.side or "").lower() != side.lower():
                     continue
                 if path_is_ignored(item.path, item.pointer, ignore_paths):
@@ -318,6 +326,16 @@ class Expectation:
                 if item.keyword and item.keyword in ignore_keywords:
                     continue
                 findings.append(format_spec_finding(call, item))
+            for ignored in unknown:
+                item_side = ignored.side or "request"
+                if side and item_side.lower() != side.lower():
+                    continue
+                if path_is_ignored(ignored.path, ignored.pointer, ignore_paths):
+                    continue
+                kind = ignored.kind or ""
+                if kind and kind in ignore_keywords:
+                    continue
+                findings.append(format_ignored_finding(call, ignored))
         if findings:
             self._assert(False, "\n".join(findings))
             return self
@@ -513,12 +531,26 @@ def format_spec_finding(call: CapturedCall, item: SpecViolation) -> str:
     return f"{call.call_number()} {api} {item.side or '?'} {path}: {message} — {hint}"
 
 
+def unknown_request_fields(call: CapturedCall) -> list[IgnoredField]:
+    """Ignored fields the relaxed profile records instead of schema violations."""
+
+    items = call.ignored_fields
+    if not items:
+        return []
+    return [
+        item
+        for item in items
+        if (item.kind or "").lower() == "unknown_request_field"
+    ]
+
+
 def format_ignored_finding(call: CapturedCall, item: IgnoredField) -> str:
     api = first_present(call.raw, "api_family", "apiFamily") or call.api_type or "?"
-    path = item.pointer or item.path or "?"
-    message = item.message or item.kind or "ignored field"
+    path = item.pointer or item.path or item.key or "?"
+    message = item.message or item.hint or item.kind or "ignored field"
     hint = item.kind or item.severity or "ignored"
-    return f"{call.call_number()} {api} {item.side or '?'} {path}: {message} — {hint}"
+    side = item.side or ("request" if (item.kind or "") == "unknown_request_field" else "?")
+    return f"{call.call_number()} {api} {side} {path}: {message} — {hint}"
 
 
 def aggregate_usage(calls: Sequence[CapturedCall]) -> dict[str, int]:
