@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 
@@ -93,9 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     assert_sdist_has_no_bin(sdist)
     print(f"{sdist.name} has no bundled proxy bin/")
     if args.install:
-        work = Path(os.environ.get("TMPDIR", "/tmp")) / "llmentary-sdist-check"
-        work.mkdir(parents=True, exist_ok=True)
-        message = assert_sdist_find_binary_message(sdist, work)
+        with tempfile.TemporaryDirectory(prefix="llmentary-sdist-check-") as tmp:
+            message = assert_sdist_find_binary_message(sdist, Path(tmp))
         print(message)
     return 0
 
