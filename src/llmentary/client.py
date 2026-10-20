@@ -169,8 +169,8 @@ class ProxyHandle:
 
 
 @dataclass
-class LabSession:
-    """Function-scoped test session helper returned by the ``lab`` fixture."""
+class Session:
+    """Function-scoped test session helper returned by the ``llmentary`` fixture."""
 
     session_id: str
     proxy: ProxyHandle
@@ -239,12 +239,12 @@ class LabSession:
 
 @dataclass
 class Query:
-    lab: LabSession
+    session: Session
     api_type: Optional[str] = None
     model: Optional[str] = None
 
     def expect(self, *, soft: bool = False) -> Expectation:
-        trace = self.lab.wait().filtered(
+        trace = self.session.wait().filtered(
             api_type=normalize_api_type(self.api_type) if self.api_type else None,
             model=self.model,
         )

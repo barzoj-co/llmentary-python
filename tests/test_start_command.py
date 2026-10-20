@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from llmentary.client import (
-    LabSession,
+    Session,
     apply_upstream_api_key,
     build_start_command,
     default_control_url,
@@ -93,7 +93,7 @@ def test_apply_upstream_api_key_skips_missing() -> None:
 
 def test_baggage_percent_encodes_reserved_characters() -> None:
     session_id = "test_foo, bar=baz"
-    session = LabSession(session_id=session_id, proxy=Mock())
+    session = Session(session_id=session_id, proxy=Mock())
     assert session.headers["X-Test-Session"] == session_id
     assert session.baggage == f"llmentary.session.id={encode_baggage_value(session_id)}"
     assert "," not in session.baggage.split("=", 1)[1]

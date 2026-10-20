@@ -32,13 +32,13 @@ from e2e_helpers import (
     tool_argument_json,
 )
 
-from llmentary import LabSession
+from llmentary import Session
 
 pytestmark = pytest.mark.e2e
 
 
-def test_chat_nonstreaming_plain_text(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_nonstreaming_plain_text(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -47,13 +47,13 @@ def test_chat_nonstreaming_plain_text(lab: LabSession) -> None:
             max_tokens=8,
         )
     )
-    expect = lab.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
+    expect = llmentary.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
     assert_plain_text_recorded(expect)
     expect.finish_reason("stop").prompt_contains("ping")
 
 
-def test_chat_streaming_plain_text(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_streaming_plain_text(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -65,17 +65,17 @@ def test_chat_streaming_plain_text(lab: LabSession) -> None:
         )
     )
     assembled = assemble_chat_text(stream)
-    trace = lab.wait()
+    trace = llmentary.wait()
     assert_streamed(trace)
-    expect = lab.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
+    expect = llmentary.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
     assert_plain_text_recorded(expect)
     expect.finish_reason("stop")
     call = first_call(trace)
     assert_assembled_matches_recorded(assembled, call.response_text)
 
 
-def test_chat_forced_tool_then_result(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_forced_tool_then_result(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     first = call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -99,7 +99,7 @@ def test_chat_forced_tool_then_result(lab: LabSession) -> None:
             max_tokens=16,
         )
     )
-    expect = lab.query(api_type="chat_completions").expect()
+    expect = llmentary.query(api_type="chat_completions").expect()
     expect.tool_called("get_weather").args_subset("get_weather", {"city": "Paris"})
     expect.tool_result_fed_back("get_weather").no_errors()
     parsed = json.loads(tool_call.function.arguments)
@@ -107,8 +107,8 @@ def test_chat_forced_tool_then_result(lab: LabSession) -> None:
     assert tool_argument_json(expect.trace, "get_weather")["city"]
 
 
-def test_chat_streaming_forced_tool_arguments_json(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_streaming_forced_tool_arguments_json(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -123,15 +123,15 @@ def test_chat_streaming_forced_tool_arguments_json(lab: LabSession) -> None:
     assembled = assemble_chat_tool_arguments(stream)
     parsed = json.loads(assembled)
     assert isinstance(parsed, dict)
-    trace = lab.wait()
+    trace = llmentary.wait()
     assert_streamed(trace)
-    expect = lab.query(api_type="chat_completions").expect()
+    expect = llmentary.query(api_type="chat_completions").expect()
     expect.tool_called("get_weather").args_subset("get_weather", {"city": parsed["city"]})
     expect.no_errors()
 
 
-def test_chat_parallel_tool_calls(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_parallel_tool_calls(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
             model=PARALLEL_MODEL,
@@ -151,12 +151,12 @@ def test_chat_parallel_tool_calls(lab: LabSession) -> None:
             max_tokens=64,
         )
     )
-    expect = lab.query(api_type="chat_completions").expect()
+    expect = llmentary.query(api_type="chat_completions").expect()
     expect.tool_called("get_weather").tool_called("get_time").parallel_tool_calls().no_errors()
 
 
-def test_chat_structured_json_schema(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_structured_json_schema(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -173,12 +173,12 @@ def test_chat_structured_json_schema(lab: LabSession) -> None:
             },
         )
     )
-    expect = lab.query(api_type="chat_completions").expect()
+    expect = llmentary.query(api_type="chat_completions").expect()
     expect.response_json_valid().response_json_schema(JSON_SCHEMA).no_errors()
 
 
-def test_chat_multi_turn_session_helpers(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_multi_turn_session_helpers(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -215,14 +215,14 @@ def test_chat_multi_turn_session_helpers(lab: LabSession) -> None:
             max_output_tokens=16,
         )
     )
-    unfiltered = lab.wait()
+    unfiltered = llmentary.wait()
     assert len(unfiltered.calls) == 4, unfiltered.trace_summary()
     prompts = [call.prompt_text for call in unfiltered.calls]
     assert "Say one." in prompts[0]
     assert "Say two." in prompts[1]
     assert "Say three." in prompts[2]
     assert any("Say other API." in text for text in prompts)
-    filtered = lab.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
+    filtered = llmentary.query(api_type="chat_completions", model=CHEAP_MODEL).expect()
     assert len(filtered.trace.calls) == 3
     assert len(unfiltered.calls) > len(filtered.trace.calls)
     assert all(call.api_type == "chat_completions" for call in filtered.trace.calls)
@@ -230,8 +230,8 @@ def test_chat_multi_turn_session_helpers(lab: LabSession) -> None:
     filtered.prompt_contains("Say two.").no_errors()
 
 
-def test_chat_upstream_invalid_model(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_upstream_invalid_model(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     with pytest.raises(openai_invalid_model_errors()):
         client.chat.completions.create(
             model=INVALID_MODEL,
@@ -240,7 +240,7 @@ def test_chat_upstream_invalid_model(lab: LabSession) -> None:
             max_tokens=8,
         )
     assert_recorded_error(
-        lab.wait(),
+        llmentary.wait(),
         pattern=r"invalid|not.?found|model",
         http_status=INVALID_MODEL_STATUS,
         error_type=INVALID_MODEL_ERROR_TYPE,
@@ -248,8 +248,8 @@ def test_chat_upstream_invalid_model(lab: LabSession) -> None:
     )
 
 
-def test_chat_upstream_invalid_api_key(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_upstream_invalid_api_key(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     with pytest.raises(openai_invalid_key_errors()):
         client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -259,7 +259,7 @@ def test_chat_upstream_invalid_api_key(lab: LabSession) -> None:
             extra_headers=INVALID_KEY_HEADERS,
         )
     assert_recorded_error(
-        lab.wait(),
+        llmentary.wait(),
         pattern=r"auth|api.?key|401|invalid",
         http_status=INVALID_KEY_STATUS,
         error_type=INVALID_KEY_ERROR_TYPE,
@@ -267,8 +267,8 @@ def test_chat_upstream_invalid_api_key(lab: LabSession) -> None:
     )
 
 
-def test_chat_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_chat_cancel_mid_stream_keeps_proxy_healthy(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -286,14 +286,14 @@ def test_chat_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:
     finally:
         stream.close()
 
-    trace = lab.wait()
+    trace = llmentary.wait()
     assert trace.calls, trace.trace_summary()
     assert recorded_client_aborted(trace.calls), (
         "expected normalized.client_aborted after client disconnect\n"
         f"{trace.trace_summary()}"
     )
     assert any(call.client_aborted for call in trace.calls), trace.trace_summary()
-    lab.proxy.control.health()
+    llmentary.proxy.control.health()
     call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -302,4 +302,6 @@ def test_chat_cancel_mid_stream_keeps_proxy_healthy(lab: LabSession) -> None:
             max_tokens=8,
         )
     )
-    lab.query(api_type="chat_completions").expect().prompt_contains("single word ok").no_errors()
+    llmentary.query(api_type="chat_completions").expect().prompt_contains(
+        "single word ok"
+    ).no_errors()

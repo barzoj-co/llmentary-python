@@ -3,12 +3,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from llmentary import LabSession
+from llmentary import Session
 
 
 @pytest.mark.integration
-def test_chat_completions_tool_flow_through_real_proxy(lab: LabSession) -> None:
-    with httpx.Client(base_url=lab.openai_base_url, headers=lab.headers) as client:
+def test_chat_completions_tool_flow_through_real_proxy(llmentary: Session) -> None:
+    with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
         first = client.post(
             "/chat/completions",
             json={
@@ -52,7 +52,7 @@ def test_chat_completions_tool_flow_through_real_proxy(lab: LabSession) -> None:
         )
         second.raise_for_status()
 
-    lab.expect().tool_called("get_weather").args_subset(
+    llmentary.expect().tool_called("get_weather").args_subset(
         "get_weather", {"city": "Paris"}
     ).tool_result_fed_back("get_weather").response_json_valid().response_json_schema(
         {
@@ -64,8 +64,8 @@ def test_chat_completions_tool_flow_through_real_proxy(lab: LabSession) -> None:
 
 
 @pytest.mark.integration
-def test_responses_tool_flow_through_real_proxy(lab: LabSession) -> None:
-    with httpx.Client(base_url=lab.openai_base_url, headers=lab.headers) as client:
+def test_responses_tool_flow_through_real_proxy(llmentary: Session) -> None:
+    with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
         first = client.post(
             "/responses",
             json={
@@ -102,6 +102,6 @@ def test_responses_tool_flow_through_real_proxy(lab: LabSession) -> None:
         )
         second.raise_for_status()
 
-    lab.query(api_type="responses").expect().tool_called("get_weather").args_subset(
+    llmentary.query(api_type="responses").expect().tool_called("get_weather").args_subset(
         "get_weather", {"city": "Paris"}
     ).tool_result_fed_back("get_weather").response_json_valid().no_errors()

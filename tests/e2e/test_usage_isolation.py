@@ -11,7 +11,7 @@ from e2e_helpers import (
     openai_client,
 )
 
-from llmentary import LabSession
+from llmentary import Session
 from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
@@ -19,8 +19,8 @@ pytestmark = pytest.mark.e2e
 CACHE_PREFIX = ("cache-token LTL-PY-2 " * 400).strip()
 
 
-def test_cached_tokens_field_is_parsed(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_cached_tokens_field_is_parsed(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     prompt = f"{CACHE_PREFIX}\nReply with the single word ping."
     for _ in range(2):
         call_openai(
@@ -31,7 +31,7 @@ def test_cached_tokens_field_is_parsed(lab: LabSession) -> None:
                 max_tokens=8,
             )
         )
-    trace = lab.wait()
+    trace = llmentary.wait()
     assert len(trace.calls) == 2, trace.trace_summary()
     parsed = [call.cached_tokens for call in trace.calls]
     usage = [dict(call.usage) for call in trace.calls]
@@ -46,8 +46,8 @@ def test_cached_tokens_field_is_parsed(lab: LabSession) -> None:
     )
 
 
-def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_reasoning_tokens_from_reasoning_model(llmentary: Session) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.responses.create(
             model=REASONING_MODEL,
@@ -56,7 +56,7 @@ def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
             max_output_tokens=400,
         )
     )
-    trace = lab.query(api_type="responses").expect().trace
+    trace = llmentary.query(api_type="responses").expect().trace
     assert trace.calls, trace.trace_summary()
     values = [call.reasoning_tokens for call in trace.calls]
     assert any(value is not None and value > 0 for value in values), (
@@ -66,23 +66,23 @@ def test_reasoning_tokens_from_reasoning_model(lab: LabSession) -> None:
     )
 
 
-def test_concurrent_sessions_are_isolated(lab: LabSession) -> None:
-    session_a = LabSession(
+def test_concurrent_sessions_are_isolated(llmentary: Session) -> None:
+    session_a = Session(
         session_id=new_session_id("iso-a"),
-        proxy=lab.proxy,
-        wait_timeout=lab.wait_timeout,
-        quiet_for=lab.quiet_for,
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
     )
-    session_b = LabSession(
+    session_b = Session(
         session_id=new_session_id("iso-b"),
-        proxy=lab.proxy,
-        wait_timeout=lab.wait_timeout,
-        quiet_for=lab.quiet_for,
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
     )
     token_a = "UNIQUE_TOKEN_ALPHA_LTL_PY_2"
     token_b = "UNIQUE_TOKEN_BETA_LTL_PY_2"
 
-    def run(session: LabSession, token: str) -> None:
+    def run(session: Session, token: str) -> None:
         client = openai_client(session)
         call_openai(
             lambda: client.chat.completions.create(

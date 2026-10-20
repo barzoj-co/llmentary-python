@@ -28,33 +28,33 @@ uses:
 For non-loopback proxies, pass the bearer token as `token` or set
 `LLMENTARY_CONTROL_TOKEN`.
 
-### `LabSession`
+### `Session`
 
-The pytest `lab` fixture returns `LabSession`.
+The pytest `llmentary` fixture returns `llmentary.Session`.
 
 Useful properties:
 
-- `lab.session_id`
-- `lab.base_url`: proxy URL
-- `lab.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
-- `lab.headers`: `X-Test-Session` plus W3C `baggage` with `llmentary.session.id`
-- `lab.baggage`: `llmentary.session.id=<session-id>`
+- `llmentary.session_id`
+- `llmentary.base_url`: proxy URL
+- `llmentary.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
+- `llmentary.headers`: `X-Test-Session` plus W3C `baggage` with `llmentary.session.id`
+- `llmentary.baggage`: `llmentary.session.id=<session-id>`
 
 Methods:
 
-- `lab.wait(timeout=None, quiet_for=None)`: wait for quiescence and return a trace
-- `lab.trace()`: fetch the current trace without waiting
-- `lab.otlp()`: fetch OTLP bytes for the session
-- `lab.cleanup()`: delete the session
-- `lab.expect(soft=False)`: wait, then return an expectation object
-- `lab.query(api_type=None, model=None)`: scope assertions by API type/model
-- `lab.soft_expect()`: context manager that accumulates assertion failures
+- `llmentary.wait(timeout=None, quiet_for=None)`: wait for quiescence and return a trace
+- `llmentary.trace()`: fetch the current trace without waiting
+- `llmentary.otlp()`: fetch OTLP bytes for the session
+- `llmentary.cleanup()`: delete the session
+- `llmentary.expect(soft=False)`: wait, then return an expectation object
+- `llmentary.query(api_type=None, model=None)`: scope assertions by API type/model
+- `llmentary.soft_expect()`: context manager that accumulates assertion failures
 
 ### `Query`
 
 ```python
-lab.query(api_type="chat_completions", model="gpt-4.1-mini").expect().no_errors()
-lab.query(api_type="responses").expect().tool_called("lookup")
+llmentary.query(api_type="chat_completions", model="gpt-4.1-mini").expect().no_errors()
+llmentary.query(api_type="responses").expect().tool_called("lookup")
 ```
 
 Accepted API type spellings include `chat`, `chat_completions`, `chat.completions`,
@@ -64,7 +64,7 @@ Accepted API type spellings include `chat`, `chat_completions`, `chat.completion
 
 All assertion methods are chainable. Hard expectations raise `AssertionError` on
 the first failure. Soft expectations collect failures and raise from
-`assert_all()` or when leaving `lab.soft_expect()`.
+`assert_all()` or when leaving `llmentary.soft_expect()`.
 
 ### Tool calls
 

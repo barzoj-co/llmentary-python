@@ -96,7 +96,7 @@ body:
       label: Minimal reproduction
       description: Smallest snippet or test that shows the bug. Strip keys and private prompts.
       placeholder: |
-        def test_example(lab):
+        def test_example(llmentary):
             ...
     validations:
       required: true
