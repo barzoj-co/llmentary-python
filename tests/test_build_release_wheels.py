@@ -28,6 +28,14 @@ wheels: Any = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = wheels
 SPEC.loader.exec_module(wheels)
 
+CHECKER_SPEC = importlib.util.spec_from_file_location(
+    "check_dist_license_files", ROOT / "scripts" / "check-dist-license-files.py"
+)
+assert CHECKER_SPEC is not None and CHECKER_SPEC.loader is not None
+checker: Any = importlib.util.module_from_spec(CHECKER_SPEC)
+sys.modules[CHECKER_SPEC.name] = checker
+CHECKER_SPEC.loader.exec_module(checker)
+
 
 def test_safe_extract_tar_rejects_symlink(tmp_path: Path) -> None:
     archive = io.BytesIO()
@@ -100,7 +108,7 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
             for name in (
                 f"{dist_info}/METADATA",
                 "llmentary/__init__.py",
-                f"{dist_info}/licenses/AGPL-3.0.txt",
+                f"{dist_info}/licenses/licenses/AGPL-3.0.txt",
             )
         }
         entries = {
@@ -108,11 +116,12 @@ def test_apply_platform_wheel_license_rewrites_metadata(tmp_path: Path) -> None:
             for path, digest, size in (line.split(",") for line in record.splitlines() if line)
         }
     rewritten_metadata = files[f"{dist_info}/METADATA"]
-    agpl_bytes = files[f"{dist_info}/licenses/AGPL-3.0.txt"]
+    agpl_bytes = files[f"{dist_info}/licenses/licenses/AGPL-3.0.txt"]
     assert b"License-Expression: MIT AND AGPL-3.0-only" in rewritten_metadata
     assert b"License-File: licenses/AGPL-3.0.txt" in rewritten_metadata
     assert b"Classifier: License ::" not in rewritten_metadata
-    assert f"{dist_info}/licenses/AGPL-3.0.txt" in names
+    assert f"{dist_info}/licenses/licenses/AGPL-3.0.txt" in names
+    assert f"{dist_info}/licenses/AGPL-3.0.txt" not in names
     assert b"GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_bytes
     for name, data in files.items():
         _, digest, size = _record_line(name, data).split(",")
@@ -299,13 +308,16 @@ def test_hatch_wheel_includes_bundled_binary(tmp_path: Path) -> None:
         names = {name.replace("\\", "/") for name in zf.namelist()}
         metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
         agpl_name = next(
-            name for name in names if name.endswith(".dist-info/licenses/AGPL-3.0.txt")
+            name
+            for name in names
+            if name.endswith(".dist-info/licenses/licenses/AGPL-3.0.txt")
         )
         metadata = zf.read(metadata_name)
         agpl = zf.read(agpl_name)
     assert f"llmentary/bin/{platform_tag}/llmentary" in names
     assert f"llmentary/bin/{platform_tag}/AGPL-3.0.txt" in names
     assert agpl_name in names
+    assert not any(name.endswith(".dist-info/licenses/AGPL-3.0.txt") for name in names)
     assert b"License-Expression: MIT AND AGPL-3.0-only" in metadata
     assert b"License-File: licenses/AGPL-3.0.txt" in metadata
     assert b"Classifier: License ::" not in metadata
@@ -418,6 +430,7 @@ def test_publish_dry_run_matches_release_wheel_build() -> None:
     for needle in (
         "python scripts/build_release_wheels.py",
         "twine check --strict dist/*",
+        "python scripts/check-dist-license-files.py dist",
         "bash scripts/inspect-release-wheels.sh",
         (
             'python -m pip install "build==${BUILD_VERSION}" '
@@ -427,3 +440,89 @@ def test_publish_dry_run_matches_release_wheel_build() -> None:
         assert needle in release
         assert needle in hygiene
     assert "name: publish (dry run)" in hygiene
+    assert "name: Check License-File paths" in release
+    assert "name: Check License-File paths" in hygiene
+    assert 'TWINE_VERSION: "7.0.0"' in release
+    assert 'TWINE_VERSION: "7.0.0"' in hygiene
+
+
+def test_wheel_license_path_nests_under_dist_info_licenses() -> None:
+    assert (
+        wheels.wheel_license_path("llmentary-0.1.1.dist-info", "licenses/AGPL-3.0.txt")
+        == "llmentary-0.1.1.dist-info/licenses/licenses/AGPL-3.0.txt"
+    )
+    assert (
+        wheels.wheel_license_path("llmentary-0.1.1.dist-info", "LICENSE")
+        == "llmentary-0.1.1.dist-info/licenses/LICENSE"
+    )
+    with pytest.raises(SystemExit, match="unsafe"):
+        wheels.wheel_license_path("llmentary-0.1.1.dist-info", "../LICENSE")
+
+
+def test_retag_then_license_rewrite_is_pep639_and_record_valid(tmp_path: Path) -> None:
+    src_dir = tmp_path / "raw"
+    dest_dir = tmp_path / "dist"
+    src_dir.mkdir()
+    dest_dir.mkdir()
+    source = src_dir / "llmentary-0.1.0-py3-none-any.whl"
+    _write_minimal_wheel(source)
+    tagged = wheels.retag_wheel(source, "macosx_11_0_arm64", dest_dir)
+    wheels.apply_platform_wheel_license(tagged)
+    checker.check_wheel(tagged)
+    with zipfile.ZipFile(tagged) as zf:
+        names = {_norm_zip(name) for name in zf.namelist()}
+        metadata = zf.read("llmentary-0.1.0.dist-info/METADATA")
+    assert b"License-File: licenses/AGPL-3.0.txt" in metadata
+    assert "llmentary-0.1.0.dist-info/licenses/licenses/AGPL-3.0.txt" in names
+    assert "llmentary-0.1.0.dist-info/licenses/AGPL-3.0.txt" not in names
+
+
+def test_license_file_checker_rejects_unprefixed_agpl_path(tmp_path: Path) -> None:
+    dist_info = "llmentary-0.1.1.dist-info"
+    metadata = (
+        b"Metadata-Version: 2.4\nName: llmentary\nVersion: 0.1.1\n"
+        b"License-File: LICENSE\nLicense-File: licenses/AGPL-3.0.txt\n"
+    )
+    license_text = b"MIT\n"
+    agpl_text = b"AGPL\n"
+    payload = b"x = 1\n"
+    files = {
+        f"{dist_info}/METADATA": metadata,
+        "llmentary/__init__.py": payload,
+        f"{dist_info}/licenses/LICENSE": license_text,
+        f"{dist_info}/licenses/AGPL-3.0.txt": agpl_text,
+    }
+    record = (
+        "\n".join(_record_line(name, data) for name, data in sorted(files.items()))
+        + f"\n{dist_info}/RECORD,,\n"
+    )
+    wheel_path = tmp_path / "llmentary-0.1.1-py3-none-macosx_11_0_arm64.whl"
+    with zipfile.ZipFile(wheel_path, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+        zf.writestr(f"{dist_info}/RECORD", record)
+    with pytest.raises(SystemExit, match=r"licenses/licenses/AGPL-3\.0\.txt"):
+        checker.check_wheel(wheel_path)
+
+
+def test_license_file_checker_self_test() -> None:
+    checker.self_test()
+
+
+def test_top_level_pkg_info_ignores_nested_members() -> None:
+    assert (
+        checker._top_level_pkg_info(
+            {
+                "llmentary-0.1.1/PKG-INFO",
+                "llmentary-0.1.1/vendor/PKG-INFO",
+                "llmentary-0.1.1/LICENSE",
+            }
+        )
+        == "llmentary-0.1.1/PKG-INFO"
+    )
+    with pytest.raises(SystemExit, match="top-level PKG-INFO"):
+        checker._top_level_pkg_info({"llmentary-0.1.1/vendor/PKG-INFO"})
+
+
+def _norm_zip(name: str) -> str:
+    return name.replace("\\", "/")

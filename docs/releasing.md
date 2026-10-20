@@ -18,10 +18,12 @@ The Python package version is independent of the bundled proxy version
 5. `release.yml` **build** checks that the tag matches `project.version`,
    exports `PROXY_VERSION` as `LLMENTARY_RELEASE_VERSION`, builds the sdist
    and verified platform wheels with pinned `build`/`wheel`/`twine` versions,
-   runs `twine check --strict`, and inspects the wheel tags. The PR/main
-   `publish (dry run)` job in `hygiene.yml` uses the same
-   `python scripts/build_release_wheels.py` invocation and the same pinned
-   tool versions.
+   runs `twine check --strict` (twine 7.0.0 understands PEP 639
+   `License-File`), checks that every `License-File` exists at
+   `.dist-info/licenses/<path>` (and the matching sdist path), and inspects
+   the wheel tags. The PR/main `publish (dry run)` job in `hygiene.yml` uses
+   the same `python scripts/build_release_wheels.py` invocation and the same
+   pinned tool versions.
 6. **publish** runs only when `vars.PYPI_PUBLISH_ENABLED` is `true`. It uses
    OIDC trusted publishing (no PyPI API token) and the action's default PEP 740
    attestations.
