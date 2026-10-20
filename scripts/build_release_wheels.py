@@ -12,6 +12,7 @@ import base64
 import hashlib
 import json
 import os
+import platform as py_platform
 import re
 import shutil
 import stat
@@ -95,18 +96,13 @@ def main() -> None:
 
     for target in TARGETS:
         asset = select_asset(assets, target)
-        expected = checksums.get(asset.name)
-        if not expected:
-            raise SystemExit(f"Checksum file has no entry for {asset.name}")
         archive = download_asset(asset.url, token)
-        actual = hashlib.sha256(archive).hexdigest()
-        if actual.lower() != expected.lower():
-            raise SystemExit(
-                f"Checksum mismatch for {asset.name}: expected {expected}, got {actual}"
-            )
+        verify_asset_checksum(asset.name, archive, checksums)
 
         shutil.rmtree(PACKAGE_BIN_DIR, ignore_errors=True)
-        install_binary(archive, asset.name, target, version=version)
+        installed = install_binary(archive, asset.name, target, version=version)
+        if host_can_execute(target):
+            assert_clean_release_version(installed, version)
         shutil.rmtree(raw, ignore_errors=True)
         raw.mkdir(parents=True)
         subprocess.run([sys.executable, "-m", "build", "--wheel", "--outdir", str(raw)], check=True)
@@ -220,13 +216,24 @@ def parse_checksums(data: bytes) -> dict[str, str]:
     return checksums
 
 
-def install_binary(archive: bytes, asset_name: str, target: Target, *, version: str) -> None:
+def install_binary(archive: bytes, asset_name: str, target: Target, *, version: str) -> Path:
     destination = PACKAGE_BIN_DIR / target.wheel_tag
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
+    target_path = destination / target.binary_name
+    extract_binary(archive, asset_name, target_path, target.binary_name)
+    if not AGPL_LICENSE_FILE.is_file():
+        raise SystemExit("Missing licenses/AGPL-3.0.txt")
+    shutil.copy2(AGPL_LICENSE_FILE, destination / "AGPL-3.0.txt")
+    (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    return target_path
+
+
+def extract_binary(archive: bytes, asset_name: str, dest: Path, binary_name: str) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        archive_path = tmp_path / asset_name
+        archive_path = tmp_path / Path(asset_name).name
         archive_path.write_bytes(archive)
         if asset_name.endswith(".zip"):
             with zipfile.ZipFile(archive_path) as zf:
@@ -234,16 +241,105 @@ def install_binary(archive: bytes, asset_name: str, target: Target, *, version: 
         else:
             with tarfile.open(archive_path) as tf:
                 safe_extract_tar(tf, tmp_path)
-        binary = find_extracted_binary(tmp_path, target.binary_name)
+        binary = find_extracted_binary(tmp_path, binary_name)
         if not binary.resolve().is_relative_to(tmp_path.resolve()):
             raise SystemExit("Refusing to install a binary outside the extract directory")
-        target_path = destination / target.binary_name
-        shutil.copy2(binary, target_path)
-        target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    if not AGPL_LICENSE_FILE.is_file():
-        raise SystemExit("Missing licenses/AGPL-3.0.txt")
-    shutil.copy2(AGPL_LICENSE_FILE, destination / "AGPL-3.0.txt")
-    (destination / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+        shutil.copy2(binary, dest)
+        dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return dest
+
+
+def read_proxy_version(path: Path = REPO_ROOT / "PROXY_VERSION") -> str:
+    version = path.read_text(encoding="utf-8").strip()
+    if not version:
+        raise SystemExit("PROXY_VERSION is empty")
+    return version
+
+
+def host_platform() -> tuple[str, str]:
+    system = py_platform.system().lower()
+    machine = py_platform.machine().lower()
+    goos = {"darwin": "darwin", "linux": "linux", "windows": "windows"}.get(system, system)
+    goarch = {
+        "x86_64": "amd64",
+        "amd64": "amd64",
+        "aarch64": "arm64",
+        "arm64": "arm64",
+    }.get(machine, machine)
+    return goos, goarch
+
+
+def target_for_platform(goos: str, goarch: str) -> Target:
+    for target in TARGETS:
+        if target.goos == goos and goarch in target.arch_aliases:
+            return target
+    raise SystemExit(f"No bundled wheel target for {goos}/{goarch}")
+
+
+def host_can_execute(target: Target) -> bool:
+    goos, goarch = host_platform()
+    return target.goos == goos and goarch in target.arch_aliases
+
+
+def assert_clean_release_version(binary: Path, version: str) -> None:
+    """Fail unless ``binary --version`` reports ``version`` with no ``+dirty``."""
+
+    try:
+        completed = subprocess.run(
+            [str(binary), "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemExit(f"failed to run {binary} --version: {exc}") from exc
+    text = (completed.stdout or completed.stderr).strip()
+    first = text.splitlines()[0] if text else ""
+    if completed.returncode != 0 or not first:
+        raise SystemExit(f"{binary} --version failed: {text or completed.returncode}")
+    if "+dirty" in first:
+        raise SystemExit(f"{binary} --version is dirty: {first}")
+    if version not in first:
+        raise SystemExit(f"{binary} --version {first!r} does not contain {version}")
+
+
+def verify_asset_checksum(name: str, data: bytes, checksums: dict[str, str]) -> None:
+    expected = checksums.get(name)
+    if not expected:
+        raise SystemExit(f"Checksum file has no entry for {name}")
+    actual = hashlib.sha256(data).hexdigest()
+    if actual.lower() != expected.lower():
+        raise SystemExit(f"Checksum mismatch for {name}: expected {expected}, got {actual}")
+
+
+def install_release_binary(
+    *,
+    dest: Path,
+    version: Optional[str] = None,
+    token: Optional[str] = None,
+    goos: Optional[str] = None,
+    goarch: Optional[str] = None,
+) -> Path:
+    pin = version or read_proxy_version()
+    secret = token or os.environ.get("LLMENTARY_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not secret:
+        raise SystemExit("LLMENTARY_REPO_TOKEN or GITHUB_TOKEN is required")
+    if goos is None or goarch is None:
+        host_goos, host_goarch = host_platform()
+        goos = goos or host_goos
+        goarch = goarch or host_goarch
+    target = target_for_platform(goos, goarch)
+    release = fetch_release(pin, secret)
+    assets = release_assets(release)
+    checksums = parse_checksums(download_asset(select_checksum_asset(assets).url, secret))
+    asset = select_asset(assets, target)
+    archive = download_asset(asset.url, secret)
+    verify_asset_checksum(asset.name, archive, checksums)
+    extract_binary(archive, asset.name, dest, target.binary_name)
+    if host_can_execute(target):
+        assert_clean_release_version(dest, pin)
+    return dest
 
 
 def is_github_api_url(url: str) -> bool:

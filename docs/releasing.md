@@ -40,9 +40,16 @@ ref. Every job refuses to run unless `github.ref` is `refs/tags/v*`.
 `PROXY_VERSION` is a single version string (no `v` prefix). Renovate looks it
 up as `github-releases` for `barzoj-co/llmentary` and opens a PR. That PR
 must **not** automerge: the live OpenAI e2e suite has to pass against the new
-proxy first. CI still builds the proxy from source today, so a
-`PROXY_VERSION`-only change does not change what the test jobs execute until a
-later ticket switches CI to release binaries.
+proxy first. CI downloads that release's host archive with
+`scripts/install_proxy_release.py`, verifies sha256 against `checksums.txt`,
+and points `LLMENTARY_BIN` at the extracted binary. A `PROXY_VERSION` bump
+therefore changes what the test and e2e jobs execute.
+
+The current pin is `0.2.0` (tag commit
+`d3698347ec0ac297a45fd531e4011b60b2039324`). `--version` prints clean
+`llmentary 0.2.0 (d3698347...)` with no `+dirty`. Cosign identity for
+`checksums.txt.sigstore.json` is `goreleaser.yml@refs/heads/main`, not the
+tag ref.
 
 ## One-time manual setup
 

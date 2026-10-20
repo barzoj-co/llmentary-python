@@ -2,14 +2,18 @@
 
 There is no download-on-first-run. Platform wheels bundle a version-pinned Go
 proxy binary taken from the `barzoj-co/llmentary` GoReleaser release named in
-`PROXY_VERSION`. That pin is independent of this Python package version. The
-bundled version is also written to the wheel `VERSION` file. Release packaging
-verifies each archive against `checksums.txt` (sha256) before it is copied into
-the wheel.
+`PROXY_VERSION` (currently `0.2.0`, tag commit
+`d3698347ec0ac297a45fd531e4011b60b2039324`). That pin is independent of this
+Python package version. The bundled version is also written to the wheel
+`VERSION` file. Release packaging and CI verify each downloaded archive against
+`checksums.txt` (sha256) before the binary is used. The release also publishes
+`checksums.txt.sigstore.json`; the signing identity is
+`goreleaser.yml@refs/heads/main`, not the tag ref.
 
 Lookup order:
 
-1. `LLMENTARY_BIN` — explicit override, including CI builds from source
+1. `LLMENTARY_BIN` — explicit override, including CI's checksum-verified
+   `PROXY_VERSION` install
 2. Binary bundled in the installed platform wheel
 3. `llmentary` on `PATH`
 

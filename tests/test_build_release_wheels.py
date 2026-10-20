@@ -202,6 +202,45 @@ def test_install_binary_extracts_and_records_version(
     assert "GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_text
 
 
+def test_assert_clean_release_version_rejects_dirty(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text(
+        "#!/bin/sh\necho 'llmentary 0.2.0+dirty (d3698347)'\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o755)
+    with pytest.raises(SystemExit, match="dirty"):
+        wheels.assert_clean_release_version(binary, "0.2.0")
+
+
+def test_assert_clean_release_version_accepts_release(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text(
+        "#!/bin/sh\necho 'llmentary 0.2.0 (d3698347ec0ac297a45fd531e4011b60b2039324)'\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o755)
+    wheels.assert_clean_release_version(binary, "0.2.0")
+
+
+def test_verify_asset_checksum_matches_and_rejects() -> None:
+    payload = b"proxy-bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    wheels.verify_asset_checksum(
+        "llmentary_0.2.0_linux_amd64.tar.gz",
+        payload,
+        {"llmentary_0.2.0_linux_amd64.tar.gz": digest},
+    )
+    with pytest.raises(SystemExit, match="Checksum mismatch"):
+        wheels.verify_asset_checksum(
+            "llmentary_0.2.0_linux_amd64.tar.gz",
+            payload,
+            {"llmentary_0.2.0_linux_amd64.tar.gz": "0" * 64},
+        )
+    with pytest.raises(SystemExit, match="no entry"):
+        wheels.verify_asset_checksum("missing.tar.gz", payload, {})
+
+
 def test_asset_download_strips_authorization_on_redirect() -> None:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:
