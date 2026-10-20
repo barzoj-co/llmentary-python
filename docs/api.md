@@ -109,9 +109,9 @@ expect.tool_result_fed_back("get_weather")
 expect.tool_result_in_prompt("get_weather")
 ```
 
-`tool_result_in_prompt` requires the next request after tool `name` to carry
-that tool's result content verbatim. `tool_result_fed_back` only checks that a
-later request references the tool call id.
+`tool_result_in_prompt` requires a later request to include a non-empty tool
+result that matches `name` by tool-call id or tool name. `tool_result_fed_back`
+only checks that a later request references the tool call id.
 
 `args_subset` recursively checks only the expected keys. `args_matcher` accepts
 either a mapping (same behavior as `args_subset`) or a callable returning bool.
@@ -162,9 +162,10 @@ expect.response_json_schema({"type": "object", "required": ["answer"]})
 expect.final_response_mentions_any("20", "sunny")
 ```
 
-`final_response_mentions_any` is the last recorded response's text through
-`answer_mentions_any` (case-insensitive; `20°C` / `20 °C` / `20 degrees` match
-when `normalize_numbers` is on). Use that helper on app-level answers that are
+`final_response_mentions_any` runs `answer_mentions_any` on the last call's
+model output text only (same fields as the JSON assertions), not the response
+envelope. Matching is case-insensitive; `20°C` / `20 °C` / `20 degrees` match
+when `normalize_numbers` is on. Use the helper on app-level answers that are
 not on the trace:
 
 ```python

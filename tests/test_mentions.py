@@ -93,6 +93,14 @@ def test_answer_mentions_any_table(text: str, candidates: tuple[str, ...]) -> No
     answer_mentions_any(text, *candidates)
 
 
+def test_answer_mentions_any_requires_token_boundaries() -> None:
+    with pytest.raises(AssertionError):
+        answer_mentions_any("temperature 120 today", "20")
+    with pytest.raises(AssertionError):
+        answer_mentions_any("unsunny skies", "sunny")
+    answer_mentions_any("It is sunny and 20 degrees.", "20", "sunny")
+
+
 def test_answer_mentions_any_failure_lists_candidates_and_excerpt() -> None:
     text = "x" * 80 + " no numbers here " + "y" * 80
     with pytest.raises(AssertionError) as caught:
@@ -156,6 +164,38 @@ def test_tool_result_in_prompt_and_mentions_fail_on_mutated_trace() -> None:
         Expectation(mutated).tool_result_in_prompt("get_weather")
     with pytest.raises(AssertionError, match="mention any"):
         Expectation(mutated).final_response_mentions_any("sunny")
+
+
+def test_final_response_mentions_any_ignores_response_envelope() -> None:
+    envelope_only = SessionTrace.from_payload(
+        "envelope",
+        {
+            "calls": [
+                {
+                    "response": {
+                        "id": "chatcmpl-20",
+                        "created": 20,
+                        "usage": {"total_tokens": 20},
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": None,
+                                    "tool_calls": [
+                                        {
+                                            "id": "call_1",
+                                            "function": {"name": "get_weather", "arguments": "{}"},
+                                        }
+                                    ],
+                                }
+                            }
+                        ],
+                    }
+                }
+            ]
+        },
+    )
+    with pytest.raises(AssertionError, match="model output text"):
+        Expectation(envelope_only).final_response_mentions_any("20")
 
 
 def test_soft_expectation_reports_three_failures() -> None:

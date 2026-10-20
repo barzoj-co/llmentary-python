@@ -110,18 +110,18 @@ def test_tool_flow(llmentary):
 ```
 
 Black-box / import-time clients that cannot send headers: set the service base
-URL to `llmentary.path_base_url()` **before** the app is imported.
+URL to `llmentary.path_base_url()` **inside the test**, then import the app.
+The session id exists only after the fixture runs, so a module-level import is
+too early.
 
 ```python
-import os
-
-from openai import OpenAI
+import importlib
 
 
-def test_import_time_client(llmentary):
-    os.environ["OPENAI_BASE_URL"] = llmentary.path_base_url()
-    client = OpenAI()
-    client.chat.completions.create(
+def test_import_time_client(llmentary, monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", llmentary.path_base_url())
+    app = importlib.import_module("myapp")
+    app.client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[{"role": "user", "content": "ping"}],
     )

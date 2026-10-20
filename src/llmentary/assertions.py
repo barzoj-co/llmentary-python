@@ -301,7 +301,10 @@ class Expectation:
         if not self.trace.calls:
             self._assert(False, "expected at least one captured call")
             return self
-        text = self.trace.calls[-1].response_text
+        text = "\n".join(model_output_text_candidates(self.trace.calls[-1]))
+        if not text.strip():
+            self._assert(False, "expected the last response to include model output text")
+            return self
         try:
             answer_mentions_any(
                 text,
@@ -314,7 +317,12 @@ class Expectation:
         return self
 
     def tool_result_in_prompt(self, name: str) -> Expectation:
-        """The next request after tool ``name`` carries that tool's result verbatim."""
+        """Fail unless a later request has a non-empty tool result for ``name``.
+
+        The result is matched by tool-call id or tool name. This is stronger
+        than ``tool_result_fed_back`` (content must be present) but does not
+        compare against an independently supplied expected string.
+        """
 
         calls = list(self.trace.calls)
         for index, call in enumerate(calls):
@@ -559,7 +567,10 @@ def _mentions_any(
         if normalize_numbers:
             needles.add(_normalize_mention(candidate, normalize_numbers=True, casefold=casefold))
         for needle in needles:
-            if needle and any(needle in haystack for haystack in haystacks):
+            if not needle:
+                continue
+            pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+            if any(pattern.search(haystack) for haystack in haystacks):
                 return True
     return False
 
