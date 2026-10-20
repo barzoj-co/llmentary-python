@@ -114,10 +114,10 @@ informational and do not fail PRs.
 ## CI configuration required
 
 - `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
-  repository `barzoj-co/llmentary`. Used only to check out and build the real
-  Go proxy in CI, and to fetch GoReleaser assets when building release wheels.
-  TODO: remove once llmentary is public. Keep this secret name; it is an
-  existing org secret.
+  repository `barzoj-co/llmentary`. Used to download the `PROXY_VERSION`
+  GoReleaser archive (and `checksums.txt`) in CI, and to fetch those assets
+  when building release wheels. TODO: remove once llmentary is public. Keep
+  this secret name; it is an existing org secret.
 - `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
   Those tests actually run (they do not skip) when this secret is present.
 - PyPI Trusted Publishing: configure PyPI project `llmentary` to trust this
@@ -125,10 +125,11 @@ informational and do not fail PRs.
   releases. No PyPI API token is used. Publish stays gated on
   `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
 
-CI builds the real Go proxy from source (`go build ./cmd/llmentary`) and points
-tests at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI
-upstream through that real binary. E2E tests talk to the real OpenAI API
-through the same real binary.
+CI installs the real Go proxy from the `PROXY_VERSION` GitHub Release (currently
+v0.2.0), verifies the archive sha256 against `checksums.txt`, and points tests
+at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI upstream
+through that real binary. E2E tests talk to the real OpenAI API through the
+same real binary.
 
 Proxy binary lookup, wheel platforms, and `LLMENTARY_START_COMMAND` are
 documented in [docs/binaries.md](docs/binaries.md).

@@ -505,8 +505,7 @@ def start_proxy(
 
     bin_path = binary or find_binary(env=merged_env)
     host = merged_env.get("LLMENTARY_HOST", "127.0.0.1")
-    port = int(merged_env.get("LLMENTARY_PORT") or free_port(host))
-    control_port = int(merged_env.get("LLMENTARY_CONTROL_PORT") or free_port(host))
+    port, control_port = allocate_listen_and_control_ports(host, merged_env)
     url = f"http://{host}:{port}"
     control_url = f"http://{host}:{control_port}"
     resolved_upstream = upstream_url or merged_env.get("LLMENTARY_UPSTREAM_BASE_URL")
@@ -663,10 +662,51 @@ def redact_secrets(text: str) -> str:
     return re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+", r"\1***", text)
 
 
+def allocate_listen_and_control_ports(
+    host: str, env: Mapping[str, str]
+) -> tuple[int, int]:
+    listen = env.get("LLMENTARY_PORT")
+    control = env.get("LLMENTARY_CONTROL_PORT")
+    if listen and control:
+        return int(listen), int(control)
+    if listen:
+        port = int(listen)
+        return port, free_ports(host, 1, exclude={port})[0]
+    if control:
+        control_port = int(control)
+        return free_ports(host, 1, exclude={control_port})[0], control_port
+    allocated = free_ports(host, 2)
+    return allocated[0], allocated[1]
+
+
 def free_port(host: str = "127.0.0.1") -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((host, 0))
-        return int(sock.getsockname()[1])
+    return free_ports(host, 1)[0]
+
+
+def free_ports(
+    host: str = "127.0.0.1",
+    count: int = 1,
+    *,
+    exclude: Optional[set[int]] = None,
+) -> list[int]:
+    """Reserve ``count`` distinct ephemeral ports, held until all are chosen."""
+
+    blocked = set(exclude or ())
+    sockets: list[socket.socket] = []
+    try:
+        while len(sockets) < count:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind((host, 0))
+            port = int(sock.getsockname()[1])
+            if port in blocked:
+                sock.close()
+                continue
+            blocked.add(port)
+            sockets.append(sock)
+        return [int(sock.getsockname()[1]) for sock in sockets]
+    finally:
+        for sock in sockets:
+            sock.close()
 
 
 def read_process_output(process: subprocess.Popen[str], *, log_file: TextIO) -> str:
