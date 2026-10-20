@@ -98,9 +98,9 @@ def test_tool_flow(llmentary):
     ).tool_result_fed_back("get_weather").no_errors()
 ```
 
-The function-scoped `llmentary` fixture creates a unique session id, exposes
-headers with `X-Test-Session`, waits for proxy quiescence before assertions,
-and deletes the session during teardown.
+The function-scoped `llmentary` fixture returns a `Session`: it creates a unique
+session id, exposes headers with `X-Test-Session`, waits for proxy quiescence
+before assertions, and deletes the session during teardown.
 
 ## Assertions
 

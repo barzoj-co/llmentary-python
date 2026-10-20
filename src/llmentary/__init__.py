@@ -4,7 +4,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .assertions import Expectation, SoftExpectation
 from .binary import BinaryResolutionError, find_binary
-from .client import ControlClient, LlmentarySession, ProxyHandle, Query, start_proxy
+from .client import ControlClient, ProxyHandle, Query, Session, start_proxy
 from .types import APIType, SessionTrace
 
 try:
@@ -17,9 +17,9 @@ __all__ = [
     "BinaryResolutionError",
     "ControlClient",
     "Expectation",
-    "LlmentarySession",
     "ProxyHandle",
     "Query",
+    "Session",
     "SessionTrace",
     "SoftExpectation",
     "__version__",

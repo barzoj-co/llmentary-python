@@ -11,7 +11,7 @@ from e2e_helpers import (
     openai_client,
 )
 
-from llmentary import LlmentarySession
+from llmentary import Session
 from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.e2e
 CACHE_PREFIX = ("cache-token LTL-PY-2 " * 400).strip()
 
 
-def test_cached_tokens_field_is_parsed(llmentary: LlmentarySession) -> None:
+def test_cached_tokens_field_is_parsed(llmentary: Session) -> None:
     client = openai_client(llmentary)
     prompt = f"{CACHE_PREFIX}\nReply with the single word ping."
     for _ in range(2):
@@ -46,7 +46,7 @@ def test_cached_tokens_field_is_parsed(llmentary: LlmentarySession) -> None:
     )
 
 
-def test_reasoning_tokens_from_reasoning_model(llmentary: LlmentarySession) -> None:
+def test_reasoning_tokens_from_reasoning_model(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.responses.create(
@@ -66,14 +66,14 @@ def test_reasoning_tokens_from_reasoning_model(llmentary: LlmentarySession) -> N
     )
 
 
-def test_concurrent_sessions_are_isolated(llmentary: LlmentarySession) -> None:
-    session_a = LlmentarySession(
+def test_concurrent_sessions_are_isolated(llmentary: Session) -> None:
+    session_a = Session(
         session_id=new_session_id("iso-a"),
         proxy=llmentary.proxy,
         wait_timeout=llmentary.wait_timeout,
         quiet_for=llmentary.quiet_for,
     )
-    session_b = LlmentarySession(
+    session_b = Session(
         session_id=new_session_id("iso-b"),
         proxy=llmentary.proxy,
         wait_timeout=llmentary.wait_timeout,
@@ -82,7 +82,7 @@ def test_concurrent_sessions_are_isolated(llmentary: LlmentarySession) -> None:
     token_a = "UNIQUE_TOKEN_ALPHA_LTL_PY_2"
     token_b = "UNIQUE_TOKEN_BETA_LTL_PY_2"
 
-    def run(session: LlmentarySession, token: str) -> None:
+    def run(session: Session, token: str) -> None:
         client = openai_client(session)
         call_openai(
             lambda: client.chat.completions.create(

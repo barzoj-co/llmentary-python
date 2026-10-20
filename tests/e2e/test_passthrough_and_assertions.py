@@ -12,13 +12,13 @@ from e2e_helpers import (
     openai_invalid_model_errors,
 )
 
-from llmentary import LlmentarySession
+from llmentary import Session
 from llmentary.assertions import Expectation
 
 pytestmark = pytest.mark.e2e
 
 
-def test_raw_passthrough_models_list(llmentary: LlmentarySession) -> None:
+def test_raw_passthrough_models_list(llmentary: Session) -> None:
     client = openai_client(llmentary)
     listing = call_openai(lambda: client.models.list())
     models = [item.id for item in listing.data]
@@ -36,7 +36,7 @@ def test_raw_passthrough_models_list(llmentary: LlmentarySession) -> None:
     assert models[0] in blob, trace.trace_summary()
 
 
-def test_assertion_helpers_fail_with_clear_messages(llmentary: LlmentarySession) -> None:
+def test_assertion_helpers_fail_with_clear_messages(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(

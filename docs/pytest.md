@@ -32,9 +32,9 @@ terminated.
 
 ### `llmentary`
 
-Function-scoped fixture that creates a unique test session id, exposes OpenAI
-client helpers, waits for quiescence before assertions, and deletes the session
-after the test.
+Function-scoped fixture that returns a `Session`: it creates a unique test
+session id, exposes OpenAI client helpers, waits for quiescence before
+assertions, and deletes the session after the test.
 
 ```python
 def test_something(llmentary):

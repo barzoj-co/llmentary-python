@@ -32,12 +32,12 @@ from e2e_helpers import (
     tool_argument_json,
 )
 
-from llmentary import LlmentarySession
+from llmentary import Session
 
 pytestmark = pytest.mark.e2e
 
 
-def test_chat_nonstreaming_plain_text(llmentary: LlmentarySession) -> None:
+def test_chat_nonstreaming_plain_text(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
@@ -52,7 +52,7 @@ def test_chat_nonstreaming_plain_text(llmentary: LlmentarySession) -> None:
     expect.finish_reason("stop").prompt_contains("ping")
 
 
-def test_chat_streaming_plain_text(llmentary: LlmentarySession) -> None:
+def test_chat_streaming_plain_text(llmentary: Session) -> None:
     client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(
@@ -74,7 +74,7 @@ def test_chat_streaming_plain_text(llmentary: LlmentarySession) -> None:
     assert_assembled_matches_recorded(assembled, call.response_text)
 
 
-def test_chat_forced_tool_then_result(llmentary: LlmentarySession) -> None:
+def test_chat_forced_tool_then_result(llmentary: Session) -> None:
     client = openai_client(llmentary)
     first = call_openai(
         lambda: client.chat.completions.create(
@@ -107,7 +107,7 @@ def test_chat_forced_tool_then_result(llmentary: LlmentarySession) -> None:
     assert tool_argument_json(expect.trace, "get_weather")["city"]
 
 
-def test_chat_streaming_forced_tool_arguments_json(llmentary: LlmentarySession) -> None:
+def test_chat_streaming_forced_tool_arguments_json(llmentary: Session) -> None:
     client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(
@@ -130,7 +130,7 @@ def test_chat_streaming_forced_tool_arguments_json(llmentary: LlmentarySession) 
     expect.no_errors()
 
 
-def test_chat_parallel_tool_calls(llmentary: LlmentarySession) -> None:
+def test_chat_parallel_tool_calls(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
@@ -155,7 +155,7 @@ def test_chat_parallel_tool_calls(llmentary: LlmentarySession) -> None:
     expect.tool_called("get_weather").tool_called("get_time").parallel_tool_calls().no_errors()
 
 
-def test_chat_structured_json_schema(llmentary: LlmentarySession) -> None:
+def test_chat_structured_json_schema(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
@@ -177,7 +177,7 @@ def test_chat_structured_json_schema(llmentary: LlmentarySession) -> None:
     expect.response_json_valid().response_json_schema(JSON_SCHEMA).no_errors()
 
 
-def test_chat_multi_turn_session_helpers(llmentary: LlmentarySession) -> None:
+def test_chat_multi_turn_session_helpers(llmentary: Session) -> None:
     client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
@@ -230,7 +230,7 @@ def test_chat_multi_turn_session_helpers(llmentary: LlmentarySession) -> None:
     filtered.prompt_contains("Say two.").no_errors()
 
 
-def test_chat_upstream_invalid_model(llmentary: LlmentarySession) -> None:
+def test_chat_upstream_invalid_model(llmentary: Session) -> None:
     client = openai_client(llmentary)
     with pytest.raises(openai_invalid_model_errors()):
         client.chat.completions.create(
@@ -248,7 +248,7 @@ def test_chat_upstream_invalid_model(llmentary: LlmentarySession) -> None:
     )
 
 
-def test_chat_upstream_invalid_api_key(llmentary: LlmentarySession) -> None:
+def test_chat_upstream_invalid_api_key(llmentary: Session) -> None:
     client = openai_client(llmentary)
     with pytest.raises(openai_invalid_key_errors()):
         client.chat.completions.create(
@@ -267,7 +267,7 @@ def test_chat_upstream_invalid_api_key(llmentary: LlmentarySession) -> None:
     )
 
 
-def test_chat_cancel_mid_stream_keeps_proxy_healthy(llmentary: LlmentarySession) -> None:
+def test_chat_cancel_mid_stream_keeps_proxy_healthy(llmentary: Session) -> None:
     client = openai_client(llmentary)
     stream = call_openai(
         lambda: client.chat.completions.create(

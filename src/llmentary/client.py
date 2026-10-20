@@ -169,7 +169,7 @@ class ProxyHandle:
 
 
 @dataclass
-class LlmentarySession:
+class Session:
     """Function-scoped test session helper returned by the ``llmentary`` fixture."""
 
     session_id: str
@@ -239,7 +239,7 @@ class LlmentarySession:
 
 @dataclass
 class Query:
-    session: LlmentarySession
+    session: Session
     api_type: Optional[str] = None
     model: Optional[str] = None
 

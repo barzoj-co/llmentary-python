@@ -28,9 +28,9 @@ uses:
 For non-loopback proxies, pass the bearer token as `token` or set
 `LLMENTARY_CONTROL_TOKEN`.
 
-### `LlmentarySession`
+### `Session`
 
-The pytest `llmentary` fixture returns `LlmentarySession`.
+The pytest `llmentary` fixture returns `llmentary.Session`.
 
 Useful properties:
 

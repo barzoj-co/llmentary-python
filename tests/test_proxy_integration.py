@@ -3,11 +3,11 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from llmentary import LlmentarySession
+from llmentary import Session
 
 
 @pytest.mark.integration
-def test_chat_completions_tool_flow_through_real_proxy(llmentary: LlmentarySession) -> None:
+def test_chat_completions_tool_flow_through_real_proxy(llmentary: Session) -> None:
     with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
         first = client.post(
             "/chat/completions",
@@ -64,7 +64,7 @@ def test_chat_completions_tool_flow_through_real_proxy(llmentary: LlmentarySessi
 
 
 @pytest.mark.integration
-def test_responses_tool_flow_through_real_proxy(llmentary: LlmentarySession) -> None:
+def test_responses_tool_flow_through_real_proxy(llmentary: Session) -> None:
     with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
         first = client.post(
             "/responses",

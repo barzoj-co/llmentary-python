@@ -8,7 +8,7 @@ from typing import Optional
 
 import pytest
 
-from .client import LlmentarySession, ProxyHandle, new_session_id, start_proxy
+from .client import ProxyHandle, Session, new_session_id, start_proxy
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -101,11 +101,11 @@ def llmentary_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
 @pytest.fixture
 def llmentary(
     request: pytest.FixtureRequest, llmentary_proxy: ProxyHandle
-) -> Iterator[LlmentarySession]:
+) -> Iterator[Session]:
     """Unique llmentary recording session for one pytest test function."""
 
     test_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", request.node.name).strip("-.")
-    session = LlmentarySession(
+    session = Session(
         session_id=new_session_id(test_name),
         proxy=llmentary_proxy,
         wait_timeout=float(request.config.getoption("--llmentary-wait-timeout")),

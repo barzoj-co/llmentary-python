@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import llmentary
-from llmentary import LlmentarySession, Query, pytest_plugin
+from llmentary import Query, Session, pytest_plugin
 from llmentary.assertions import Expectation, SoftExpectation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,11 +30,12 @@ def _python_fences(path: Path) -> list[str]:
     return PYTHON_FENCE.findall(path.read_text())
 
 
-def test_package_exports_llmentary_session_not_lab() -> None:
-    assert "LlmentarySession" in llmentary.__all__
-    assert "LabSession" not in llmentary.__all__
-    assert not hasattr(llmentary, "LabSession")
-    assert llmentary.LlmentarySession is LlmentarySession
+def test_package_exports_session_not_lab_aliases() -> None:
+    assert "Session" in llmentary.__all__
+    assert llmentary.Session is Session
+    for removed in ("LabSession", "LlmentarySession"):
+        assert removed not in llmentary.__all__
+        assert not hasattr(llmentary, removed)
 
 
 def test_plugin_registers_llmentary_fixture_only() -> None:
@@ -55,6 +56,7 @@ def test_readme_is_user_facing() -> None:
         assert needle not in readme, f"README must not mention {needle!r}"
     assert not re.search(r"\blab\b", readme)
     assert not re.search(r"\bLabSession\b", readme)
+    assert "LlmentarySession" not in readme
     headings = re.findall(r"^## .+$", readme, flags=re.MULTILINE)
     assert headings == [
         "## Install",
