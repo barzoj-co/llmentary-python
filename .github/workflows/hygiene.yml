@@ -273,6 +273,9 @@ jobs:
       - name: Check License-File paths
         run: python scripts/check-dist-license-files.py dist
 
+      - name: Assert sdist is client-only
+        run: python scripts/check-sdist-client-only.py dist --install
+
       - name: Inspect wheel tags
         run: bash scripts/inspect-release-wheels.sh
 

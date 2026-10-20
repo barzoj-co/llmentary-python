@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from llmentary.binary import BinaryResolutionError, bundled_platform_tag, find_binary
+from llmentary.binary import (
+    SUPPORTED_WHEEL_TAGS,
+    BinaryResolutionError,
+    bundled_platform_tag,
+    find_binary,
+)
 
 
 def test_find_binary_uses_env_path(tmp_path: Path) -> None:
@@ -55,3 +60,28 @@ def test_bundled_platform_tag_linux_amd64(monkeypatch: pytest.MonkeyPatch) -> No
 def test_bundled_platform_tag_darwin_arm64(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("llmentary.binary.goreleaser_platform", lambda: ("darwin", "arm64"))
     assert bundled_platform_tag() == "macosx_11_0_arm64"
+
+
+def test_sdist_install_error_mentions_no_bundled_proxy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("llmentary.binary.package_bin_dir", lambda: tmp_path / "bin")
+    monkeypatch.setattr("llmentary.binary.goreleaser_platform", lambda: ("linux", "amd64"))
+    with pytest.raises(BinaryResolutionError) as caught:
+        find_binary(env={"PATH": ""})
+    message = str(caught.value)
+    assert "no bundled proxy" in message
+    assert "manylinux2014_x86_64" in message
+    assert "--only-binary=:all:" in message
+
+
+def test_unsupported_platform_error_mentions_no_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("llmentary.binary.goreleaser_platform", lambda: ("plan9", "mips"))
+    with pytest.raises(BinaryResolutionError) as caught:
+        find_binary(env={"PATH": ""})
+    message = str(caught.value)
+    assert "no wheel for platform `plan9_mips`" in message
+    for tag in SUPPORTED_WHEEL_TAGS:
+        assert tag in message

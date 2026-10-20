@@ -178,6 +178,9 @@ jobs:
       - name: Install package and dev tools
         run: python -m pip install -e ".[dev,openai]"
 
+      - name: llmentary doctor
+        run: python -m llmentary doctor
+
       - name: Real OpenAI E2E tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

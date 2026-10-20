@@ -21,6 +21,12 @@ Published wheels:
 - `macosx_11_0_arm64`
 - `win_amd64`
 
+The sdist is client-only: it excludes `src/llmentary/bin`. A client-only
+install raises `BinaryResolutionError` with the detected situation, the
+published tags, and the same three fixes (`pip install --only-binary=:all:
+llmentary`, `LLMENTARY_BIN`, npm or GitHub Release). `python -m llmentary
+doctor` prints what this install resolved.
+
 The client starts the proxy with the Go binary's flags: `-listen` for the
 OpenAI-compatible proxy, `-control` for the control API, and
 `-upstream name=https://host/base` (default name `openai`). Override the whole

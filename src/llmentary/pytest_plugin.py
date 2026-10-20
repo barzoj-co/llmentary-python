@@ -9,6 +9,7 @@ from typing import Optional
 
 import pytest
 
+from .binary import BinaryResolutionError
 from .client import ProxyHandle, Session, new_session_id, start_proxy
 from .wait import default_wait_quiet, default_wait_timeout, parse_duration
 
@@ -95,14 +96,17 @@ def llmentary_proxy(request: pytest.FixtureRequest) -> Iterator[ProxyHandle]:
     if control_url:
         os.environ["LLMENTARY_CONTROL_URL"] = str(control_url)
 
-    with start_proxy(
-        upstream_url=str(configured_upstream_url or "") or None,
-        upstream_api_key=str(configured_upstream_api_key or "") or None,
-        proxy_url=request.config.getoption("--llmentary-proxy-url"),
-        token=str(configured_token or "") or None,
-        binary=Path(option_bin) if option_bin else None,
-    ) as proxy:
-        yield proxy
+    try:
+        with start_proxy(
+            upstream_url=str(configured_upstream_url or "") or None,
+            upstream_api_key=str(configured_upstream_api_key or "") or None,
+            proxy_url=request.config.getoption("--llmentary-proxy-url"),
+            token=str(configured_token or "") or None,
+            binary=Path(option_bin) if option_bin else None,
+        ) as proxy:
+            yield proxy
+    except BinaryResolutionError:
+        raise
 
 
 @pytest.fixture
