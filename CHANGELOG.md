@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/barzoj-co/llmentary-python/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* add control API helpers, spec accessors, and default upstream ([#18](https://github.com/barzoj-co/llmentary-python/issues/18)) ([1d7b97e](https://github.com/barzoj-co/llmentary-python/commit/1d7b97ed345a1a95f60aab8851522485e966a915))
+* add path session URL, call filters, and answer helpers ([#19](https://github.com/barzoj-co/llmentary-python/issues/19)) ([15155c5](https://github.com/barzoj-co/llmentary-python/commit/15155c5c3902aaf7560e1244628e7d3e03710ba8))
+
+
+### Bug Fixes
+
+* bundle proxy v0.2.0 ([#20](https://github.com/barzoj-co/llmentary-python/issues/20)) ([3c6f9cc](https://github.com/barzoj-co/llmentary-python/commit/3c6f9cc627c8f953ddaf4e65205ff9356809e4de))
+* fail clearly when the proxy binary is missing ([#16](https://github.com/barzoj-co/llmentary-python/issues/16)) ([3cda18e](https://github.com/barzoj-co/llmentary-python/commit/3cda18e900926e36c75614e41f30f7d8c2adc3ec))
+* send timeout and quiet wait params the proxy reads ([#15](https://github.com/barzoj-co/llmentary-python/issues/15)) ([c34f9d2](https://github.com/barzoj-co/llmentary-python/commit/c34f9d2ba53166ecf300605d3b3db94582c14aad))
+
 ## [0.2.0](https://github.com/barzoj-co/llmentary-python/compare/v0.1.1...v0.2.0) (2026-10-20)
 
 
