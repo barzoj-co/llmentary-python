@@ -385,6 +385,32 @@ class CapturedCall:
             results.extend(extract_tool_results(normalized))
         return results
 
+    def sequence_number(self) -> int:
+        """1-based sequence used by ``mark`` / ``since`` (``seq``, else ``index + 1``)."""
+
+        seq = first_present(self.raw, "seq", "sequence", "sequence_number", "sequenceNumber")
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            return seq
+        return self.index + 1
+
+    def offered_tool_names(self) -> list[str]:
+        """Tool names offered on the request (not tools the model called)."""
+
+        tools = self.request.get("tools")
+        if not isinstance(tools, list):
+            return []
+        names: list[str] = []
+        seen: set[str] = set()
+        for tool in tools:
+            mapping = as_mapping(tool)
+            name = first_present(mapping, "name")
+            if not isinstance(name, str) or not name:
+                name = first_present(mapping_at(mapping, "function"), "name")
+            if isinstance(name, str) and name and name not in seen:
+                seen.add(name)
+                names.append(name)
+        return names
+
     @property
     def validation(self) -> Optional[Validation]:
         """Metadata: whether spec validation ran. Not a finding list."""
@@ -435,12 +461,7 @@ class CapturedCall:
         return f"{count} violation" if count == 1 else f"{count} violations"
 
     def call_number(self) -> str:
-        seq = first_present(self.raw, "seq")
-        if isinstance(seq, int) and not isinstance(seq, bool):
-            return str(seq)
-        if isinstance(seq, str) and seq:
-            return seq
-        return str(self.index)
+        return str(self.sequence_number())
 
 
 @dataclass(frozen=True)
@@ -478,7 +499,7 @@ class SessionTrace:
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             spec = f", spec: {call.spec_status_label()}"
             lines.append(
-                f"  [{call.index}] api={api_label} model={call.model or '?'} "
+                f"  [{call.sequence_number()}] api={api_label} model={call.model or '?'} "
                 f"status={status}{http_status}{streamed}{aborted}{truncated}{finish}"
                 f"{latency}{ttft} tools=[{tool_names}]{spec}"
             )
@@ -495,6 +516,9 @@ class SessionTrace:
         *,
         api_type: Optional[str] = None,
         model: Optional[str] = None,
+        offers_tool: Optional[str] = None,
+        with_tools: Optional[bool] = None,
+        since: Optional[int] = None,
     ) -> SessionTrace:
         calls = list(self.calls)
         if api_type:
@@ -502,6 +526,14 @@ class SessionTrace:
             calls = [call for call in calls if call.api_type == normalized]
         if model:
             calls = [call for call in calls if model_matches(call.model, model)]
+        if since is not None:
+            calls = [call for call in calls if call.sequence_number() > since]
+        if offers_tool:
+            calls = [call for call in calls if offers_tool in call.offered_tool_names()]
+        if with_tools is True:
+            calls = [call for call in calls if call.offered_tool_names()]
+        elif with_tools is False:
+            calls = [call for call in calls if not call.offered_tool_names()]
         return SessionTrace(session_id=self.session_id, raw=self.raw, calls=calls)
 
     def spec_violations(self) -> list[SpecViolation]:
@@ -519,6 +551,18 @@ class SessionTrace:
             if items:
                 found.extend(items)
         return found
+
+    def offers_tool(self, name: str) -> SessionTrace:
+        return self.filtered(offers_tool=name)
+
+    def with_tools(self) -> SessionTrace:
+        return self.filtered(with_tools=True)
+
+    def without_tools(self) -> SessionTrace:
+        return self.filtered(with_tools=False)
+
+    def since(self, mark: int) -> SessionTrace:
+        return self.filtered(since=mark)
 
 
 def model_matches(actual: Optional[str], expected: str) -> bool:
@@ -920,7 +964,7 @@ def tool_call_from_raw(value: Any, index: int) -> ToolCall:
         name=str(name or ""),
         arguments=parsed_args,
         raw_arguments=args if isinstance(args, str) else None,
-        call_id=string_or_none(first_present(raw, "id", "call_id", "callId")),
+        call_id=string_or_none(first_present(raw, "call_id", "callId", "id")),
         index=index,
         raw=raw,
     )

@@ -45,6 +45,9 @@ Useful properties:
 - `llmentary.session_id`
 - `llmentary.base_url`: proxy URL
 - `llmentary.openai_base_url`: proxy URL with `/v1`, suitable for `openai-python`
+- `llmentary.path_base_url(upstream=None)`: `{proxy}/s/{id}/v1`, or
+  `{proxy}/s/{id}/u/{name}` for a named upstream. Use this when the service
+  cannot send session headers.
 - `llmentary.headers`: `X-Test-Session` plus W3C `baggage` with `llmentary.session.id`
 - `llmentary.baggage`: `llmentary.session.id=<session-id>`
 
@@ -59,7 +62,9 @@ Methods:
 - `llmentary.list_sessions()`: cheap session list from `GET /sessions`
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session
-- `llmentary.expect(soft=False)`: wait, then return an expectation object
+- `llmentary.mark()`: current max call sequence number (`0` if none)
+- `llmentary.expect(soft=False, since=None)`: wait, then return an expectation object
+  scoped to calls after `since` when that mark is set
 - `llmentary.query(api_type=None, model=None)`: scope assertions by API type/model
 - `llmentary.soft_expect()`: context manager that accumulates assertion failures
 
@@ -68,10 +73,20 @@ Methods:
 ```python
 llmentary.query(api_type="chat_completions", model="gpt-4.1-mini").expect().no_errors()
 llmentary.query(api_type="responses").expect().tool_called("lookup")
+llmentary.query().offers_tool("get_weather").expect().tool_called("get_weather")
+llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
+mark = llmentary.mark()
+llmentary.query().since(mark).expect().prompt_contains("turn 2")
 ```
 
 Accepted API type spellings include `chat`, `chat_completions`, `chat.completions`,
 `response`, `responses`, and the Go proxy's `api_family` values.
+
+`offers_tool(name)` keeps calls that offered that tool. `without_tools()` keeps
+calls that offered none (router-style structured output). `since(mark)` keeps
+calls whose sequence number is greater than `mark`. The same filters exist on
+`SessionTrace.filtered(...)` and as chainable `SessionTrace` methods.
+`trace_summary()` prints those sequence numbers.
 
 ## Assertions
 
@@ -91,7 +106,12 @@ expect.order("search", "summarize")
 expect.order("search", "summarize", strict=True)
 expect.parallel_tool_calls()
 expect.tool_result_fed_back("get_weather")
+expect.tool_result_in_prompt("get_weather")
 ```
+
+`tool_result_in_prompt` requires a later request to include a non-empty tool
+result that matches `name` by tool-call id or tool name. `tool_result_fed_back`
+only checks that a later request references the tool call id.
 
 `args_subset` recursively checks only the expected keys. `args_matcher` accepts
 either a mapping (same behavior as `args_subset`) or a callable returning bool.
@@ -139,6 +159,19 @@ expect.response_contains("sunny")
 expect.response_regex(r"sunny|clear")
 expect.response_json_valid()
 expect.response_json_schema({"type": "object", "required": ["answer"]})
+expect.final_response_mentions_any("20", "sunny")
+```
+
+`final_response_mentions_any` runs `answer_mentions_any` on the last call's
+model output text only (same fields as the JSON assertions), not the response
+envelope. Matching is case-insensitive; `20°C` / `20 °C` / `20 degrees` match
+when `normalize_numbers` is on. Use the helper on app-level answers that are
+not on the trace:
+
+```python
+from llmentary import answer_mentions_any
+
+answer_mentions_any(app_text, "20", "sunny")
 ```
 
 JSON assertions inspect model output text only (`output_text`, Chat
@@ -188,4 +221,6 @@ common fields used for assertions:
   proxy and OpenAI APIs
 
 Every assertion failure includes `SessionTrace.trace_summary()`, which lists each
-captured call with API type, model, status, finish reason, timings, and tools.
+captured call with its sequence number (the same numbers `mark` / `since` use),
+API type, model, status, finish reason, timings, and tools. Passing pytest tests
+that used the `llmentary` fixture also print that summary.

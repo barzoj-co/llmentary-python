@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .assertions import Expectation, SoftExpectation
+from .assertions import Expectation, SoftExpectation, answer_mentions_any
 from .binary import BinaryResolutionError, find_binary
 from .client import (
     ControlClient,
@@ -44,6 +44,7 @@ __all__ = [
     "Validation",
     "WaitTimeoutError",
     "__version__",
+    "answer_mentions_any",
     "find_binary",
     "start_proxy",
 ]

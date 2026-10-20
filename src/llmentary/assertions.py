@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from re import Pattern
 from typing import Any, Callable, Optional, Union
 
@@ -292,6 +292,62 @@ class Expectation:
         self._assert(False, "expected at least one JSON response to satisfy schema")
         return self
 
+    def final_response_mentions_any(
+        self,
+        *candidates: str,
+        normalize_numbers: bool = True,
+        casefold: bool = True,
+    ) -> Expectation:
+        if not self.trace.calls:
+            self._assert(False, "expected at least one captured call")
+            return self
+        text = "\n".join(model_output_text_candidates(self.trace.calls[-1]))
+        if not text.strip():
+            self._assert(False, "expected the last response to include model output text")
+            return self
+        try:
+            answer_mentions_any(
+                text,
+                *candidates,
+                normalize_numbers=normalize_numbers,
+                casefold=casefold,
+            )
+        except AssertionError as exc:
+            self._assert(False, str(exc))
+        return self
+
+    def tool_result_in_prompt(self, name: str) -> Expectation:
+        """Fail unless a later request has a non-empty tool result for ``name``.
+
+        The result is matched by tool-call id or tool name. This is stronger
+        than ``tool_result_fed_back`` (content must be present) but does not
+        compare against an independently supplied expected string.
+        """
+
+        calls = list(self.trace.calls)
+        for index, call in enumerate(calls):
+            invoked = [tool for tool in call.tool_calls if tool.name == name]
+            if not invoked:
+                continue
+            later = calls[index + 1 :]
+            if not later:
+                self._assert(
+                    False,
+                    f"expected a later request after tool {name!r} that carries its result",
+                )
+                return self
+            tool_ids = {tool.call_id for tool in invoked if tool.call_id}
+            for later_call in later:
+                if tool_result_contents(later_call, name, tool_ids):
+                    return self
+            self._assert(
+                False,
+                f"expected the next request after tool {name!r} to contain its result content",
+            )
+            return self
+        self._assert(False, f"expected tool {name!r} to be called")
+        return self
+
     def no_spec_violations(
         self,
         side: Optional[str] = None,
@@ -385,16 +441,7 @@ class Expectation:
         if calls is None:
             return self.trace.calls
         wanted = {int(value) for value in calls}
-        selected: list[CapturedCall] = []
-        for call in self.trace.calls:
-            seq = first_present(call.raw, "seq")
-            if isinstance(seq, int) and not isinstance(seq, bool):
-                if seq in wanted:
-                    selected.append(call)
-                continue
-            if call.index in wanted:
-                selected.append(call)
-        return selected
+        return [call for call in self.trace.calls if call.sequence_number() in wanted]
 
     def _tool_calls(self) -> Sequence[ToolCall]:
         return [tool for call in self.trace.calls for tool in call.tool_calls]
@@ -456,6 +503,99 @@ def mapping_contains(actual: Mapping[str, Any], expected: Mapping[str, Any]) -> 
         elif actual_value != expected_value:
             return False
     return True
+
+
+_DEGREE = "°"
+_UNIT_WORDS = re.compile(r"(?i)\b(?:degrees?|celsius|fahrenheit)\b")
+_TRAILING_TEMP_UNIT = re.compile(r"(?<=\d)\s*[cCfF]\b")
+_SPACES = re.compile(r"\s+")
+_EXCERPT_LIMIT = 200
+
+
+def answer_mentions_any(
+    text: str,
+    *candidates: str,
+    normalize_numbers: bool = True,
+    casefold: bool = True,
+) -> None:
+    """Assert that free-text ``text`` mentions at least one candidate.
+
+    With ``normalize_numbers``, ``20°C``, ``20 °C``, and ``20 degrees`` match
+    each other. With ``casefold``, ``Moderate`` matches ``moderate``. Failure
+    lists the candidates and a 200-character excerpt of ``text``.
+    """
+
+    if not candidates:
+        raise TypeError("answer_mentions_any() requires at least one candidate")
+    if _mentions_any(
+        text,
+        candidates,
+        normalize_numbers=normalize_numbers,
+        casefold=casefold,
+    ):
+        return
+    excerpt = text if len(text) <= _EXCERPT_LIMIT else text[:_EXCERPT_LIMIT]
+    listed = ", ".join(repr(candidate) for candidate in candidates)
+    raise AssertionError(
+        f"expected answer to mention any of [{listed}]; excerpt={excerpt!r}"
+    )
+
+
+def _mentions_any(
+    text: str,
+    candidates: Sequence[str],
+    *,
+    normalize_numbers: bool,
+    casefold: bool,
+) -> bool:
+    haystacks = {_normalize_mention(text, normalize_numbers=False, casefold=casefold)}
+    if normalize_numbers:
+        haystacks.add(_normalize_mention(text, normalize_numbers=True, casefold=casefold))
+    for candidate in candidates:
+        needles = {_normalize_mention(candidate, normalize_numbers=False, casefold=casefold)}
+        if normalize_numbers:
+            needles.add(_normalize_mention(candidate, normalize_numbers=True, casefold=casefold))
+        for needle in needles:
+            if not needle:
+                continue
+            pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+            if any(pattern.search(haystack) for haystack in haystacks):
+                return True
+    return False
+
+
+def _normalize_mention(text: str, *, normalize_numbers: bool, casefold: bool) -> str:
+    out = text.casefold() if casefold else text
+    if not normalize_numbers:
+        return out
+    out = out.replace(_DEGREE, " ")
+    out = _UNIT_WORDS.sub(" ", out)
+    out = _TRAILING_TEMP_UNIT.sub(" ", out)
+    return _SPACES.sub(" ", out).strip()
+
+
+def tool_result_contents(
+    call: CapturedCall,
+    name: str,
+    tool_ids: Collection[Optional[str]],
+) -> list[str]:
+    wanted_ids = {tool_id for tool_id in tool_ids if tool_id}
+    contents: list[str] = []
+    for result in call.tool_results:
+        result_id = first_present(result, "tool_call_id", "call_id", "callId")
+        result_name = result.get("name")
+        matched = (wanted_ids and result_id in wanted_ids) or result_name == name
+        if not matched and not wanted_ids and result_name is None:
+            matched = True
+        if not matched:
+            continue
+        content = first_present(result, "content", "output")
+        if content is None:
+            continue
+        rendered = stringify_value(content)
+        if rendered:
+            contents.append(rendered)
+    return contents
 
 
 def regex_search(pattern: Regex, value: str) -> bool:

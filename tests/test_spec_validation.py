@@ -229,6 +229,23 @@ def test_select_calls_uses_seq_not_conflicting_index() -> None:
         Expectation(_trace(dirty, clean)).no_spec_violations(calls=[1])
 
 
+def test_select_calls_without_seq_uses_one_based_sequence() -> None:
+    dirty = _call(
+        normalized={
+            "validation": {"mode": "warn"},
+            "spec_violations": [FOO_VIOLATION],
+        },
+    )
+    clean = _call(
+        normalized={"validation": {"mode": "warn"}, "spec_violations": []},
+    )
+    del dirty["seq"]
+    del clean["seq"]
+    Expectation(_trace(dirty, clean)).no_spec_violations(calls=[2])
+    with pytest.raises(AssertionError, match="/foo"):
+        Expectation(_trace(dirty, clean)).no_spec_violations(calls=[1])
+
+
 def test_unknown_request_field_fails_no_spec_violations() -> None:
     trace = _trace(
         _call(

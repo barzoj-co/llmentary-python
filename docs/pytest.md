@@ -106,6 +106,22 @@ def test_openai(llmentary):
     )
 ```
 
+When the client is constructed at import time and cannot take headers, set
+`OPENAI_BASE_URL` to `llmentary.path_base_url()` inside the test with
+`monkeypatch.setenv`, then import the app. A module-level import happens
+before the fixture creates the session id. See the proxy
+[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
+
+```python
+import importlib
+
+
+def test_path_session(llmentary, monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", llmentary.path_base_url())
+    app = importlib.import_module("myapp")
+    client = app.client
+```
+
 ### httpx
 
 ```python

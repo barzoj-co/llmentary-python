@@ -3,14 +3,15 @@ from __future__ import annotations
 import argparse
 import os
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
 import pytest
 
 from .binary import BinaryResolutionError
-from .client import ProxyHandle, Session, new_session_id, start_proxy
+from .client import ProxyHandle, Session, SessionNotFound, new_session_id, start_proxy
 from .wait import default_wait_quiet, default_wait_timeout, parse_duration
 
 
@@ -126,6 +127,37 @@ def llmentary(
         yield session
     finally:
         session.cleanup()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[object]
+) -> Generator[None, Any, None]:
+    """Print the recorded call summary on green tests that used ``llmentary``."""
+
+    outcome = yield
+    report = outcome.get_result()
+    if call.when != "call" or not report.passed:
+        return
+    funcargs = getattr(item, "funcargs", None) or {}
+    session = funcargs.get("llmentary")
+    if not isinstance(session, Session):
+        return
+    summary = green_run_call_summary(session)
+    if not summary:
+        return
+    report.sections.append(("llmentary call summary", summary))
+    print(f"\n{summary}")
+
+
+def green_run_call_summary(session: Session) -> Optional[str]:
+    try:
+        trace = session.trace()
+    except (SessionNotFound, httpx.HTTPError, OSError, TypeError):
+        return None
+    if not trace.calls:
+        return None
+    return trace.trace_summary()
 
 
 def _cli_duration(name: str) -> Callable[[str], float]:

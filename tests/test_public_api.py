@@ -32,6 +32,7 @@ def _python_fences(path: Path) -> list[str]:
 
 def test_package_exports_session_not_lab_aliases() -> None:
     assert "Session" in llmentary.__all__
+    assert "answer_mentions_any" in llmentary.__all__
     assert llmentary.Session is Session
     assert "SessionNotFound" in llmentary.__all__
     assert llmentary.SessionNotFound is SessionNotFound
@@ -75,6 +76,7 @@ def test_doc_python_snippets_compile_and_match_api() -> None:
         "session_id",
         "base_url",
         "openai_base_url",
+        "path_base_url",
         "headers",
         "baggage",
         "wait",
@@ -84,6 +86,7 @@ def test_doc_python_snippets_compile_and_match_api() -> None:
         "cleanup",
         "expect",
         "query",
+        "mark",
         "soft_expect",
     }
     assertion_methods = {
@@ -115,7 +118,14 @@ def test_doc_python_snippets_compile_and_match_api() -> None:
                     if isinstance(node.value, ast.Call):
                         func = node.value.func
                         if isinstance(func, ast.Attribute) and func.attr in {"expect", "query"}:
-                            if node.attr not in assertion_methods | {"expect", "trace"}:
+                            if node.attr not in assertion_methods | {
+                                "expect",
+                                "trace",
+                                "offers_tool",
+                                "with_tools",
+                                "without_tools",
+                                "since",
+                            }:
                                 raise AssertionError(
                                     f"{path} uses unknown chained attribute {node.attr}"
                                 )

@@ -63,6 +63,8 @@ export LLMENTARY_UPSTREAM_API_KEY="$OPENAI_API_KEY"
 pytest
 ```
 
+In-process tests that can set headers:
+
 ```python
 from openai import OpenAI
 
@@ -107,6 +109,30 @@ def test_tool_flow(llmentary):
     ).tool_result_fed_back("get_weather").no_errors()
 ```
 
+Black-box / import-time clients that cannot send headers: set the service base
+URL to `llmentary.path_base_url()` **inside the test**, then import the app.
+The session id exists only after the fixture runs, so a module-level import is
+too early.
+
+```python
+import importlib
+
+
+def test_import_time_client(llmentary, monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", llmentary.path_base_url())
+    app = importlib.import_module("myapp")
+    app.client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": "ping"}],
+    )
+    llmentary.expect().prompt_contains("ping").no_errors()
+```
+
+See the proxy
+[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md)
+and
+[assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+
 The function-scoped `llmentary` fixture returns a `Session`: it creates a unique
 session id, exposes headers with `X-Test-Session`, waits for proxy quiescence
 before assertions, and deletes the session during teardown.
@@ -140,6 +166,9 @@ session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
 ```python
 llmentary.expect().tool_called("search").called_times("search", 1)
 llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
+llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
+mark = llmentary.mark()
+llmentary.expect(since=mark).final_response_mentions_any("20", "sunny")
 
 with llmentary.soft_expect() as expect:
     expect.tool_called("search")
@@ -158,7 +187,8 @@ Supported deterministic assertions include tool calls (`tool_called`,
 summary. Use `llmentary.list_sessions()` when a wait or expect fails with
 zero calls, so the message can name the known session ids.
 
-See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
+See [`docs/api.md`](docs/api.md), [`docs/pytest.md`](docs/pytest.md), and the
+proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
 <!-- ltl-repos:start -->
 ## llmentary repositories

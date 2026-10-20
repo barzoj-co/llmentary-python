@@ -48,6 +48,7 @@ jobs:
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
           path: llmentary-proxy
           persist-credentials: false
+          ref: 91388e2e399295f564519ce37ffc5e034311116f
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -158,6 +159,7 @@ jobs:
           token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
           path: llmentary-proxy
           persist-credentials: false
+          ref: 91388e2e399295f564519ce37ffc5e034311116f
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
