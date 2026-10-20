@@ -10,7 +10,7 @@ from .types import APIType, SessionTrace
 try:
     __version__ = version("llmentary")
 except PackageNotFoundError:
-    __version__ = "0.1.1"  # x-release-please-version
+    __version__ = "0.2.0"  # x-release-please-version
 
 __all__ = [
     "APIType",
