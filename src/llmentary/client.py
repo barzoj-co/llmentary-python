@@ -241,7 +241,7 @@ class ControlClient:
             if isinstance(raw_message, str):
                 message = raw_message
         known_ids = self._known_session_ids()
-        if known_ids and "known sessions:" not in message.lower():
+        if known_ids and not message_lists_known_ids(message, known_ids):
             suffix = f"known sessions: {', '.join(known_ids)}"
             message = (
                 f"{message}; {suffix}"
@@ -652,6 +652,24 @@ def coerce_session_row(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     return {}
+
+
+def message_lists_known_ids(message: str, known_ids: Sequence[str]) -> bool:
+    """True when each known id is listed after ``known sessions:``, not merely mentioned."""
+
+    if not known_ids:
+        return True
+    marker = "known sessions:"
+    position = message.lower().rfind(marker)
+    if position < 0:
+        return False
+    tail = message[position + len(marker) :]
+    tokens = {
+        token.strip().strip('"')
+        for token in tail.replace(";", ",").split(",")
+        if token.strip()
+    }
+    return all(known_id in tokens for known_id in known_ids)
 
 
 def require_binary_for_tests() -> Path:

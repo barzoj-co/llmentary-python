@@ -24,27 +24,32 @@ pytestmark = pytest.mark.e2e
 
 def test_wait_min_calls_async(llmentary: Session) -> None:
     client = openai_client(llmentary)
+    thread_error: list[BaseException] = []
 
     def later_calls() -> None:
-        time.sleep(1.5)
-        call_openai(
-            lambda: client.chat.completions.create(
-                model=CHEAP_MODEL,
-                messages=[{"role": "user", "content": "Reply with the single word ping."}],
-                temperature=0,
-                max_tokens=8,
-                stream=True,
-                stream_options={"include_usage": True},
+        try:
+            time.sleep(1.5)
+            stream = call_openai(
+                lambda: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[{"role": "user", "content": "Reply with the single word ping."}],
+                    temperature=0,
+                    max_tokens=8,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
             )
-        )
-        call_openai(
-            lambda: client.responses.create(
-                model=CHEAP_MODEL,
-                input="Reply with the single word ping.",
-                temperature=0,
-                max_output_tokens=8,
+            list(stream)
+            call_openai(
+                lambda: client.responses.create(
+                    model=CHEAP_MODEL,
+                    input="Reply with the single word ping.",
+                    temperature=0,
+                    max_output_tokens=16,
+                )
             )
-        )
+        except Exception as exc:
+            thread_error.append(exc)
 
     worker = threading.Thread(target=later_calls)
     worker.start()
@@ -52,6 +57,7 @@ def test_wait_min_calls_async(llmentary: Session) -> None:
         trace = llmentary.wait(timeout=30, quiet=0.5, min_calls=2)
     finally:
         worker.join(timeout=40)
+    assert not thread_error, thread_error[0]
     assert len(trace.calls) == 2, trace.trace_summary()
     assert all(call.usage for call in trace.calls), trace.trace_summary()
     assert all((call.http_status or 0) == 200 for call in trace.calls), trace.trace_summary()
@@ -63,7 +69,11 @@ def test_default_upstream_no_explicit_setting() -> None:
     with start_proxy(
         upstream_url=None,
         upstream_api_key=api_key,
-        env={"LLMENTARY_UPSTREAM_BASE_URL": ""},
+        env={
+            "LLMENTARY_UPSTREAM_BASE_URL": "",
+            "LLMENTARY_PROXY_URL": "",
+            "LLMENTARY_START_COMMAND": "",
+        },
     ) as handle:
         session = Session(session_id=new_session_id("default-up"), proxy=handle)
         try:
@@ -130,8 +140,13 @@ def test_unknown_nested_field_fails_no_spec_violations(llmentary: Session) -> No
                 "messages": [
                     {
                         "role": "user",
-                        "content": "Reply with the single word ping.",
-                        "ltl_unknown_nested": "dog3-l2",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Reply with the single word ping.",
+                                "ltl_unknown_nested": "dog3-l2",
+                            }
+                        ],
                     }
                 ],
                 "temperature": 0,

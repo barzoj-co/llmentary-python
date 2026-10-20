@@ -30,6 +30,10 @@ def isolated_proxy(
     env = {
         "LLMENTARY_UPSTREAM_BASE_URL": "",
         "LLMENTARY_UPSTREAM_NAME": upstream_name,
+        "LLMENTARY_PROXY_URL": "",
+        "LLMENTARY_PORT": "",
+        "LLMENTARY_CONTROL_PORT": "",
+        "LLMENTARY_START_COMMAND": "",
     }
     if extra_env:
         env.update(extra_env)

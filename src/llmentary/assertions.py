@@ -341,7 +341,9 @@ class Expectation:
         for call in selected:
             items = call.ignored_fields
             if items is None:
-                continue
+                if not call_was_validated(call):
+                    continue
+                items = []
             checked += 1
             for item in items:
                 if side and (item.side or "").lower() != side.lower():
@@ -366,9 +368,11 @@ class Expectation:
         selected: list[CapturedCall] = []
         for call in self.trace.calls:
             seq = first_present(call.raw, "seq")
-            if isinstance(seq, int) and not isinstance(seq, bool) and seq in wanted:
-                selected.append(call)
-            elif call.index in wanted:
+            if isinstance(seq, int) and not isinstance(seq, bool):
+                if seq in wanted:
+                    selected.append(call)
+                continue
+            if call.index in wanted:
                 selected.append(call)
         return selected
 
@@ -468,6 +472,15 @@ def model_output_text_candidates(call: CapturedCall) -> list[str]:
             candidates.append(stringify_value(item_map.get("content")))
 
     return [candidate for candidate in candidates if candidate]
+
+
+def call_was_validated(call: CapturedCall) -> bool:
+    validation = call.validation
+    if validation is None:
+        return False
+    if validation.request_checked is True or validation.response_checked is True:
+        return True
+    return bool(validation.mode and validation.mode != "off")
 
 
 def path_is_ignored(

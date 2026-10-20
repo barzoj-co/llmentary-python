@@ -4,7 +4,12 @@ import httpx
 import pytest
 
 from llmentary import SessionNotFound, WaitTimeoutError
-from llmentary.client import ControlClient, ProxyHandle, Session
+from llmentary.client import (
+    ControlClient,
+    ProxyHandle,
+    Session,
+    message_lists_known_ids,
+)
 from llmentary.types import zero_calls_message
 
 
@@ -61,7 +66,7 @@ def test_get_session_unknown_raises_session_not_found() -> None:
 
     assert caught.value.session_id == "nope"
     assert "known" in caught.value.known_ids
-    assert "known" in str(caught.value)
+    assert "known sessions: known" in str(caught.value)
 
 
 def test_config_version() -> None:
@@ -96,6 +101,12 @@ def test_wait_504_json_uses_calls_seen() -> None:
 
     assert caught.value.calls == 0
     assert caught.value.min_calls == 2
+
+
+def test_message_lists_known_ids_is_token_aware() -> None:
+    hint = 'no calls recorded for session "nope"; known sessions: GET /sessions'
+    assert not message_lists_known_ids(hint, ["known"])
+    assert message_lists_known_ids(f"{hint}; known sessions: known", ["known"])
 
 
 def test_zero_calls_message_includes_session_and_known_ids() -> None:

@@ -82,6 +82,7 @@ def test_chatservice_run1_payload_is_clean_not_a_violation() -> None:
     assert call.spec_violations == []
     assert call.spec_status_label() == "clean"
     Expectation(trace).no_spec_violations()
+    Expectation(trace).no_ignored_fields()
     assert trace.spec_violations() == []
 
 
@@ -191,6 +192,24 @@ def test_ignored_fields_accessors_and_assertion() -> None:
     Expectation(dirty).no_ignored_fields(ignore_paths=(ENUM_IGNORED["pointer"],))
     Expectation(dirty).no_ignored_fields(ignore_keywords=("enumDescriptions",))
     Expectation(dirty).no_ignored_fields(side="response")
+
+
+def test_select_calls_uses_seq_not_conflicting_index() -> None:
+    dirty = _call(
+        seq=1,
+        normalized={
+            "validation": {"mode": "warn"},
+            "spec_violations": [FOO_VIOLATION],
+        },
+    )
+    clean = _call(
+        seq=2,
+        normalized={"validation": {"mode": "warn"}, "spec_violations": []},
+    )
+    # indexes are 0 and 1; seq values are 1 and 2. calls=[1] must mean seq 1.
+    Expectation(_trace(dirty, clean)).no_spec_violations(calls=[2])
+    with pytest.raises(AssertionError, match="/foo"):
+        Expectation(_trace(dirty, clean)).no_spec_violations(calls=[1])
 
 
 def test_trace_summary_includes_spec_status() -> None:
