@@ -317,6 +317,8 @@ class Expectation:
             unknown = unknown_request_fields(call)
             if items is None and not unknown:
                 continue
+            if not selected_side_was_checked(call, side):
+                continue
             checked += 1
             for item in items or ():
                 if side and (item.side or "").lower() != side.lower():
@@ -499,6 +501,22 @@ def call_was_validated(call: CapturedCall) -> bool:
     if validation.request_checked is True or validation.response_checked is True:
         return True
     return bool(validation.mode and validation.mode != "off")
+
+
+def selected_side_was_checked(call: CapturedCall, side: Optional[str]) -> bool:
+    """Whether validation ran for ``side`` (or any side when ``side`` is None)."""
+
+    if side is None:
+        return True
+    validation = call.validation
+    if validation is None:
+        return True
+    wanted = side.lower()
+    if wanted == "request":
+        return validation.request_checked is not False
+    if wanted == "response":
+        return validation.response_checked is not False
+    return True
 
 
 def path_is_ignored(

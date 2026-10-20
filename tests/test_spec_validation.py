@@ -264,6 +264,26 @@ def test_unknown_request_field_fails_no_spec_violations() -> None:
         Expectation(trace).no_spec_violations(side="request")
 
 
+def test_no_spec_violations_side_requires_that_side_checked() -> None:
+    trace = _trace(
+        _call(
+            normalized={
+                "validation": {
+                    "mode": "warn",
+                    "request_checked": True,
+                    "response_checked": False,
+                },
+                "spec_violations": [],
+            }
+        )
+    )
+    Expectation(trace).no_spec_violations()
+    Expectation(trace).no_spec_violations(side="request")
+    with pytest.raises(AssertionError, match="validation was not run"):
+        Expectation(trace).no_spec_violations(side="response")
+    Expectation(trace).no_spec_violations(side="response", allow_unvalidated=True)
+
+
 def test_enum_ignored_fields_do_not_fail_no_spec_violations() -> None:
     trace = _trace(
         _call(
