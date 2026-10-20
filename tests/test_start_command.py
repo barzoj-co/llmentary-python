@@ -5,10 +5,12 @@ from unittest.mock import Mock
 
 from llmentary.client import (
     Session,
+    allocate_listen_and_control_ports,
     apply_upstream_api_key,
     build_start_command,
     default_control_url,
     encode_baggage_value,
+    free_ports,
     normalize_upstream_url,
     redact_command,
 )
@@ -131,6 +133,20 @@ def test_baggage_percent_encodes_reserved_characters() -> None:
     assert "," not in session.baggage.split("=", 1)[1]
     assert " " not in session.baggage
     assert session.baggage.endswith("test_foo%2C%20bar%3Dbaz")
+
+
+def test_free_ports_are_distinct() -> None:
+    first, second = free_ports("127.0.0.1", 2)
+    assert first != second
+
+
+def test_allocate_listen_and_control_ports_keeps_explicit_listen_off_control() -> None:
+    listen, control = allocate_listen_and_control_ports(
+        "127.0.0.1",
+        {"LLMENTARY_PORT": "59999"},
+    )
+    assert listen == 59999
+    assert control != listen
 
 
 def test_default_control_url_uses_go_control_port() -> None:
