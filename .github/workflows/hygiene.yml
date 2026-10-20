@@ -208,8 +208,13 @@ jobs:
             --token="${RELEASE_PLEASE_TOKEN}"
 
   # Same pinned tools and scripts/build_release_wheels.py invocation as release.yml.
+  # Forks and Dependabot do not receive LLMTESTLAB_REPO_TOKEN.
   publish-dry-run:
     name: publish (dry run)
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.user.login != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
