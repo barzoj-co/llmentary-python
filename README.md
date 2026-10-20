@@ -25,6 +25,15 @@ Published platform wheels bundle a version-pinned proxy binary; see
 pip install llmentary
 ```
 
+Platform wheels bundle the version-pinned proxy binary. The sdist is client-only
+and does not include a binary. Install a wheel with
+`pip install --only-binary=:all: llmentary`, or set `LLMENTARY_BIN`, or put
+`llmentary` on `PATH`. Run `python -m llmentary doctor` to see what this
+install resolved.
+
+Supported wheel tags: `manylinux2014_x86_64`, `manylinux2014_aarch64`,
+`macosx_11_0_x86_64`, `macosx_11_0_arm64`, `win_amd64`.
+
 For pytest fixture support:
 
 ```bash

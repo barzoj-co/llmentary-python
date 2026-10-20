@@ -4,9 +4,18 @@ import os
 import platform
 import shutil
 import stat
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Optional
+
+BINARIES_DOC = "https://github.com/barzoj-co/llmentary/blob/main/docs/binaries.md"
+SUPPORTED_WHEEL_TAGS: tuple[str, ...] = (
+    "manylinux2014_x86_64",
+    "manylinux2014_aarch64",
+    "macosx_11_0_x86_64",
+    "macosx_11_0_arm64",
+    "win_amd64",
+)
 
 
 class BinaryResolutionError(RuntimeError):
@@ -44,18 +53,44 @@ def find_binary(*, env: Optional[dict[str, str]] = None) -> Path:
     if path_value:
         return Path(path_value)
 
-    raise BinaryResolutionError(
-        "Could not find llmentary proxy binary. Set LLMENTARY_BIN, install a "
-        "platform-specific llmentary wheel that bundles the proxy, or put "
-        "'llmentary' on PATH. Runtime downloads are disabled."
+    raise BinaryResolutionError(missing_binary_message())
+
+
+def missing_binary_message() -> str:
+    tag = detected_platform_tag()
+    if bundled_platform_tag() is None:
+        situation = f"no wheel for platform `{tag}`"
+    else:
+        situation = (
+            "this llmentary install has no bundled proxy "
+            "(installed from sdist or a source tree)"
+        )
+    tags = ", ".join(SUPPORTED_WHEEL_TAGS)
+    return (
+        "Could not find the llmentary proxy binary.\n"
+        f"{situation}\n"
+        f"detected platform tag: {tag}\n"
+        f"published wheel tags: {tags}\n"
+        "\n"
+        "Install a platform wheel, or point at a binary:\n"
+        "1. pip install --only-binary=:all: llmentary\n"
+        "2. LLMENTARY_BIN=/path/to/llmentary\n"
+        "3. Get the binary from npm @llmentary/<os>-<cpu> or the GitHub Release:\n"
+        f"   {BINARIES_DOC}\n"
+        "\n"
+        "Runtime downloads are disabled."
     )
+
+
+def package_bin_dir() -> Path:
+    return Path(__file__).resolve().parent / "bin"
 
 
 def bundled_binary() -> Optional[Path]:
     platform_tag = bundled_platform_tag()
     if platform_tag is None:
         return None
-    candidate = Path(__file__).resolve().parent / "bin" / platform_tag / binary_name()
+    candidate = package_bin_dir() / platform_tag / binary_name()
     return candidate if candidate.is_file() else None
 
 
@@ -69,6 +104,31 @@ def bundled_platform_tag() -> Optional[str]:
         ("windows", "amd64"): "win_amd64",
     }
     return mapping.get((goos, goarch))
+
+
+def detected_platform_tag() -> str:
+    tag = bundled_platform_tag()
+    if tag is not None:
+        return tag
+    goos, goarch = goreleaser_platform()
+    return f"{goos}_{goarch}"
+
+
+def install_kind() -> str:
+    if bundled_binary() is not None:
+        return "wheel"
+    return "sdist or source tree"
+
+
+def bundled_proxy_version() -> str:
+    bundled = bundled_binary()
+    if bundled is None:
+        return "unknown"
+    version_file = bundled.parent / "VERSION"
+    if not version_file.is_file():
+        return "unknown"
+    text = version_file.read_text(encoding="utf-8").strip()
+    return text or "unknown"
 
 
 def binary_name() -> str:
@@ -100,3 +160,9 @@ def ensure_executable(path: Path) -> Path:
         return path
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return path
+
+
+def sdist_has_bundled_bin(names: Sequence[str]) -> bool:
+    return any(
+        "/llmentary/bin/" in name or name.endswith("/llmentary/bin") for name in names
+    )

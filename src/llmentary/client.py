@@ -18,7 +18,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from .assertions import Expectation, SoftExpectation
-from .binary import BinaryResolutionError, find_binary
+from .binary import find_binary
 from .types import SessionTrace, normalize_api_type
 
 SESSION_HEADER = "X-Test-Session"
@@ -467,7 +467,4 @@ def new_session_id(prefix: str = "pytest") -> str:
 
 
 def require_binary_for_tests() -> Path:
-    try:
-        return find_binary()
-    except BinaryResolutionError as exc:
-        raise RuntimeError(str(exc)) from exc
+    return find_binary()

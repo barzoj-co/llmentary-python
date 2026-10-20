@@ -119,3 +119,21 @@ Use the `baggage` property if your app propagates session ids via W3C baggage:
 ```python
 headers = {"baggage": llmentary.baggage}
 ```
+
+## Troubleshooting
+
+### `BinaryResolutionError` / no bundled proxy
+
+This install has no bundled proxy (sdist or a source tree) or no wheel for
+this platform. The pytest plugin re-raises `BinaryResolutionError` so the
+message shows up as one block in `pytest -q`.
+
+Fixes, in order:
+
+1. `pip install --only-binary=:all: llmentary`
+2. `LLMENTARY_BIN=/path/to/llmentary`
+3. Get the binary from npm `@llmentary/<os>-<cpu>` or the GitHub Release;
+   see the proxy [docs/binaries.md](https://github.com/barzoj-co/llmentary/blob/main/docs/binaries.md)
+
+Run `python -m llmentary doctor` to print the package version, platform tag,
+resolved binary path, and whether this is a wheel or a source install.

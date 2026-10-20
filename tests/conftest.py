@@ -6,6 +6,8 @@ from collections.abc import Iterator
 import pytest
 from fake_upstream import FakeOpenAIServer
 
+pytest_plugins = ["pytester"]
+
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     has_proxy = bool(os.environ.get("LLMENTARY_BIN") or os.environ.get("LLMENTARY_PROXY_URL"))
