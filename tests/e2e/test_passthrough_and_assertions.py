@@ -12,18 +12,18 @@ from e2e_helpers import (
     openai_invalid_model_errors,
 )
 
-from llmentary import LabSession
+from llmentary import LlmentarySession
 from llmentary.assertions import Expectation
 
 pytestmark = pytest.mark.e2e
 
 
-def test_raw_passthrough_models_list(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_raw_passthrough_models_list(llmentary: LlmentarySession) -> None:
+    client = openai_client(llmentary)
     listing = call_openai(lambda: client.models.list())
     models = [item.id for item in listing.data]
     assert models
-    trace = lab.wait()
+    trace = llmentary.wait()
     assert trace.calls, trace.trace_summary()
     matching = [
         call for call in trace.calls if (call.path or "").rstrip("/").endswith("/models")
@@ -36,8 +36,8 @@ def test_raw_passthrough_models_list(lab: LabSession) -> None:
     assert models[0] in blob, trace.trace_summary()
 
 
-def test_assertion_helpers_fail_with_clear_messages(lab: LabSession) -> None:
-    client = openai_client(lab)
+def test_assertion_helpers_fail_with_clear_messages(llmentary: LlmentarySession) -> None:
+    client = openai_client(llmentary)
     call_openai(
         lambda: client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -49,7 +49,7 @@ def test_assertion_helpers_fail_with_clear_messages(lab: LabSession) -> None:
         )
     )
 
-    expect = lab.expect()
+    expect = llmentary.expect()
     with pytest.raises(AssertionError, match="expected tool 'missing_tool_ltl' to be called"):
         expect.tool_called("missing_tool_ltl")
     with pytest.raises(AssertionError, match="expected tool 'get_weather' not to be called"):
@@ -76,6 +76,6 @@ def test_assertion_helpers_fail_with_clear_messages(lab: LabSession) -> None:
             temperature=0,
             max_tokens=8,
         )
-    error_expect = Expectation(lab.wait())
+    error_expect = Expectation(llmentary.wait())
     with pytest.raises(AssertionError, match="expected no errors"):
         error_expect.no_errors()

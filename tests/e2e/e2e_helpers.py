@@ -8,7 +8,7 @@ from typing import Any, TypeVar
 
 import pytest
 
-from llmentary import LabSession
+from llmentary import LlmentarySession
 from llmentary.assertions import Expectation
 from llmentary.types import CapturedCall, SessionTrace
 
@@ -52,14 +52,14 @@ def require_e2e() -> None:
         pytest.fail("OPENAI_API_KEY is required when LLMENTARY_E2E=1")
 
 
-def openai_client(lab: LabSession, *, api_key: str | None = None) -> Any:
+def openai_client(lm: LlmentarySession, *, api_key: str | None = None) -> Any:
     from openai import OpenAI
 
     key = api_key if api_key is not None else os.environ["OPENAI_API_KEY"]
     return OpenAI(
         api_key=key,
-        base_url=lab.openai_base_url,
-        default_headers=lab.headers,
+        base_url=lm.openai_base_url,
+        default_headers=lm.headers,
         max_retries=0,
     )
 

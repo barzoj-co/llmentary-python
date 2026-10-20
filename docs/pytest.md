@@ -30,15 +30,15 @@ The fixture health-checks `GET /healthz` before yielding and terminates the
 started process at the end of the test session. Attached proxies are not
 terminated.
 
-### `lab`
+### `llmentary`
 
 Function-scoped fixture that creates a unique test session id, exposes OpenAI
 client helpers, waits for quiescence before assertions, and deletes the session
 after the test.
 
 ```python
-def test_something(lab):
-    assert lab.headers["X-Test-Session"] == lab.session_id
+def test_something(llmentary):
+    assert llmentary.headers["X-Test-Session"] == llmentary.session_id
 ```
 
 ## Options and environment
@@ -95,11 +95,11 @@ def llmentary_upstream_url(fake_openai_server):
 from openai import OpenAI
 
 
-def test_openai(lab):
+def test_openai(llmentary):
     client = OpenAI(
         api_key="test-key",
-        base_url=lab.openai_base_url,
-        default_headers=lab.headers,
+        base_url=llmentary.openai_base_url,
+        default_headers=llmentary.headers,
     )
 ```
 
@@ -109,13 +109,13 @@ def test_openai(lab):
 import httpx
 
 
-def test_httpx(lab):
-    with httpx.Client(base_url=lab.openai_base_url, headers=lab.headers) as client:
+def test_httpx(llmentary):
+    with httpx.Client(base_url=llmentary.openai_base_url, headers=llmentary.headers) as client:
         client.post("/chat/completions", json={"model": "fake", "messages": []})
 ```
 
 Use the `baggage` property if your app propagates session ids via W3C baggage:
 
 ```python
-headers = {"baggage": lab.baggage}
+headers = {"baggage": llmentary.baggage}
 ```

@@ -111,6 +111,28 @@ Coverage is collected on the Python 3.13 CI leg and uploaded to Codecov from a
 dedicated tokenless job (no OIDC). The Codecov project and patch statuses are
 informational and do not fail PRs.
 
+## CI configuration required
+
+- `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
+  repository `barzoj-co/llmentary`. Used only to check out and build the real
+  Go proxy in CI, and to fetch GoReleaser assets when building release wheels.
+  TODO: remove once llmentary is public. Keep this secret name; it is an
+  existing org secret.
+- `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
+  Those tests actually run (they do not skip) when this secret is present.
+- PyPI Trusted Publishing: configure PyPI project `llmentary` to trust this
+  repository's `release.yml` workflow and `pypi` environment for tag `v*`
+  releases. No PyPI API token is used. Publish stays gated on
+  `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
+
+CI builds the real Go proxy from source (`go build ./cmd/llmentary`) and points
+tests at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI
+upstream through that real binary. E2E tests talk to the real OpenAI API
+through the same real binary.
+
+Proxy binary lookup, wheel platforms, and `LLMENTARY_START_COMMAND` are
+documented in [docs/binaries.md](docs/binaries.md).
+
 ## Releases
 
 Maintainers: see [docs/releasing.md](docs/releasing.md).

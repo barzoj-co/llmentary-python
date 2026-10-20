@@ -1,5 +1,7 @@
 # llmentary
 
+Python (pytest) client for llmentary: deterministic trace-based integration tests for LLM apps.
+
 [![CI](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/barzoj-co/llmentary-python/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llmentary-python)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llmentary-python/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llmentary-python)
@@ -7,27 +9,15 @@
 [![PyPI](https://img.shields.io/pypi/v/llmentary)](https://pypi.org/project/llmentary/)
 [![Python versions](https://img.shields.io/pypi/pyversions/llmentary)](https://pypi.org/project/llmentary/)
 
-Python (pytest) client for llmentary: deterministic trace-based integration tests for LLM apps.
-
-Renamed from llm-test-lab (pre-release).
-
 `llmentary` is the Python/pytest client for the
-[`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) proxy.
-It gives Python tests deterministic, trace-based assertions for OpenAI-compatible
-Chat Completions and Responses calls. There is no LLM judge: assertions inspect
-the requests, responses, tool calls, usage, timings, retries, and errors recorded
-by the proxy.
+[`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) recording proxy.
+It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
+Completions and Responses calls. There is no LLM judge: assertions inspect the
+requests, responses, tool calls, usage, timings, retries, and errors the proxy
+recorded.
 
-<!-- ltl-repos:start -->
-## llmentary repositories
-
-| Repository | What |
-|---|---|
-| [llmentary](https://github.com/barzoj-co/llmentary) | Recording proxy binary (Go) |
-| [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
-| [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
-| [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
-<!-- ltl-repos:end -->
+Published platform wheels bundle a version-pinned proxy binary; see
+[docs/binaries.md](docs/binaries.md) for how it is resolved and how to override it.
 
 ## Install
 
@@ -49,16 +39,13 @@ pip install "llmentary[pytest,openai]"
 
 ## Quickstart
 
-Point the client at an existing proxy. The Go control API listens on a
-separate address (default `127.0.0.1:7778`):
+Point pytest at an existing proxy, or let the fixture start one:
 
 ```bash
 export LLMENTARY_PROXY_URL=http://127.0.0.1:7777
 export LLMENTARY_CONTROL_URL=http://127.0.0.1:7778
 pytest
 ```
-
-or let the pytest fixture start the proxy:
 
 ```bash
 export LLMENTARY_BIN=/path/to/llmentary
@@ -71,11 +58,11 @@ pytest
 from openai import OpenAI
 
 
-def test_tool_flow(lab):
+def test_tool_flow(llmentary):
     client = OpenAI(
         api_key="test-key",
-        base_url=lab.openai_base_url,
-        default_headers=lab.headers,
+        base_url=llmentary.openai_base_url,
+        default_headers=llmentary.headers,
     )
 
     first = client.chat.completions.create(
@@ -106,94 +93,48 @@ def test_tool_flow(lab):
         ],
     )
 
-    lab.expect().tool_called("get_weather").args_subset(
+    llmentary.expect().tool_called("get_weather").args_subset(
         "get_weather", {"city": "Paris"}
     ).tool_result_fed_back("get_weather").no_errors()
 ```
 
-The function-scoped `lab` fixture creates a unique session id, exposes headers
-with `X-Test-Session`, waits for proxy quiescence before assertions, and deletes
-the session during teardown.
+The function-scoped `llmentary` fixture creates a unique session id, exposes
+headers with `X-Test-Session`, waits for proxy quiescence before assertions,
+and deletes the session during teardown.
 
-## Binary management
-
-There is no download-on-first-run. Platform wheels bundle a version-pinned Go
-proxy binary taken from the `barzoj-co/llmentary` GoReleaser release named in
-`PROXY_VERSION`. That pin is independent of this Python package version. The
-bundled version is also written to the wheel `VERSION` file. Release packaging
-verifies each archive against `checksums.txt` (sha256) before it is copied into
-the wheel.
-
-Lookup order:
-
-1. `LLMENTARY_BIN` — explicit override, including CI builds from source
-2. Binary bundled in the installed platform wheel
-3. `llmentary` on `PATH`
-
-Published wheels:
-
-- `manylinux2014_x86_64`
-- `manylinux2014_aarch64`
-- `macosx_11_0_x86_64`
-- `macosx_11_0_arm64`
-- `win_amd64`
-
-The client starts the proxy with the Go binary's flags: `-listen` for the
-OpenAI-compatible proxy, `-control` for the control API, and
-`-upstream name=https://host/base` (default name `openai`). Override the whole
-command with `LLMENTARY_START_COMMAND` if needed:
-
-```bash
-export LLMENTARY_START_COMMAND='{bin} -listen {listen} -control {control} -upstream {upstream}'
-```
-
-Available template variables are `{bin}`, `{host}`, `{port}`, `{listen}`,
-`{control}`, `{control_listen}`, `{upstream}`, `{upstream_url}`,
-`{upstream_api_key}`, and `{token}`.
-
-## Assertion API
+## Assertions
 
 ```python
-lab.expect().tool_called("search").called_times("search", 1)
-lab.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
+llmentary.expect().tool_called("search").called_times("search", 1)
+llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
 
-with lab.soft_expect() as expect:
+with llmentary.soft_expect() as expect:
     expect.tool_called("search")
     expect.response_contains("done")
 ```
 
-Supported deterministic assertions include:
-
-- tool calls: `tool_called`, `not_called`, `called_times`, `args_subset`,
-  `args_matcher`, `order`, `parallel_tool_calls`, `tool_result_fed_back`
-- request/model/finish: `model`, `request_param`, `finish_reason`
-- usage/timing/retries: `tokens`, `latency`, `ttft`, `retries`, `no_retries`
-- errors: `no_errors`, `has_error`, `mid_stream_error`
-- prompt/response: `prompt_contains`, `prompt_regex`, `response_contains`,
-  `response_regex`, `response_json_valid`, `response_json_schema`
-
-Failures raise `AssertionError` with the session trace summary from the captured
-calls.
+Supported deterministic assertions include tool calls (`tool_called`,
+`not_called`, `called_times`, `args_subset`, `args_matcher`, `order`,
+`parallel_tool_calls`, `tool_result_fed_back`), request and finish metadata
+(`model`, `request_param`, `finish_reason`), usage and timing (`tokens`,
+`latency`, `ttft`, `retries`, `no_retries`), errors (`no_errors`, `has_error`,
+`mid_stream_error`), and prompt or response text (`prompt_contains`,
+`prompt_regex`, `response_contains`, `response_regex`, `response_json_valid`,
+`response_json_schema`). Failures raise `AssertionError` with the session trace
+summary.
 
 See [`docs/api.md`](docs/api.md) and [`docs/pytest.md`](docs/pytest.md).
 
-## CI configuration required
+<!-- ltl-repos:start -->
+## llmentary repositories
 
-- `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
-  repository `barzoj-co/llmentary`. Used only to check out and build the real
-  Go proxy in CI, and to fetch GoReleaser assets when building release wheels.
-  TODO: remove once llmentary is public.
-- `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
-  Those tests actually run (they do not skip) when this secret is present.
-- PyPI Trusted Publishing: configure PyPI project `llmentary` to trust this
-  repository's `release.yml` workflow and `pypi` environment for tag `v*`
-  releases. No PyPI API token is used. Publish stays gated on
-  `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
-
-CI builds the real Go proxy from source (`go build ./cmd/llmentary`) and points
-tests at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI
-upstream through that real binary. E2E tests talk to the real OpenAI API
-through the same real binary.
+| Repository | What |
+|---|---|
+| [llmentary](https://github.com/barzoj-co/llmentary) | Recording proxy binary (Go) |
+| [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
+| [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
+| [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
+<!-- ltl-repos:end -->
 
 ## License
 
