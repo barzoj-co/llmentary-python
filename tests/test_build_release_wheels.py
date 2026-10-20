@@ -509,5 +509,20 @@ def test_license_file_checker_self_test() -> None:
     checker.self_test()
 
 
+def test_top_level_pkg_info_ignores_nested_members() -> None:
+    assert (
+        checker._top_level_pkg_info(
+            {
+                "llmentary-0.1.1/PKG-INFO",
+                "llmentary-0.1.1/vendor/PKG-INFO",
+                "llmentary-0.1.1/LICENSE",
+            }
+        )
+        == "llmentary-0.1.1/PKG-INFO"
+    )
+    with pytest.raises(SystemExit, match="top-level PKG-INFO"):
+        checker._top_level_pkg_info({"llmentary-0.1.1/vendor/PKG-INFO"})
+
+
 def _norm_zip(name: str) -> str:
     return name.replace("\\", "/")

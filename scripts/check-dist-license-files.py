@@ -108,9 +108,7 @@ def check_sdist(path: Path) -> None:
     try:
         with tarfile.open(path) as tf:
             names = {_norm(name) for name in tf.getnames() if name and not name.endswith("/")}
-            pkg_info = next((name for name in names if name.endswith("/PKG-INFO")), None)
-            if pkg_info is None:
-                raise SystemExit("sdist has no PKG-INFO")
+            pkg_info = _top_level_pkg_info(names)
             extracted = tf.extractfile(pkg_info)
             if extracted is None:
                 raise SystemExit("sdist PKG-INFO is not a regular file")
@@ -155,6 +153,15 @@ def _check_record(dist_info: str, contents: dict[str, bytes]) -> None:
         want = _record_digest(data)
         if digest != want or size != str(len(data)):
             raise SystemExit(f"RECORD hash mismatch for {name}")
+
+
+def _top_level_pkg_info(names: set[str]) -> str:
+    candidates = [
+        name for name in names if name.count("/") == 1 and name.endswith("/PKG-INFO")
+    ]
+    if len(candidates) != 1:
+        raise SystemExit(f"expected exactly one top-level PKG-INFO, found {len(candidates)}")
+    return candidates[0]
 
 
 def _license_files(metadata: str) -> list[str]:
@@ -288,6 +295,35 @@ def self_test() -> None:
                 raise SystemExit(f"self-test: bad sdist error missing AGPL path: {exc}") from exc
         else:
             raise SystemExit("self-test: expected the sdist missing AGPL to fail")
+
+        nested_sdist = tmp_path / "nested.tar.gz"
+        nested_meta = (
+            b"Metadata-Version: 2.4\nName: other\nVersion: 0\nLicense-File: MISSING\n"
+        )
+        with tarfile.open(nested_sdist, "w:gz") as tf:
+            for name, data in {
+                f"{sdist_root}/PKG-INFO": metadata,
+                f"{sdist_root}/LICENSE": license_text,
+                f"{sdist_root}/licenses/AGPL-3.0.txt": agpl_text,
+                f"{sdist_root}/vendor/PKG-INFO": nested_meta,
+            }.items():
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        check_sdist(nested_sdist)
+
+        only_nested = tmp_path / "only-nested.tar.gz"
+        with tarfile.open(only_nested, "w:gz") as tf:
+            info = tarfile.TarInfo(name=f"{sdist_root}/vendor/PKG-INFO")
+            info.size = len(nested_meta)
+            tf.addfile(info, io.BytesIO(nested_meta))
+        try:
+            check_sdist(only_nested)
+        except SystemExit as exc:
+            if "top-level PKG-INFO" not in str(exc):
+                raise SystemExit(f"self-test: expected top-level PKG-INFO error: {exc}") from exc
+        else:
+            raise SystemExit("self-test: expected a nested-only PKG-INFO sdist to fail")
 
     print("self-test: ok")
 
