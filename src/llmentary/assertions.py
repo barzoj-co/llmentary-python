@@ -41,10 +41,12 @@ class Expectation:
         self._allow_empty = False
 
     def allow_empty(self) -> Expectation:
-        """Opt out of the empty-filter guard on ``no_errors`` / ``not_called``.
+        """Opt out of the empty-trace guard on assertions that need calls.
 
-        Same semantics as Go ``AllowEmpty()``: a filtered or ``since`` trace
-        with zero matching calls then passes those assertions.
+        Same semantics as Go ``AllowEmpty()``: a filtered, ``since``, or
+        never-created trace with zero matching calls then passes
+        ``no_errors`` / ``not_called``. ``isolated_from`` also uses this
+        to allow an empty self or an empty/unknown other session.
         """
 
         self._allow_empty = True
@@ -112,16 +114,21 @@ class Expectation:
         1. every call has ``session_id`` equal to this session
         2. no call id appears in both sessions
         3. no **foreign** user turn: a user-role message in this session's
-           prompt that this session never introduced (last user message of
-           each call) but ``other`` did. Comparison is exact after
-           normalize (trim, collapse whitespace, casefold), never substring.
-           Texts both sessions introduced themselves are not a leak.
+           prompt that this session never introduced but ``other`` did.
+           The first call introduces only its last user-role message;
+           later calls introduce **each** new user-role message whose
+           normalized form was not already present in an earlier call.
+           Comparison is exact after normalize (trim, collapse whitespace,
+           casefold), never substring. Texts both sessions introduced
+           themselves are not a leak.
 
         ``min_chars`` (default 8) ignores shorter texts. ``ignore_texts``
         skips those normalized messages. System/developer/tools are ignored.
 
         Empty self fails with ``no calls recorded for session X`` unless
-        ``allow_empty()`` was called. An empty other is not a leak source.
+        ``allow_empty()`` was called. Empty or unknown other (404 / no
+        calls) fails with ``no calls recorded for session Y (isolated_from
+        needs calls on both sides)`` unless ``allow_empty()`` was called.
         ``require_path=True`` also requires ``session_source == "path"``.
         """
 
@@ -145,6 +152,16 @@ class Expectation:
                 findings.append(
                     f"{label} session_source={call.session_source!r}, expected 'path'"
                 )
+
+        if not other_trace.calls:
+            if not self._allow_empty:
+                findings.append(
+                    f"no calls recorded for session {other_trace.session_id} "
+                    "(isolated_from needs calls on both sides)"
+                )
+            if findings:
+                self._assert(False, "\n".join(findings))
+            return self
 
         self_ids = {ident for ident in (_call_id(call) for call in self.trace.calls) if ident}
         other_ids = {ident for ident in (_call_id(call) for call in other_trace.calls) if ident}
@@ -173,7 +190,7 @@ class Expectation:
                 seen_leaks.add(key)
                 _other_text, other_call = intro_other[key]
                 findings.append(
-                    f"user text {text!r} from session "
+                    f"user text {text!r} also introduced by session "
                     f"{other_trace.session_id} {_call_label(other_call)} "
                     f"appears in session {self.trace.session_id} "
                     f"{_call_label(call)}"
@@ -712,28 +729,38 @@ def _introduced_user_texts(
     min_chars: int,
     ignored: set[str],
 ) -> dict[str, tuple[str, CapturedCall]]:
-    """Last user-role message of each call, walked in ``seq`` order.
+    """User-role messages this session introduced, walked in ``seq`` order.
 
-    Inbound history (user texts before the last turn of a call) is seen,
-    not introduced. A later call that repeats that history still does not
-    count as introducing it.
+    The first call introduces only its last user-role message; earlier
+    user turns on that call are inbound history (seen, not introduced).
+    Later calls introduce each user-role message whose normalized form
+    was not already present in an earlier call of the same session.
     """
 
     introduced: dict[str, tuple[str, CapturedCall]] = {}
-    seen_history: set[str] = set()
+    seen: set[str] = set()
+    first = True
     for call in _calls_in_seq(calls):
         texts = list(call.user_texts)
         if not texts:
             continue
-        last = texts[-1]
-        for hist in texts[:-1]:
-            key = normalize_user_text(hist)
-            if key:
-                seen_history.add(key)
-        key = normalize_user_text(last)
-        if not key or len(key) < min_chars or key in ignored or key in seen_history:
-            continue
-        introduced.setdefault(key, (last, call))
+        is_first = first
+        first = False
+        if is_first:
+            for hist in texts[:-1]:
+                key = normalize_user_text(hist)
+                if key:
+                    seen.add(key)
+            candidates = texts[-1:]
+        else:
+            candidates = texts
+        for raw in candidates:
+            key = normalize_user_text(raw)
+            if not key:
+                continue
+            if len(key) >= min_chars and key not in ignored and key not in seen:
+                introduced.setdefault(key, (raw, call))
+            seen.add(key)
     return introduced
 
 

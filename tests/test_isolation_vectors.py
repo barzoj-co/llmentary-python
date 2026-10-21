@@ -133,7 +133,7 @@ def _log_compared(count: int, source: str) -> None:
 
 
 def test_isolation_vectors_match_proxy_pin() -> None:
-    """Fail when testdata/isolation drifted from the proxy DOG-29 copy."""
+    """Fail when testdata/isolation drifted from the proxy isolation copy."""
 
     official = _official_json_bytes()
     if official:

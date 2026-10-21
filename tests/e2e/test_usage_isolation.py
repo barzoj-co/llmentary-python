@@ -220,3 +220,81 @@ def test_isolated_from_same_prompt_and_history_replay(llmentary: Session) -> Non
     finally:
         other.cleanup()
         replay.cleanup()
+
+
+def test_isolated_from_never_created_other_fails_without_allow_empty(
+    llmentary: Session,
+) -> None:
+    client = openai_client(llmentary)
+    call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=8,
+        )
+    )
+    ghost = Session(
+        session_id=new_session_id("ghost-other"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    try:
+        with pytest.raises(
+            AssertionError,
+            match=r"no calls recorded for session .+ \(isolated_from needs calls on both sides\)",
+        ):
+            llmentary.expect().isolated_from(ghost)
+        llmentary.expect().allow_empty().isolated_from(ghost)
+    finally:
+        ghost.cleanup()
+
+
+def test_later_call_two_new_user_messages_is_not_a_leak(llmentary: Session) -> None:
+    peer = Session(
+        session_id=new_session_id("iso-q"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    opening = "Opening question number one LTL-PY-DOG-33"
+    second = "Second message sent by P itself LTL-PY-DOG-33"
+    third = "Third message sent by P itself LTL-PY-DOG-33"
+    try:
+        client_p = openai_client(llmentary)
+        call_openai(
+            lambda: client_p.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": opening}],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        call_openai(
+            lambda: client_p.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "user", "content": opening},
+                    {"role": "user", "content": second},
+                    {"role": "user", "content": third},
+                ],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        client_q = openai_client(peer)
+        call_openai(
+            lambda: client_q.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": second}],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        llmentary.wait(timeout=30, quiet=0.5, min_calls=2)
+        peer.wait(timeout=30, quiet=0.5, min_calls=1)
+        llmentary.expect().isolated_from(peer)
+        peer.expect().isolated_from(llmentary)
+    finally:
+        peer.cleanup()

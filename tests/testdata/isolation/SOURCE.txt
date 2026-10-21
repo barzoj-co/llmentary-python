@@ -1,8 +1,8 @@
-Vendored isolation vectors for DOG-29 / DOG-22.
+Vendored isolation vectors for DOG-29 / DOG-22 / DOG-32 / DOG-33.
 
 Canonical copy: barzoj-co/llmentary testdata/isolation/*.json
-(proxy PR https://github.com/barzoj-co/llmentary/pull/35, merged to main
-as bb39133; testdata/isolation/README.md is the spec note on main).
+(proxy PR https://github.com/barzoj-co/llmentary/pull/42 on main;
+testdata/isolation/README.md is the spec note on main).
 
 tests/test_isolation_vectors.py compares this directory to that path,
 trying main first and then v{PROXY_VERSION}. CI fetches the same path

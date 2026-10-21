@@ -144,7 +144,7 @@ calls in the whole session:
 llmentary.expect(since=mark).allow_empty().no_errors()
 unused.expect_no_calls(quiet=0.2)
 unused.expect(allow_empty=True).call_count(0)
-active.expect().isolated_from(unused)
+active.expect().allow_empty().isolated_from(unused)
 ```
 
 Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
@@ -158,17 +158,21 @@ the first failure. Soft expectations collect failures and raise from
 
 ### Isolation
 
-`isolated_from(other)` follows the DOG-29 isolation spec: `session_id` on
+`isolated_from(other)` follows the isolation spec: `session_id` on
 every call, no shared call ids, and no **foreign** user turn (a user-role
 message in this prompt that this session did not introduce but the other
-did). Same canned question in both sessions is not a leak. Comparison is
-exact after normalize (trim, collapse whitespace, casefold), never
-substring. `min_chars=8` ignores shorter texts; pass `ignore_texts=…` to
-skip specific messages. System prompts, developer instructions, and tool
-definitions are not compared. Use `call.user_texts` to read those turns.
-An empty current session fails unless `allow_empty()` was called. An empty
-or missing other session, including `SessionNotFound`, is not a leak source
-and passes. `require_path=True` also requires `session_source == "path"`.
+did). The first call introduces only its last user-role message; later
+calls introduce each new user-role message. Same canned question in both
+sessions is not a leak. Comparison is exact after normalize (trim, collapse
+whitespace, casefold), never substring. `min_chars=8` ignores shorter
+texts; pass `ignore_texts=…` to skip specific messages. System prompts,
+developer instructions, and tool definitions are not compared. Use
+`call.user_texts` to read those turns. An empty current session fails
+unless `allow_empty()` was called. An empty or missing other session,
+including `SessionNotFound`, fails with
+`no calls recorded for session Y (isolated_from needs calls on both sides)`
+unless `allow_empty()` was called. `require_path=True` also requires
+`session_source == "path"`.
 
 A path prefix isolates the process that built the SDK client, not two
 conversations inside one env-configured client. See the proxy

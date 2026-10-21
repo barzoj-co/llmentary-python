@@ -265,7 +265,11 @@ def test_empty_session_fails_unless_allow_empty() -> None:
     )
     with pytest.raises(AssertionError, match="no calls recorded for session ghost"):
         Expectation(empty).isolated_from(other)
-    Expectation(other).isolated_from(empty)
+    with pytest.raises(
+        AssertionError,
+        match=r"no calls recorded for session ghost \(isolated_from needs calls on both sides\)",
+    ):
+        Expectation(other).isolated_from(empty)
     Expectation(empty).allow_empty().isolated_from(other)
     Expectation(other).allow_empty().isolated_from(empty)
 
@@ -355,8 +359,11 @@ def test_missing_other_session_is_empty_trace() -> None:
         session_id = "weather"
         proxy = _Proxy()
 
-    # SessionNotFound is an empty Y. Empty Y is not a leak source (DOG-29).
-    Expectation(weather, session=_Session()).isolated_from("typo")
+    with pytest.raises(
+        AssertionError,
+        match=r"no calls recorded for session typo \(isolated_from needs calls on both sides\)",
+    ):
+        Expectation(weather, session=_Session()).isolated_from("typo")
     Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
 
     class _Other:
@@ -365,7 +372,14 @@ def test_missing_other_session_is_empty_trace() -> None:
         def trace(self) -> SessionTrace:
             raise SessionNotFound(self.session_id)
 
-    Expectation(weather).isolated_from(_Other())
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"no calls recorded for session ghost-session "
+            r"\(isolated_from needs calls on both sides\)"
+        ),
+    ):
+        Expectation(weather).isolated_from(_Other())
     Expectation(weather).allow_empty().isolated_from(_Other())
 
 
@@ -395,3 +409,228 @@ def test_responses_roleless_message_is_not_user_text() -> None:
     ).calls[0]
     assert leak.user_texts == ["bare user", "explicit user"]
     assert "assistant leftover" not in leak.user_texts
+
+
+def _users_call(
+    *,
+    session_id: str,
+    ident: str,
+    seq: int,
+    users: list[str],
+    api: str = "chat",
+) -> dict[str, Any]:
+    if api == "responses":
+        return {
+            "id": ident,
+            "session_id": session_id,
+            "session_source": "path",
+            "seq": seq,
+            "api_family": "openai.responses",
+            "request": {
+                "input": [
+                    {"role": "user", "content": [{"type": "input_text", "text": text}]}
+                    for text in users
+                ]
+            },
+            "response": {"output_text": "ok"},
+        }
+    return {
+        "id": ident,
+        "session_id": session_id,
+        "session_source": "path",
+        "seq": seq,
+        "api_family": "chat.completions",
+        "request": {"messages": [{"role": "user", "content": text} for text in users]},
+        "response": {"choices": [{"message": {"content": "ok"}}]},
+    }
+
+
+def test_later_call_introduces_each_new_user_message() -> None:
+    peer = _trace(
+        "q",
+        _call(
+            session_id="q",
+            ident="call_9",
+            seq=1,
+            user="Second message sent by P itself",
+        ),
+    )
+    own = _trace(
+        "p",
+        _call(
+            session_id="p",
+            ident="call_7",
+            seq=1,
+            user="Opening question number one",
+        ),
+        _users_call(
+            session_id="p",
+            ident="call_8",
+            seq=2,
+            users=[
+                "Opening question number one",
+                "Second message sent by P itself",
+                "Third message sent by P itself",
+            ],
+        ),
+    )
+    Expectation(own).isolated_from(peer)
+    Expectation(peer).isolated_from(own)
+
+
+def test_later_call_overlap_in_non_first_new_message_is_not_a_leak() -> None:
+    peer = _trace(
+        "q",
+        _call(
+            session_id="q",
+            ident="call_q1",
+            seq=1,
+            user="Third message sent by P itself",
+        ),
+    )
+    own = _trace(
+        "p",
+        _call(session_id="p", ident="call_p1", seq=1, user="Opening question number one"),
+        _users_call(
+            session_id="p",
+            ident="call_2",
+            seq=2,
+            users=[
+                "Opening question number one",
+                "Second message sent by P itself",
+                "Third message sent by P itself",
+            ],
+        ),
+    )
+    Expectation(own).isolated_from(peer)
+
+
+def test_first_call_history_then_later_new_messages_still_leaks() -> None:
+    peer = _trace(
+        "q",
+        _call(session_id="q", ident="call_q1", seq=1, user="Amsterdam canal boats"),
+    )
+    own = _trace(
+        "p",
+        _users_call(
+            session_id="p",
+            ident="call_p1",
+            seq=1,
+            users=["Amsterdam canal boats", "Opening question number one"],
+        ),
+        _users_call(
+            session_id="p",
+            ident="call_2",
+            seq=2,
+            users=[
+                "Amsterdam canal boats",
+                "Opening question number one",
+                "Second message sent by P itself",
+            ],
+        ),
+    )
+    with pytest.raises(AssertionError, match="Amsterdam canal boats"):
+        Expectation(own).isolated_from(peer)
+
+
+def test_responses_later_call_two_new_user_messages() -> None:
+    peer = _trace(
+        "q",
+        _call(
+            session_id="q",
+            ident="call_y1",
+            seq=1,
+            user="Second message sent by P itself",
+            api="responses",
+        ),
+    )
+    own = _trace(
+        "p",
+        _call(
+            session_id="p",
+            ident="call_x1",
+            seq=1,
+            user="Opening question number one",
+            api="responses",
+        ),
+        _users_call(
+            session_id="p",
+            ident="call_x2",
+            seq=2,
+            users=[
+                "Opening question number one",
+                "Second message sent by P itself",
+                "Third message sent by P itself",
+            ],
+            api="responses",
+        ),
+    )
+    Expectation(own).isolated_from(peer)
+
+
+def test_unknown_session_id_fails_without_allow_empty() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise SessionNotFound(session_id)
+
+    class _Proxy:
+        control = _Control()
+
+    class _Session:
+        session_id = "weather"
+        proxy = _Proxy()
+
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"no calls recorded for session weather-typo "
+            r"\(isolated_from needs calls on both sides\)"
+        ),
+    ):
+        Expectation(weather, session=_Session()).isolated_from("weather-typo")
+    Expectation(weather, session=_Session()).allow_empty().isolated_from("weather-typo")
+
+
+def test_userless_first_call_does_not_consume_first_call_status() -> None:
+    peer = _trace(
+        "q",
+        _call(session_id="q", ident="call_q1", seq=1, user="Amsterdam canal boats"),
+    )
+    own = SessionTrace.from_payload(
+        "p",
+        {
+            "id": "p",
+            "calls": [
+                {
+                    "id": "call_empty",
+                    "session_id": "p",
+                    "session_source": "path",
+                    "seq": 1,
+                    "api_family": "chat.completions",
+                    "request": {"messages": [{"role": "assistant", "content": "hi"}]},
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                },
+                {
+                    "id": "call_p2",
+                    "session_id": "p",
+                    "session_source": "path",
+                    "seq": 2,
+                    "api_family": "chat.completions",
+                    "request": {
+                        "messages": [
+                            {"role": "user", "content": "Amsterdam canal boats"},
+                            {"role": "user", "content": "And the locks after that?"},
+                        ]
+                    },
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                },
+            ],
+        },
+    )
+    with pytest.raises(AssertionError, match="Amsterdam canal boats"):
+        Expectation(own).isolated_from(peer)

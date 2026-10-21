@@ -264,6 +264,11 @@ def test_expect_no_calls_and_isolated_from_unused_session(llmentary: Session) ->
         unused.expect(allow_empty=True).call_count(0)
         with pytest.raises(AssertionError, match="expected 0 LLM calls"):
             llmentary.expect_no_calls(quiet=0.2)
+        with pytest.raises(
+            AssertionError,
+            match=r"isolated_from needs calls on both sides",
+        ):
+            llmentary.expect().isolated_from(unused)
         llmentary.expect().allow_empty().isolated_from(unused)
     finally:
         unused.cleanup()
