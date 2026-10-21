@@ -41,6 +41,7 @@ from llmentary.doctor import (
     doctor,
     proxy_binary_path,
     proxy_version,
+    proxy_version_line,
 )
 
 
@@ -69,7 +70,9 @@ def test_doctor_in_process_and_version_corners(
     out = io.StringIO()
     assert doctor(env={"LLMENTARY_BIN": str(binary), "PATH": ""}, out=out) == 0
     assert "binary --version: llmentary 0.4.0" in out.getvalue()
-    assert proxy_version(env={"LLMENTARY_BIN": str(binary), "PATH": ""}) == "llmentary 0.4.0"
+    env = {"LLMENTARY_BIN": str(binary), "PATH": ""}
+    assert proxy_version(env=env) == "0.4.0"
+    assert proxy_version_line(env=env) == "llmentary 0.4.0"
 
     assert doctor() in {0, 1}
 
@@ -81,7 +84,8 @@ def test_doctor_in_process_and_version_corners(
     assert doctor(env={"PATH": ""}, out=failed) == 1
     assert "no binary" in failed.getvalue()
     assert proxy_binary_path(env={"PATH": ""}) is None
-    assert proxy_version(env={"PATH": ""}) == "not found"
+    assert proxy_version(env={"PATH": ""}) is None
+    assert proxy_version_line(env={"PATH": ""}) is None
 
     assert binary_version_output(None) == "unknown"
 

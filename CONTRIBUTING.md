@@ -115,7 +115,7 @@ Coverage is measured in the required `coverage` job with
 `coverage run -m pytest` (not `pytest --cov`) so the pytest11 plugin does not
 import `llmentary` before coverage starts, then
 `coverage report --fail-under=<threshold>`. The threshold lives in one place:
-`[tool.llmentary.coverage]` in `pyproject.toml`. `fail_under` is 90 and must
+`[tool.llmentary.coverage]` in `pyproject.toml`. `fail_under` is 92 and must
 only move up. release-please PRs
 (`autorelease: pending`, a `chore(main): release` title, or a
 `release-please--*` head ref) use `release_fail_under` (90). Denis requires
