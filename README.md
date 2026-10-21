@@ -14,7 +14,11 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
 Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
-recorded.
+recorded. The
+[control API contract](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml)
+is the OpenAPI description of `/healthz`, `/sessions`, and `wait`. After the
+next proxy release the same file is served at `GET /openapi.yaml` on the
+control listener and ships next to the bundled binary.
 
 Published platform wheels bundle proxy v0.2.1; see
 [docs/binaries.md](docs/binaries.md) for how it is resolved and how to override it.
