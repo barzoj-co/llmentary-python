@@ -118,8 +118,9 @@ import `llmentary` before coverage starts, then
 `[tool.llmentary.coverage]` in `pyproject.toml`. `fail_under` is 92 and must
 only move up. release-please PRs
 (`autorelease: pending`, a `chore(main): release` title, or a
-`release-please--*` head ref) use `release_fail_under` (90). Denis requires
->=90 for releases.
+`release-please--*` head ref) use
+`max(fail_under, release_fail_under)` (92 today; `release_fail_under` is
+the 90 floor Denis requires for releases).
 
 Codecov upload stays tokenless (no OIDC) and informational (`codecov.yml`).
 It does not gate PRs: `fail_ci_if_error` is true only when
