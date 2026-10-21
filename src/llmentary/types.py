@@ -463,6 +463,54 @@ class CapturedCall:
     def call_number(self) -> str:
         return str(self.sequence_number())
 
+    @property
+    def session_source(self) -> Optional[str]:
+        """How the proxy attributed this call: ``header``, ``baggage``, ``path``, or ``default``."""
+
+        value = first_present(self.raw, "session_source", "sessionSource")
+        return value if isinstance(value, str) else None
+
+    @property
+    def upstream_url(self) -> Optional[str]:
+        """Upstream URL the proxy forwarded to. ``None`` when the field is absent."""
+
+        upstream = self.raw.get("upstream")
+        if isinstance(upstream, str) and upstream:
+            return upstream
+        value = first_present(coerce_mapping(upstream), "url", "URL")
+        return value if isinstance(value, str) else None
+
+    def usage_token_pair(self) -> Optional[tuple[str, str]]:
+        """``(input, output)`` token counts for ``trace_summary``, or ``None``."""
+
+        usage = self.usage
+        if not usage:
+            return None
+        inbound = int_or_none(
+            first_present(
+                usage,
+                "prompt_tokens",
+                "promptTokens",
+                "input_tokens",
+                "inputTokens",
+            )
+        )
+        outbound = int_or_none(
+            first_present(
+                usage,
+                "completion_tokens",
+                "completionTokens",
+                "output_tokens",
+                "outputTokens",
+            )
+        )
+        if inbound is None and outbound is None:
+            return None
+        return (
+            str(inbound) if inbound is not None else "?",
+            str(outbound) if outbound is not None else "?",
+        )
+
 
 @dataclass(frozen=True)
 class SessionTrace:
@@ -492,20 +540,28 @@ class SessionTrace:
             status = "error" if call.error or call.mid_stream_error else "ok"
             latency = f", latency={call.latency_ms:.1f}ms" if call.latency_ms is not None else ""
             ttft = f", ttft={call.ttft_ms:.1f}ms" if call.ttft_ms is not None else ""
-            finish = f", finish={call.finish_reason}" if call.finish_reason else ""
+            finish_reason = call.finish_reason
+            finish = (
+                f", finish={finish_reason}"
+                if finish_reason and finish_reason != "unknown"
+                else ""
+            )
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
             aborted = ", client_aborted" if call.client_aborted else ""
             truncated = ", stream_truncated" if call.stream_truncated else ""
+            source = f", src={call.session_source}" if call.session_source else ""
+            token_pair = call.usage_token_pair()
+            tokens = f", tokens={token_pair[0]}/{token_pair[1]}" if token_pair else ""
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             spec = f", spec: {call.spec_status_label()}"
             lines.append(
                 f"  [{call.sequence_number()}] api={api_label} model={call.model or '?'} "
                 f"status={status}{http_status}{streamed}{aborted}{truncated}{finish}"
-                f"{latency}{ttft} tools=[{tool_names}]{spec}"
+                f"{latency}{ttft}{source}{tokens} tools=[{tool_names}]{spec}"
             )
-            if not call.tool_calls:
-                lines.append(f"      call keys={list(call.raw.keys())}")
+            if not call.request and not call.response:
+                lines.append(f"      unparsed call, keys={list(call.raw.keys())}")
             if call.error:
                 lines.append(f"      error: {call.error}")
             if call.mid_stream_error:

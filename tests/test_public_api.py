@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import llmentary
-from llmentary import Query, Session, SessionNotFound, pytest_plugin
+from llmentary import Query, Session, SessionNotFound, proxy_version, pytest_plugin
 from llmentary.assertions import Expectation, SoftExpectation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +33,9 @@ def _python_fences(path: Path) -> list[str]:
 def test_package_exports_session_not_lab_aliases() -> None:
     assert "Session" in llmentary.__all__
     assert "answer_mentions_any" in llmentary.__all__
+    assert "proxy_version" in llmentary.__all__
     assert llmentary.Session is Session
+    assert llmentary.proxy_version is proxy_version
     assert "SessionNotFound" in llmentary.__all__
     assert llmentary.SessionNotFound is SessionNotFound
     for removed in ("LabSession", "LlmentarySession"):

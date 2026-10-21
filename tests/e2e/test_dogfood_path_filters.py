@@ -34,7 +34,12 @@ def test_path_attributed_openai_call(
             max_tokens=16,
         )
     )
-    llmentary.expect().prompt_contains("ping").tokens(min_total=1).no_errors()
+    expect = llmentary.expect()
+    expect.prompt_contains("ping").tokens(min_total=1).no_errors()
+    call = expect.trace.calls[0]
+    assert call.session_source == "path", expect.trace.trace_summary()
+    assert call.upstream_url, expect.trace.trace_summary()
+    assert "/s/" not in call.upstream_url, call.upstream_url
 
 
 def test_mark_since_and_without_tools(llmentary: Session) -> None:

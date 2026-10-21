@@ -157,3 +157,11 @@ Fixes, in order:
 
 Run `python -m llmentary doctor` to print the package version, platform tag,
 resolved binary path, and whether this is a wheel or a source install.
+
+The plugin also adds a `pytest_report_header` line:
+
+`llmentary <client>; proxy: <binary --version first line>; binary: <path>`
+
+When no binary resolves, that stays one line: `proxy: not found`. The same
+values are available as `llmentary.proxy_version()` and
+`llmentary.proxy_binary_path()`.

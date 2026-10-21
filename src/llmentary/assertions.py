@@ -556,11 +556,14 @@ class SoftExpectation(Expectation):
     def assert_all(self) -> None:
         if self.failures:
             joined = "\n\n".join(f"- {failure}" for failure in self.failures)
-            raise AssertionError(f"{len(self.failures)} soft assertion(s) failed:\n{joined}")
+            raise AssertionError(
+                f"{len(self.failures)} soft assertion(s) failed:\n{joined}"
+                f"\n\n{self.trace.trace_summary()}"
+            )
 
     def _assert(self, condition: bool, message: str) -> None:
         if not condition:
-            self.failures.append(f"{message}\n\n{self.trace.trace_summary()}")
+            self.failures.append(message)
 
 
 def mapping_contains(actual: Mapping[str, Any], expected: Mapping[str, Any]) -> bool:
