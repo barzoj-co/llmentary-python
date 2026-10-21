@@ -1133,11 +1133,9 @@ def extract_user_texts(request: Mapping[str, Any]) -> list[str]:
             mapping = as_mapping(item)
             role = mapping.get("role")
             typ = mapping.get("type")
-            if role not in (None, "user"):
+            if typ in {"function_call", "function_call_output", "tool_result"}:
                 continue
-            if typ in {None, "message", "input_text", "input_image"} or role == "user":
-                if typ in {"function_call", "function_call_output", "tool_result"}:
-                    continue
+            if role == "user" or (role is None and typ == "input_text"):
                 text = _user_content_text(
                     first_present(mapping, "content", "text")
                 )

@@ -5,6 +5,7 @@ from typing import Any, Optional
 import pytest
 
 from llmentary.assertions import Expectation
+from llmentary.client import SessionNotFound
 from llmentary.types import SessionTrace
 
 CallPayload = dict[str, Any]
@@ -172,3 +173,73 @@ def test_user_texts_ignore_system_and_read_responses_input() -> None:
         ),
     ).calls[0]
     assert responses.user_texts == ["responses user"]
+
+
+def test_repeated_user_text_is_reported_once() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_3", seq=1, user="Amsterdam canal boats"),
+        _call(session_id="weather", ident="call_5", seq=2, user="Amsterdam canal boats"),
+    )
+    barge = _trace(
+        "barge",
+        _call(session_id="barge", ident="call_7", seq=1, user="Amsterdam canal boats"),
+        _call(session_id="barge", ident="call_8", seq=2, user="Amsterdam canal boats"),
+    )
+    with pytest.raises(AssertionError, match="user text") as caught:
+        Expectation(weather).isolated_from(barge)
+    message = str(caught.value)
+    assert message.count("Amsterdam canal boats") == 1
+    assert "#1 (call_3)" in message
+    assert "#1 (call_7)" in message
+    assert "#2 (call_5)" not in message
+    assert "#2 (call_8)" not in message
+
+
+def test_missing_other_session_is_not_allow_empty() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise SessionNotFound(session_id)
+
+    class _Proxy:
+        control = _Control()
+
+    class _Session:
+        session_id = "weather"
+        proxy = _Proxy()
+
+    with pytest.raises(SessionNotFound, match="typo"):
+        Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
+
+
+def test_responses_roleless_message_is_not_user_text() -> None:
+    leak = SessionTrace.from_payload(
+        "resp",
+        {
+            "id": "resp",
+            "calls": [
+                {
+                    "id": "call_2",
+                    "session_id": "resp",
+                    "session_source": "path",
+                    "seq": 1,
+                    "api_family": "openai.responses",
+                    "request": {
+                        "input": [
+                            {"type": "message", "content": "assistant leftover"},
+                            {"type": "input_text", "text": "bare user"},
+                            {"role": "user", "content": "explicit user"},
+                        ]
+                    },
+                    "response": {"output_text": "ok"},
+                }
+            ],
+        },
+    ).calls[0]
+    assert leak.user_texts == ["bare user", "explicit user"]
+    assert "assistant leftover" not in leak.user_texts

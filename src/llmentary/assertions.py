@@ -149,17 +149,17 @@ class Expectation:
                 f"and {other_trace.session_id}"
             )
 
-        for call_a in self.trace.calls:
-            for text_a in call_a.user_texts:
-                for call_b in other_trace.calls:
-                    for text_b in call_b.user_texts:
-                        if text_a and text_b and (text_a in text_b or text_b in text_a):
-                            findings.append(
-                                f"user text {text_a!r} from session "
-                                f"{self.trace.session_id} {_call_label(call_a)} "
-                                f"appears in session {other_trace.session_id} "
-                                f"{_call_label(call_b)}"
-                            )
+        first_a = _first_user_texts(self.trace.calls)
+        first_b = _first_user_texts(other_trace.calls)
+        for text_a, call_a in first_a.items():
+            for text_b, call_b in first_b.items():
+                if text_a in text_b or text_b in text_a:
+                    findings.append(
+                        f"user text {text_a!r} from session "
+                        f"{self.trace.session_id} {_call_label(call_a)} "
+                        f"appears in session {other_trace.session_id} "
+                        f"{_call_label(call_b)}"
+                    )
 
         if findings:
             self._assert(False, "\n".join(findings))
@@ -174,23 +174,11 @@ class Expectation:
             get_session = getattr(getter, "get_session", None)
             if not callable(get_session):
                 raise TypeError("isolated_from(session_id) requires Session.expect()")
-            try:
-                return cast(SessionTrace, get_session(other))
-            except Exception as exc:
-                if exc.__class__.__name__ == "SessionNotFound":
-                    return SessionTrace.from_payload(other, {"id": other, "calls": []})
-                raise
+            return cast(SessionTrace, get_session(other))
         session_id = getattr(other, "session_id", None)
         trace_fn = getattr(other, "trace", None)
         if callable(trace_fn) and isinstance(session_id, str):
-            try:
-                return cast(SessionTrace, trace_fn())
-            except Exception as exc:
-                if exc.__class__.__name__ == "SessionNotFound":
-                    return SessionTrace.from_payload(
-                        session_id, {"id": session_id, "calls": []}
-                    )
-                raise
+            return cast(SessionTrace, trace_fn())
         raise TypeError(
             "isolated_from() expects a Session, session id, or SessionTrace"
         )
@@ -664,6 +652,15 @@ class SoftExpectation(Expectation):
     def _assert(self, condition: bool, message: str) -> None:
         if not condition:
             self.failures.append(message)
+
+
+def _first_user_texts(calls: Sequence[CapturedCall]) -> dict[str, CapturedCall]:
+    first: dict[str, CapturedCall] = {}
+    for call in calls:
+        for text in call.user_texts:
+            if text:
+                first.setdefault(text, call)
+    return first
 
 
 def _call_id(call: CapturedCall) -> Optional[str]:
