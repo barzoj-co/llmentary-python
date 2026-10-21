@@ -37,6 +37,32 @@ def test_pytest_report_header_includes_proxy_version(
     assert proxy_version() == "llmentary 0.2.0 (d3698347ec0ac297a45fd531e4011b60b2039324)"
 
 
+def test_pytest_report_header_uses_llmentary_bin_option(
+    pytester: pytest.Pytester, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary = tmp_path / "from-option"
+    binary.write_text(
+        "#!/bin/sh\necho 'llmentary 0.2.0 (from-option)'\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o755)
+    monkeypatch.delenv("LLMENTARY_BIN", raising=False)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr("llmentary.binary.bundled_binary", lambda: None)
+    pytester.makepyfile(
+        """
+        def test_ok():
+            assert True
+        """
+    )
+    result = pytester.runpytest(f"--llmentary-bin={binary}")
+    result.assert_outcomes(passed=1)
+    text = result.stdout.str()
+    assert "proxy: llmentary " in text
+    assert str(binary) in text
+    assert "from-option" in text
+
+
 def test_pytest_report_header_without_binary(
     pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
 ) -> None:

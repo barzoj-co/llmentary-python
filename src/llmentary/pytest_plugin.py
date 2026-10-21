@@ -78,8 +78,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_report_header(config: pytest.Config) -> str:
     """Print client and proxy versions once at the start of the pytest run."""
 
-    del config
-    return proxy_report_header()
+    env = dict(os.environ)
+    option_bin = config.getoption("--llmentary-bin")
+    if option_bin:
+        env["LLMENTARY_BIN"] = str(option_bin)
+    return proxy_report_header(env=env)
 
 
 @pytest.fixture(scope="session")
