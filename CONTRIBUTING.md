@@ -126,7 +126,7 @@ informational and do not fail PRs.
   `vars.PYPI_PUBLISH_ENABLED`. See [docs/releasing.md](docs/releasing.md).
 
 CI installs the real Go proxy from the `PROXY_VERSION` GitHub Release (currently
-v0.2.0), verifies the archive sha256 against `checksums.txt`, and points tests
+v0.2.1), verifies the archive sha256 against `checksums.txt`, and points tests
 at it with `LLMENTARY_BIN`. Integration tests talk to a fake OpenAI upstream
 through that real binary. E2E tests talk to the real OpenAI API through the
 same real binary.
