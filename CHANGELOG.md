@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0](https://github.com/barzoj-co/llmentary-python/compare/v0.3.1...v0.4.0) (2026-10-21)
+
+
+### Features
+
+* add isolated_from and user_texts ([#29](https://github.com/barzoj-co/llmentary-python/issues/29)) ([3ccb46a](https://github.com/barzoj-co/llmentary-python/commit/3ccb46a2db883cf76e5ac00f64dba87e1ff62c48))
+* expose CapturedCall.seq and print #seq (id) ([#27](https://github.com/barzoj-co/llmentary-python/issues/27)) ([a2102b4](https://github.com/barzoj-co/llmentary-python/commit/a2102b4ad56af20aeb52ba33c9c52ec13210c6e0))
+
+
+### Bug Fixes
+
+* bundle proxy v0.2.2 ([#30](https://github.com/barzoj-co/llmentary-python/issues/30)) ([c7ff944](https://github.com/barzoj-co/llmentary-python/commit/c7ff9448b88ba8566611a7e1cec3692d90fb8922))
+* bundle proxy v0.3.0 ([#31](https://github.com/barzoj-co/llmentary-python/issues/31)) ([49a03f8](https://github.com/barzoj-co/llmentary-python/commit/49a03f880330642abdfc90a34382152382e516bd))
+* fail empty filtered expectations and add call_count ([#21](https://github.com/barzoj-co/llmentary-python/issues/21)) ([850b9e1](https://github.com/barzoj-co/llmentary-python/commit/850b9e1dee71adafb7b3110407a4d3de01a4d1db))
+* map wait 404 to SessionNotFound ([#26](https://github.com/barzoj-co/llmentary-python/issues/26)) ([2f49a26](https://github.com/barzoj-co/llmentary-python/commit/2f49a26d409a5f7ed220e4e721a3c6ce578efdbc))
+* quiet trace summaries and expose session attribution ([#22](https://github.com/barzoj-co/llmentary-python/issues/22)) ([191e9fd](https://github.com/barzoj-co/llmentary-python/commit/191e9fde9021c7b4874d56cffcd76b6487e5c987))
+
+
+### Documentation
+
+* link the control API contract in the README ([#28](https://github.com/barzoj-co/llmentary-python/issues/28)) ([e18e05c](https://github.com/barzoj-co/llmentary-python/commit/e18e05cf4b2988ce6c4cf132b38a4347873815b7))
+
 ## [0.3.1](https://github.com/barzoj-co/llmentary-python/compare/v0.3.0...v0.3.1) (2026-10-21)
 
 
