@@ -211,6 +211,23 @@ def test_install_binary_extracts_and_records_version(
     assert "src/llmentary/bin/*/openapi.yaml" in pyproject
 
 
+def test_extract_binary_requires_openapi_yaml(tmp_path: Path) -> None:
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo(name="llmentary")
+        payload = b"#!/bin/sh\necho proxy\n"
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    dest = tmp_path / "llmentary"
+    with pytest.raises(SystemExit, match=r"openapi\.yaml"):
+        wheels.extract_binary(
+            archive.getvalue(),
+            "llmentary_0.1.0_linux_amd64.tar.gz",
+            dest,
+            "llmentary",
+        )
+
+
 def test_assert_clean_release_version_rejects_dirty(tmp_path: Path) -> None:
     binary = tmp_path / "llmentary"
     binary.write_text(

@@ -247,10 +247,11 @@ def extract_binary(archive: bytes, asset_name: str, dest: Path, binary_name: str
         shutil.copy2(binary, dest)
         dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         contract = find_extracted_named_file(tmp_path, "openapi.yaml")
-        if contract is not None:
-            if not contract.resolve().is_relative_to(tmp_path.resolve()):
-                raise SystemExit("Refusing to install openapi.yaml outside the extract directory")
-            shutil.copy2(contract, dest.parent / "openapi.yaml")
+        if contract is None:
+            raise SystemExit("Archive did not contain openapi.yaml")
+        if not contract.resolve().is_relative_to(tmp_path.resolve()):
+            raise SystemExit("Refusing to install openapi.yaml outside the extract directory")
+        shutil.copy2(contract, dest.parent / "openapi.yaml")
     return dest
 
 

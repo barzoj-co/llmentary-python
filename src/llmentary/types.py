@@ -569,7 +569,7 @@ class SessionTrace:
         try:
             Draft202012Validator(schema).validate(dict(self.raw))
         except ValidationError as exc:
-            pointer = exc.json_path or exc.absolute_path
+            pointer = json_pointer(exc.absolute_path) or "/"
             raise AssertionError(
                 f"session {self.session_id} failed control contract at {pointer}: {exc.message}"
             ) from exc
@@ -1240,6 +1240,16 @@ def stringify_value(value: Any) -> str:
             return content
         return json.dumps(value, sort_keys=True)
     return "" if value is None else str(value)
+
+
+def json_pointer(path: Iterable[object]) -> str:
+    """RFC 6901 JSON Pointer for a jsonschema ``absolute_path``."""
+
+    parts: list[str] = []
+    for item in path:
+        text = str(item).replace("~", "~0").replace("/", "~1")
+        parts.append(text)
+    return "/" + "/".join(parts) if parts else ""
 
 
 def string_or_none(value: Any) -> Optional[str]:

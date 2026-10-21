@@ -110,8 +110,9 @@ def test_validate_contract_accepts_session_and_names_pointer() -> None:
     ok = SessionTrace.from_payload("s", {"id": "s", "calls": []})
     ok.validate_contract(contract)
     bad = SessionTrace.from_payload("s", {"calls": []})
-    with pytest.raises(AssertionError, match="failed control contract"):
+    with pytest.raises(AssertionError, match=r"failed control contract at /") as caught:
         bad.validate_contract(contract)
+    assert "$." not in str(caught.value)
 
 
 def test_config_version() -> None:
