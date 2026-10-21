@@ -410,6 +410,23 @@ class Expectation:
             )
         return self
 
+    def aborted(self, *, phase: Optional[str] = None) -> Expectation:
+        """Assert at least one captured call has ``client_aborted``.
+
+        ``phase`` is ``before_headers`` or ``after_headers`` when the proxy
+        recorded ``abort_phase`` (DOG-27 / DOG-28).
+        """
+
+        calls = [call for call in self.trace.calls if call.client_aborted]
+        self._assert(bool(calls), "expected a client-aborted call")
+        if phase is not None:
+            actual = [call.abort_phase for call in calls]
+            self._assert(
+                any(value == phase for value in actual),
+                f"expected abort_phase={phase!r}, got {actual}",
+            )
+        return self
+
     def prompt_contains(self, text: str) -> Expectation:
         prompt = "\n".join(call.prompt_text for call in self.trace.calls)
         self._assert(text in prompt, f"expected prompt to contain {text!r}")

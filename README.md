@@ -253,6 +253,26 @@ unused.expect(allow_empty=True).call_count(0)
 active.expect().allow_empty().isolated_from(unused)
 ```
 
+Testing interruptions / barge-in: cancel a streaming call (~50 ms after
+send, or after the first chunk) and read the typed abort fields:
+
+```python
+stream.close()
+expectation = llmentary.expect().aborted()
+call = next(call for call in expectation.trace.calls if call.client_aborted)
+assert call.client_aborted
+assert call.abort_phase in (None, "before_headers", "after_headers")
+assert call.finish_reason in {"cancelled", "unknown"}
+assert call.http_status != 502
+```
+
+`client_aborted` prefers the top-level Call field and falls back to
+`normalized.client_aborted` on older proxies. `abort_phase` is
+`before_headers` or `after_headers` when the call was aborted, and
+omitted (`None`) otherwise. Closing after `[DONE]` or a terminal
+Responses event is not an abort. Proxy 0.3.0 still records
+`finish_reason=unknown` on abort; `cancelled` is the documented value.
+
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session
 (`sequence_number()` is an alias). The trace summary prints `#seq (id)`.

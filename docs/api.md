@@ -295,11 +295,19 @@ common fields used for assertions:
 `CapturedCall.session_source` is `header`, `baggage`, `path`, or `default` when
 the proxy recorded attribution. `CapturedCall.upstream_url` is the forwarded
 upstream URL (string or `upstream.url`); it should not contain `/s/{session}`.
+`CapturedCall.client_aborted` prefers the top-level Call field and falls
+back to `normalized.client_aborted`. `CapturedCall.abort_phase` is
+`before_headers` or `after_headers` on an aborted call, and `None` when
+the call is not aborted (the wire field is omitted). Closing after
+`[DONE]` or a terminal Responses event is not an abort.
+`expect().aborted()` asserts at least one call was client-aborted.
 
 ```python
 call = llmentary.expect().trace.calls[0]
 assert call.session_source == "path"
 assert call.upstream_url is not None and "/s/" not in call.upstream_url
+assert call.client_aborted is False
+assert call.abort_phase is None
 ```
 
 Every hard assertion failure includes `SessionTrace.trace_summary()` once.
