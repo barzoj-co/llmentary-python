@@ -1,10 +1,10 @@
 Vendored isolation vectors for DOG-29 / DOG-22.
 
 Canonical copy: barzoj-co/llmentary testdata/isolation/*.json
-(proxy PR https://github.com/barzoj-co/llmentary/pull/35,
-branch cursor/dog-29-isolation-spec-f2b6; testdata/isolation/README.md
-is the spec note on that branch).
+(proxy PR https://github.com/barzoj-co/llmentary/pull/35, merged to main
+as bb39133; testdata/isolation/README.md is the spec note on main).
 
 tests/test_isolation_vectors.py compares this directory to that path,
-trying the PR branch first and then v{PROXY_VERSION}. CI fetches the
-same path during the proxy-install step (one secret-bearing step).
+trying main first and then v{PROXY_VERSION}. CI fetches the same path
+during the proxy-install step (one secret-bearing step). Missing access
+is a visible skip; HTTP 404/403 after authenticating fails the check.

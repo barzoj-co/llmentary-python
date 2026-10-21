@@ -6,6 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +18,10 @@ from llmentary.types import SessionTrace
 ROOT = Path(__file__).resolve().parents[1]
 VECTOR_DIR = ROOT / "tests" / "testdata" / "isolation"
 PROXY_VERSION = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
-# Proxy DOG-29 PR #35 publishes testdata/isolation on this branch first;
-# the pin tag is the long-term source after that PR merges.
+# Proxy DOG-29 PR #35 landed on main as bb39133; the pin tag is the
+# long-term source once a release includes testdata/isolation.
 PROXY_VECTOR_REFS = (
-    "cursor/dog-29-isolation-spec-f2b6",
+    "main",
     f"v{PROXY_VERSION}",
 )
 PROXY_VECTOR_PATH = "testdata/isolation"
@@ -58,8 +59,9 @@ def _session_id(session: dict[str, Any]) -> str:
 
 def _expect_isolated(payload: dict[str, Any]) -> bool:
     raw = payload.get("expect")
-    if isinstance(raw, dict) and isinstance(raw.get("isolated"), bool):
-        return raw["isolated"]
+    isolated = raw.get("isolated") if isinstance(raw, dict) else None
+    if isinstance(isolated, bool):
+        return isolated
     value = payload.get("expect") or payload.get("verdict") or payload.get("want")
     if value == "pass":
         return True
@@ -124,67 +126,67 @@ def test_isolation_vector(path: Path) -> None:
         assert fragment in message, message
 
 
+def _log_compared(count: int, source: str) -> None:
+    message = f"isolation vector drift check: compared {count} vector(s) against {source}"
+    print(message, flush=True)
+    warnings.warn(message, UserWarning, stacklevel=2)
+
+
 def test_isolation_vectors_match_proxy_pin() -> None:
     """Fail when testdata/isolation drifted from the proxy DOG-29 copy."""
 
-    remote_files = _official_files()
-    if remote_files is None:
-        token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
-        if not token:
-            return
-        listing, ref = _fetch_proxy_listing(token)
-        if listing is None or ref is None:
-            return
-        remote = {
-            item["name"]: item
-            for item in listing
-            if isinstance(item, dict)
-            and isinstance(item.get("name"), str)
-            and str(item["name"]).endswith(".json")
-        }
-        local = {path.name: _git_blob_sha(path) for path in _vector_files()}
-        missing = sorted(set(remote) - set(local))
-        extra = sorted(set(local) - set(remote))
-        changed = sorted(
-            name
-            for name, item in remote.items()
-            if name in local and local[name] != item.get("sha")
-        )
-        if missing or extra or changed:
-            snippets: list[str] = []
-            for name in missing + changed:
-                try:
-                    body = _download_file(token, ref, name).decode("utf-8")
-                except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError) as exc:
-                    body = f"<download failed: {type(exc).__name__}>"
-                snippets.append(f"----- {name} -----\n{body}")
-            raise AssertionError(
-                f"vendored isolation vectors drifted from {PROXY_VECTOR_REPO} "
-                f"{PROXY_VECTOR_PATH}@{ref}: missing={missing} extra={extra} "
-                f"changed={changed}\n" + "\n".join(snippets)
-            )
+    official = _official_json_bytes()
+    if official:
+        source = _official_source()
+        _assert_bytes_match(official, source)
+        _log_compared(len(official), source)
         return
 
-    local = {path.name: path.read_bytes() for path in _vector_files()}
-    missing = sorted(set(remote_files) - set(local))
-    extra = sorted(set(local) - set(remote_files))
-    changed = sorted(
-        name for name in set(remote_files) & set(local) if local[name] != remote_files[name]
-    )
-    if missing or extra or changed:
-        snippets = []
-        for name in missing + changed:
-            body = remote_files.get(name, b"<missing>").decode("utf-8", errors="replace")
-            snippets.append(f"----- {name} -----\n{body}")
-        raise AssertionError(
-            f"vendored isolation vectors drifted from {PROXY_VECTOR_PATH}: "
-            f"missing={missing} extra={extra} changed={changed}\n" + "\n".join(snippets)
+    token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    if not token:
+        pytest.skip(
+            "skipped: no token to fetch isolation vectors from private "
+            f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}"
         )
 
+    listing, ref, error = _fetch_proxy_listing(token)
+    if error is not None:
+        raise AssertionError(error)
+    assert listing is not None and ref is not None
+    remote = {
+        str(item["name"]): item
+        for item in listing
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and str(item["name"]).endswith(".json")
+    }
+    local_sha = {path.name: _git_blob_sha(path) for path in _vector_files()}
+    missing = sorted(set(remote) - set(local_sha))
+    extra = sorted(set(local_sha) - set(remote))
+    changed = sorted(
+        name
+        for name, item in remote.items()
+        if name in local_sha and local_sha[name] != item.get("sha")
+    )
+    source = f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}@{ref}"
+    if missing or extra or changed:
+        snippets: list[str] = []
+        for name in missing + changed:
+            try:
+                body = _download_file(token, ref, name).decode("utf-8")
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError) as exc:
+                body = f"<download failed: {type(exc).__name__}>"
+            snippets.append(f"----- {name} -----\n{body}")
+        raise AssertionError(
+            f"vendored isolation vectors drifted from {source}: "
+            f"missing={missing} extra={extra} changed={changed}\n" + "\n".join(snippets)
+        )
+    _log_compared(len(remote), source)
 
-def _official_files() -> dict[str, bytes] | None:
+
+def _official_json_bytes() -> dict[str, bytes]:
     if not OFFICIAL_DIR.is_dir():
-        return None
+        return {}
     return {
         path.name: path.read_bytes()
         for path in OFFICIAL_DIR.glob("*.json")
@@ -192,7 +194,35 @@ def _official_files() -> dict[str, bytes] | None:
     }
 
 
-def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None]:
+def _official_source() -> str:
+    ref_path = OFFICIAL_DIR / ".ref"
+    ref = ref_path.read_text(encoding="utf-8").strip() if ref_path.is_file() else "unknown"
+    return f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}@{ref}"
+
+
+def _assert_bytes_match(remote_files: dict[str, bytes], source: str) -> None:
+    local_bytes = {path.name: path.read_bytes() for path in _vector_files()}
+    missing = sorted(set(remote_files) - set(local_bytes))
+    extra = sorted(set(local_bytes) - set(remote_files))
+    changed = sorted(
+        name
+        for name in set(remote_files) & set(local_bytes)
+        if local_bytes[name] != remote_files[name]
+    )
+    if missing or extra or changed:
+        snippets = []
+        for name in missing + changed:
+            body = remote_files.get(name, b"<missing>").decode("utf-8", errors="replace")
+            snippets.append(f"----- {name} -----\n{body}")
+        raise AssertionError(
+            f"vendored isolation vectors drifted from {source}: "
+            f"missing={missing} extra={extra} changed={changed}\n" + "\n".join(snippets)
+        )
+
+
+def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None, str | None]:
+    last_http: int | None = None
+    transport_error = False
     for ref in PROXY_VECTOR_REFS:
         url = (
             f"https://api.github.com/repos/{PROXY_VECTOR_REPO}/contents/"
@@ -206,13 +236,35 @@ def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None]:
                 listing = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code in {404, 403}:
+                last_http = exc.code
                 continue
             raise
         except (urllib.error.URLError, TimeoutError, OSError):
-            return None, None
+            transport_error = True
+            continue
         if isinstance(listing, list):
-            return listing, ref
-    return None, None
+            return listing, ref, None
+    joined = ", ".join(PROXY_VECTOR_REFS)
+    if last_http is not None:
+        return (
+            None,
+            None,
+            "isolation vector drift check failed: HTTP "
+            f"{last_http} fetching {PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH} from {joined}",
+        )
+    if transport_error:
+        return (
+            None,
+            None,
+            "isolation vector drift check failed: transport error fetching "
+            f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}",
+        )
+    return (
+        None,
+        None,
+        "isolation vector drift check failed: "
+        f"{PROXY_VECTOR_PATH} not found on {joined}",
+    )
 
 
 def _download_file(token: str, ref: str, name: str) -> bytes:

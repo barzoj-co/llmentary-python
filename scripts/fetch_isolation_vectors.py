@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy testdata/isolation from the proxy DOG-29 branch (or the pin tag)."""
+"""Copy testdata/isolation from proxy main (then the pin tag)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 PROXY_VECTOR_REPO = "barzoj-co/llmentary"
 PROXY_VECTOR_PATH = "testdata/isolation"
-PROXY_VECTOR_BRANCH = "cursor/dog-29-isolation-spec-f2b6"
+PROXY_VECTOR_BRANCH = "main"
 
 
 def _token() -> str:
@@ -33,28 +33,30 @@ def _proxy_version(root: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _get(url: str, token: str) -> object | None:
+def _get(url: str, token: str) -> tuple[object | None, int | None]:
     request = urllib.request.Request(url)
     request.add_header("Authorization", f"Bearer {token}")
     request.add_header("Accept", "application/vnd.github+json")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8")), 200
     except urllib.error.HTTPError as exc:
         if exc.code in {404, 403}:
-            return None
+            return None, exc.code
         raise
     except (urllib.error.URLError, TimeoutError, OSError):
-        return None
+        return None, None
 
 
-def _listing(token: str, ref: str) -> list[object] | None:
+def _listing(token: str, ref: str) -> tuple[list[object] | None, int | None]:
     url = (
         f"https://api.github.com/repos/{PROXY_VECTOR_REPO}/contents/"
         f"{PROXY_VECTOR_PATH}?ref={ref}"
     )
-    payload = _get(url, token)
-    return payload if isinstance(payload, list) else None
+    payload, status = _get(url, token)
+    if isinstance(payload, list):
+        return payload, status
+    return None, status
 
 
 def _download(token: str, ref: str, name: str) -> bytes | None:
@@ -62,7 +64,7 @@ def _download(token: str, ref: str, name: str) -> bytes | None:
         f"https://api.github.com/repos/{PROXY_VECTOR_REPO}/contents/"
         f"{PROXY_VECTOR_PATH}/{name}?ref={ref}"
     )
-    payload = _get(url, token)
+    payload, _status = _get(url, token)
     if not isinstance(payload, dict):
         return None
     encoded = payload.get("content")
@@ -82,7 +84,7 @@ def main() -> int:
     args = parser.parse_args()
     token = _token()
     if not token:
-        print("fetch_isolation_vectors: no repo token; skip")
+        print("fetch_isolation_vectors: skipped: no repo token")
         return 0
     refs = [PROXY_VECTOR_BRANCH]
     version = _proxy_version(Path(args.root))
@@ -90,14 +92,33 @@ def main() -> int:
         refs.append(f"v{version}")
     listing = None
     ref = None
+    last_status: int | None = None
+    transport_error = False
     for candidate in refs:
-        listing = _listing(token, candidate)
+        listing, last_status = _listing(token, candidate)
         if listing:
             ref = candidate
             break
+        if last_status is None:
+            transport_error = True
     if listing is None or ref is None:
-        print("fetch_isolation_vectors: testdata/isolation not available; skip")
-        return 0
+        if last_status in {404, 403}:
+            print(
+                "fetch_isolation_vectors: failed: HTTP "
+                f"{last_status} fetching {PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH} "
+                f"from {', '.join(refs)}"
+            )
+        elif transport_error:
+            print(
+                "fetch_isolation_vectors: failed: transport error fetching "
+                f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}"
+            )
+        else:
+            print(
+                "fetch_isolation_vectors: failed: "
+                f"{PROXY_VECTOR_PATH} not available from {', '.join(refs)}"
+            )
+        return 1
     dest = Path(args.output)
     dest.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -114,7 +135,18 @@ def main() -> int:
             continue
         (dest / name).write_bytes(body)
         written += 1
-    print(f"fetch_isolation_vectors: wrote {written} file(s) from {ref} -> {dest}")
+    json_count = len(list(dest.glob("*.json")))
+    if json_count == 0:
+        print(
+            "fetch_isolation_vectors: failed: "
+            f"{PROXY_VECTOR_PATH}@{ref} listed no isolation vectors"
+        )
+        return 1
+    (dest / ".ref").write_text(f"{ref}\n", encoding="utf-8")
+    print(
+        f"isolation vector drift check: fetched {json_count} vector(s) from {ref} "
+        f"({written} file(s) -> {dest})"
+    )
     return 0
 
 
