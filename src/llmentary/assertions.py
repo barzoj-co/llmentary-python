@@ -174,14 +174,22 @@ class Expectation:
             get_session = getattr(getter, "get_session", None)
             if not callable(get_session):
                 raise TypeError("isolated_from(session_id) requires Session.expect()")
-            return cast(SessionTrace, get_session(other))
+            return self._trace_or_empty(lambda: get_session(other), other)
         session_id = getattr(other, "session_id", None)
         trace_fn = getattr(other, "trace", None)
         if callable(trace_fn) and isinstance(session_id, str):
-            return cast(SessionTrace, trace_fn())
+            return self._trace_or_empty(trace_fn, session_id)
         raise TypeError(
             "isolated_from() expects a Session, session id, or SessionTrace"
         )
+
+    def _trace_or_empty(self, loader: Callable[[], object], session_id: str) -> SessionTrace:
+        from .client import SessionNotFound
+
+        try:
+            return cast(SessionTrace, loader())
+        except SessionNotFound:
+            return SessionTrace.from_payload(session_id, {"id": session_id, "calls": []})
 
     def tool_called(self, name: str) -> Expectation:
         self._assert(

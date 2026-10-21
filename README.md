@@ -204,14 +204,19 @@ except WaitTimeoutError:
     pass
 ```
 
-`expect()` treats that `SessionNotFound` as zero calls. A never-created
-session that will be filled by an async worker should wait with
-`min_calls=1` (or higher), not `0`.
+`wait()` still raises `SessionNotFound` on that 404. `expect()` without
+`allow_empty=True` turns it into `AssertionError('no calls recorded for
+session …; known sessions: …')` — it does not return an empty expectation
+you can chain. Use `expect_no_calls()` or `expect(allow_empty=True)` for
+the negative test. A never-created session that will be filled by an
+async worker should wait with `min_calls=1` (or higher), not `0`.
 
 ## Assertions
 
 ```python
 llmentary.expect().call_count(1).tool_called("search").called_times("search", 1)
+llmentary.expect_no_calls()
+llmentary.expect(allow_empty=True).call_count(0)
 llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
 llmentary.query().without_tools().expect().call_count(1).request_param(
     "response_format.type", "json_schema"
@@ -234,9 +239,19 @@ and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
 `response_json_valid`, `response_json_schema`), and spec observability
 (`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
 with the session trace summary. A filter or `since=` that matches zero calls
-fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
-`llmentary.list_sessions()` when a wait or expect fails with zero calls, so
-the message can name the known session ids.
+fails `no_errors()` / `not_called()` unless you call `allow_empty()` first.
+`expect()` itself still fails on a never-created session unless you pass
+`allow_empty=True`. Use `llmentary.list_sessions()` when a wait or expect
+fails with zero calls, so the message can name the known session ids (once).
+
+Negative tests — asserting zero LLM calls:
+
+```python
+# reading history / a GET that must not hit the model
+unused.expect_no_calls(quiet=0.2)
+unused.expect(allow_empty=True).call_count(0)
+active.expect().allow_empty().isolated_from(unused)
+```
 
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session

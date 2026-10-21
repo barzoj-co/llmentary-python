@@ -33,8 +33,11 @@ uses:
 404. `GET /sessions/{id}/wait` does the same when `min_calls=0` and the
 session was never created (or was `DELETE`d). `wait` with `min_calls>=1`
 keeps waiting until a call arrives, then raises `WaitTimeoutError` on 504 if
-none does. Expect helpers treat `SessionNotFound` from wait as zero calls and
-fail with `no calls recorded for session <id>; known sessions: …`.
+none does. `expect()` without `allow_empty=True` turns that 404 into
+`AssertionError('no calls recorded for session <id>; known sessions: …')`
+(one `known sessions:` list, not the proxy `GET /sessions` hint). It does
+not return an empty expectation. Use `expect_no_calls()` or
+`expect(allow_empty=True)` for a negative test.
 
 ```python
 from llmentary import SessionNotFound, WaitTimeoutError
@@ -82,10 +85,14 @@ Methods:
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session
 - `llmentary.mark()`: current max call sequence number (`0` if none)
-- `llmentary.expect(soft=False, since=None)`: wait, then return an expectation
-  object scoped to calls after `since` when that mark is set. Call
-  ``allow_empty()`` before ``no_errors`` / ``not_called`` to opt out of the
-  empty-filter guard (Go ``AllowEmpty()``)
+- `llmentary.expect(soft=False, since=None, allow_empty=False)`: wait, then
+  return an expectation scoped to calls after `since` when that mark is set.
+  The default fails on a never-created session. ``allow_empty=True`` returns
+  an empty expectation so ``call_count(0)`` works. Call ``allow_empty()``
+  before ``no_errors`` / ``not_called`` to opt out of the empty-filter guard
+  (Go ``AllowEmpty()``)
+- `llmentary.expect_no_calls(quiet=None)`: ``wait(min_calls=0)``; 404 or zero
+  calls pass; any recorded call fails with the trace summary
 - `llmentary.query(api_type=None, model=None)`: scope assertions by API type/model
 - `llmentary.soft_expect()`: context manager that accumulates assertion failures
 
@@ -123,10 +130,14 @@ filter or `since=` cuts the trace to zero matching calls, `no_errors()` and
 plus the trace summary. That stops a missed turn or a bypassed proxy from
 looking green.
 
-Opt out only when the test really expects zero matching calls:
+Opt out only when the test really expects zero matching calls, or zero
+calls in the whole session:
 
 ```python
 llmentary.expect(since=mark).allow_empty().no_errors()
+unused.expect_no_calls(quiet=0.2)
+unused.expect(allow_empty=True).call_count(0)
+active.expect().allow_empty().isolated_from(unused)
 ```
 
 Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
