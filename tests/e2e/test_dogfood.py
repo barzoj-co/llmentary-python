@@ -194,7 +194,13 @@ def test_wait_unused_session_then_first_call(llmentary: Session) -> None:
             )
         )
         trace = ghost.wait(timeout=30, quiet=0.5, min_calls=1)
-        assert len(trace.calls) == 1, trace.trace_summary()
-        assert "ping" in trace.calls[0].prompt_text
+        # min_calls counts every finished attempt, including 429 retries.
+        successful = [
+            call
+            for call in trace.calls
+            if (call.http_status or 0) == 200 and not call.error
+        ]
+        assert len(successful) == 1, trace.trace_summary()
+        assert "ping" in successful[0].prompt_text
     finally:
         ghost.cleanup()
