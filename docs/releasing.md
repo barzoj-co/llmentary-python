@@ -9,7 +9,8 @@ The Python package version is independent of the bundled proxy version
 1. Merge conventional-commit PRs to `main`.
 2. `release-please.yml` opens or updates a release PR that bumps
    `project.version` in `pyproject.toml`, the annotated fallback in
-   `src/llmentary/__init__.py`, and `CHANGELOG.md`.
+   `src/llmentary/__init__.py`, and `CHANGELOG.md`. The required `coverage`
+   job applies `release_fail_under` (90) on that PR.
 3. Merge that release PR. release-please tags `vX.Y.Z` and creates the GitHub
    Release.
 4. Tags created with `GITHUB_TOKEN` do not fire `on: push: tags`. The

@@ -64,39 +64,58 @@ jobs:
         run: mypy
 
       - name: Unit and fake-upstream integration tests
-        if: matrix.python-version != '3.13'
         run: pytest -m "not e2e" -rs
-
-      - name: Unit and fake-upstream integration tests
-        if: matrix.python-version == '3.13'
-        run: pytest -m "not e2e" -rs --cov --cov-report=xml:coverage.xml
-
-      - name: Upload coverage artifact
-        if: matrix.python-version == '3.13'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-xml
-          path: coverage.xml
-          if-no-files-found: error
 
   coverage:
     name: coverage
     needs: test
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
+    env:
+      LLMENTARY_BIN: /tmp/llmentary
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
-      - name: Download coverage artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - name: Fail clearly if llmentary repo token is missing
+        env:
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
+        run: |
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
+            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          name: coverage-xml
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install pinned proxy release
+        env:
+          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+        run: |
+          python scripts/install_proxy_release.py --output "$LLMENTARY_BIN"
+          python scripts/fetch_isolation_vectors.py --output /tmp/llmentary-isolation-vectors
+
+      - name: Install package and dev tools
+        run: python -m pip install -e ".[dev]"
+
+      - name: Measure coverage
+        env:
+          COVERAGE_PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          COVERAGE_PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+          COVERAGE_HEAD_REF: ${{ github.head_ref || '' }}
+        run: |
+          coverage run -m pytest -m "not e2e" -rs
+          coverage xml -o coverage.xml
+          coverage report --fail-under="$(python scripts/coverage_fail_under.py)"
 
       - name: Upload coverage
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
