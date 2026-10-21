@@ -152,7 +152,7 @@ Fixes, in order:
 1. `pip install --only-binary=:all: llmentary`
 2. `LLMENTARY_BIN=/path/to/llmentary`
 3. Get the binary from npm `@llmentary/<os>-<cpu>` or the GitHub Release
-   (proxy v0.3.0); see the proxy
+   (proxy v0.4.0); see the proxy
    [docs/binaries.md](https://github.com/barzoj-co/llmentary/blob/main/docs/binaries.md)
 
 Run `python -m llmentary doctor` to print the package version, platform tag,
