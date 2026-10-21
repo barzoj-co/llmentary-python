@@ -1,0 +1,31 @@
+{
+  "name": "foreign_session_id",
+  "expect": "fail",
+  "message_contains": ["session_id", "expected 'weather'"],
+  "self": {
+    "id": "weather",
+    "calls": [
+      {
+        "id": "call_3",
+        "session_id": "barge",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {"messages": [{"role": "user", "content": "Weather in Paris?"}]},
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  },
+  "other": {
+    "id": "barge",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "barge",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {"messages": [{"role": "user", "content": "Tell a story."}]},
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  }
+}

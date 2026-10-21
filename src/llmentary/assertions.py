@@ -101,15 +101,24 @@ class Expectation:
         other: object,
         *,
         require_path: bool = False,
+        min_chars: int = 8,
+        ignore_texts: Optional[Sequence[str]] = None,
     ) -> Expectation:
         """Assert this session's calls are isolated from ``other``.
 
         ``other`` is a ``Session``, a session id, or a ``SessionTrace``.
-        Checks, with one failure line per violated rule:
+        Checks, with one failure line per violated rule (DOG-29):
 
         1. every call has ``session_id`` equal to this session
         2. no call id appears in both sessions
-        3. user-role texts do not overlap (system/developer/tools are ignored)
+        3. no **foreign** user turn: a user-role message in this session's
+           prompt that this session never introduced (last user message of
+           each call) but ``other`` did. Comparison is exact after
+           normalize (trim, collapse whitespace, casefold), never substring.
+           Texts both sessions introduced themselves are not a leak.
+
+        ``min_chars`` (default 8) ignores shorter texts. ``ignore_texts``
+        skips those normalized messages. System/developer/tools are ignored.
 
         Empty sessions fail with ``no calls recorded for session X`` unless
         ``allow_empty()`` was called. ``require_path=True`` also requires
@@ -149,17 +158,29 @@ class Expectation:
                 f"and {other_trace.session_id}"
             )
 
-        first_a = _first_user_texts(self.trace.calls)
-        first_b = _first_user_texts(other_trace.calls)
-        for text_a, call_a in first_a.items():
-            for text_b, call_b in first_b.items():
-                if text_a in text_b or text_b in text_a:
-                    findings.append(
-                        f"user text {text_a!r} from session "
-                        f"{self.trace.session_id} {_call_label(call_a)} "
-                        f"appears in session {other_trace.session_id} "
-                        f"{_call_label(call_b)}"
-                    )
+        ignored = {
+            normalize_user_text(text)
+            for text in (ignore_texts or ())
+            if normalize_user_text(text)
+        }
+        intro_self = _introduced_user_texts(self.trace.calls, min_chars, ignored)
+        intro_other = _introduced_user_texts(other_trace.calls, min_chars, ignored)
+        seen_leaks: set[str] = set()
+        for call in self.trace.calls:
+            for text in call.user_texts:
+                key = normalize_user_text(text)
+                if not key or len(key) < min_chars or key in ignored or key in intro_self:
+                    continue
+                if key not in intro_other or key in seen_leaks:
+                    continue
+                seen_leaks.add(key)
+                _other_text, other_call = intro_other[key]
+                findings.append(
+                    f"user text {text!r} from session "
+                    f"{self.trace.session_id} {_call_label(call)} "
+                    f"appears in session {other_trace.session_id} "
+                    f"{_call_label(other_call)}"
+                )
 
         if findings:
             self._assert(False, "\n".join(findings))
@@ -662,13 +683,30 @@ class SoftExpectation(Expectation):
             self.failures.append(message)
 
 
-def _first_user_texts(calls: Sequence[CapturedCall]) -> dict[str, CapturedCall]:
-    first: dict[str, CapturedCall] = {}
+def normalize_user_text(text: str) -> str:
+    """Trim, collapse whitespace, casefold. Exact-match key for isolation."""
+
+    return re.sub(r"\s+", " ", text.strip()).casefold()
+
+
+def _introduced_user_texts(
+    calls: Sequence[CapturedCall],
+    min_chars: int,
+    ignored: set[str],
+) -> dict[str, tuple[str, CapturedCall]]:
+    """Last user-role message of each call (the turn this session sent)."""
+
+    introduced: dict[str, tuple[str, CapturedCall]] = {}
     for call in calls:
-        for text in call.user_texts:
-            if text:
-                first.setdefault(text, call)
-    return first
+        texts = [text for text in call.user_texts if text]
+        if not texts:
+            continue
+        text = texts[-1]
+        key = normalize_user_text(text)
+        if not key or len(key) < min_chars or key in ignored:
+            continue
+        introduced.setdefault(key, (text, call))
+    return introduced
 
 
 def _call_id(call: CapturedCall) -> Optional[str]:

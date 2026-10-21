@@ -1,0 +1,37 @@
+{
+  "name": "short_hi",
+  "expect": "pass",
+  "self": {
+    "id": "a",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "a",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {"messages": [{"role": "user", "content": "Hi"}]},
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  },
+  "other": {
+    "id": "b",
+    "calls": [
+      {
+        "id": "call_2",
+        "session_id": "b",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Hi, what is my biological age? This text is long."
+            }
+          ]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  }
+}

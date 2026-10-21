@@ -151,14 +151,16 @@ the first failure. Soft expectations collect failures and raise from
 
 ### Isolation
 
-`isolated_from(other)` compares this session to another `Session`, session id,
-or `SessionTrace`. It checks `session_id` on every call, that call ids do not
-overlap, and that **user-role** texts do not appear in the other session
-(Chat `messages[role=user]`, Responses `input[role=user]`). System prompts,
-developer instructions, and tool definitions are not compared. Use
-`call.user_texts` to read those turns. Either session with zero calls fails
-unless `allow_empty()` was called. `require_path=True` also requires
-`session_source == "path"`.
+`isolated_from(other)` follows the DOG-29 isolation spec: `session_id` on
+every call, no shared call ids, and no **foreign** user turn (a user-role
+message in this prompt that this session did not introduce but the other
+did). Same canned question in both sessions is not a leak. Comparison is
+exact after normalize (trim, collapse whitespace, casefold), never
+substring. `min_chars=8` ignores shorter texts; pass `ignore_texts=…` to
+skip specific messages. System prompts, developer instructions, and tool
+definitions are not compared. Use `call.user_texts` to read those turns.
+Either session with zero calls fails unless `allow_empty()` was called.
+`require_path=True` also requires `session_source == "path"`.
 
 A path prefix isolates the process that built the SDK client, not two
 conversations inside one env-configured client. See the proxy

@@ -1,0 +1,19 @@
+{
+  "name": "empty_with_allow",
+  "expect": "pass",
+  "allow_empty": true,
+  "self": {"id": "ghost", "calls": []},
+  "other": {
+    "id": "weather",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "weather",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {"messages": [{"role": "user", "content": "Weather in Paris?"}]},
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  }
+}

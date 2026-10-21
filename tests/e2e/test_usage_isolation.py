@@ -168,3 +168,55 @@ def test_isolated_from_path_clients(llmentary: Session) -> None:
         assert "get_current_weather" not in call.user_texts
     finally:
         other.cleanup()
+
+
+def test_isolated_from_same_prompt_and_history_replay(llmentary: Session) -> None:
+    other = Session(
+        session_id=new_session_id("iso-same-b"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    replay = Session(
+        session_id=new_session_id("iso-replay"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    prompt = "What is my biological age? Reply with one integer."
+    try:
+        for session in (llmentary, other):
+            client = openai_client(session)
+            call_openai(
+                lambda client=client: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                    max_tokens=16,
+                )
+            )
+        llmentary.wait(timeout=30, quiet=0.5, min_calls=1)
+        other.wait(timeout=30, quiet=0.5, min_calls=1)
+        llmentary.expect().isolated_from(other)
+        other.expect().isolated_from(llmentary)
+
+        first = llmentary.trace().calls[0].user_texts[0]
+        client = openai_client(replay)
+        call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "user", "content": first},
+                    {"role": "assistant", "content": "42"},
+                    {"role": "user", "content": "Explain that number in one word."},
+                ],
+                temperature=0,
+                max_tokens=16,
+            )
+        )
+        replay.wait(timeout=30, quiet=0.5, min_calls=1)
+        with pytest.raises(AssertionError, match="user text"):
+            replay.expect().isolated_from(llmentary)
+    finally:
+        other.cleanup()
+        replay.cleanup()

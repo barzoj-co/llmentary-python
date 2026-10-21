@@ -1,0 +1,39 @@
+{
+  "name": "history_replay",
+  "expect": "fail",
+  "message_contains": ["user text", "What is my biological age?", "a", "c", "#1 (call_1)", "#1 (call_3)"],
+  "self": {
+    "id": "c",
+    "calls": [
+      {
+        "id": "call_3",
+        "session_id": "c",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [
+            {"role": "user", "content": "What is my biological age?"},
+            {"role": "assistant", "content": "42"},
+            {"role": "user", "content": "Explain the number."}
+          ]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  },
+  "other": {
+    "id": "a",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "a",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [{"role": "user", "content": "What is my biological age?"}]
+        },
+        "response": {"choices": [{"message": {"content": "42"}}]}
+      }
+    ]
+  }
+}

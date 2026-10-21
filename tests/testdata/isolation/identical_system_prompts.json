@@ -1,0 +1,42 @@
+{
+  "name": "identical_system_prompts",
+  "expect": "pass",
+  "self": {
+    "id": "a",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "a",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [
+            {"role": "system", "content": "Never mention Amsterdam weather or get_current_weather."},
+            {"role": "user", "content": "Tell a bedtime story."}
+          ],
+          "tools": [{"type": "function", "function": {"name": "get_current_weather"}}]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  },
+  "other": {
+    "id": "b",
+    "calls": [
+      {
+        "id": "call_2",
+        "session_id": "b",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [
+            {"role": "system", "content": "Never mention Amsterdam weather or get_current_weather."},
+            {"role": "user", "content": "What is the weather in Paris?"}
+          ],
+          "tools": [{"type": "function", "function": {"name": "get_current_weather"}}]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+Vendored isolation vectors for DOG-29 / DOG-22.
+
+These follow docs/isolation-spec.md as written in DOG-29 until the proxy
+docs PR publishes testdata/isolation at the PROXY_VERSION tag. tests/test_isolation_vectors.py
+compares this directory to that proxy path when the pin has the files.

@@ -142,8 +142,9 @@ headers/baggage when the app can set them; (d) run conversations sequentially
 with `DELETE` between them. A second bus worker needs its own topic or
 partition; two consumer groups on one topic both get every event.
 
-Prove isolation with `isolated_from`, not a substring search over request JSON
-(system prompts and tool names will false-positive):
+Prove isolation with `isolated_from`. The rule is the DOG-29 spec: same
+canned user question in two sessions is not a leak; a foreign user turn
+replayed as history is. Comparison is exact (normalized), never substring.
 
 ```python
 other.expect().isolated_from(llmentary)
@@ -151,7 +152,9 @@ llmentary.expect().isolated_from(other)
 ```
 
 See the proxy
-[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md)
+[isolation spec](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md)
+(DOG-29),
+[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md),
 and
 [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 

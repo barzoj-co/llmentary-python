@@ -1,0 +1,34 @@
+{
+  "name": "same_canned_question",
+  "expect": "pass",
+  "self": {
+    "id": "a",
+    "calls": [
+      {
+        "id": "call_1",
+        "session_id": "a",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [{"role": "user", "content": "What is my biological age?"}]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  },
+  "other": {
+    "id": "b",
+    "calls": [
+      {
+        "id": "call_2",
+        "session_id": "b",
+        "seq": 1,
+        "api_family": "chat.completions",
+        "request": {
+          "messages": [{"role": "user", "content": "What is my biological age?"}]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]}
+      }
+    ]
+  }
+}
