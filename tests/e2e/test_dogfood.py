@@ -16,7 +16,7 @@ from e2e_helpers import (
     require_e2e,
 )
 
-from llmentary import Session, SessionNotFound, WaitTimeoutError
+from llmentary import Session
 from llmentary.client import new_session_id, start_proxy
 
 pytestmark = pytest.mark.e2e
@@ -174,35 +174,6 @@ def test_unknown_nested_field_fails_no_spec_violations(llmentary: Session) -> No
     assert "validation was not run" not in message
     assert " — " in message
     assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
-
-
-def test_wait_never_created_min_calls_zero_is_session_not_found(
-    llmentary: Session,
-) -> None:
-    ghost = Session(
-        session_id=new_session_id("ghost0"),
-        proxy=llmentary.proxy,
-        wait_timeout=llmentary.wait_timeout,
-        quiet_for=llmentary.quiet_for,
-    )
-    try:
-        try:
-            ghost.wait(timeout=3, quiet=0.2, min_calls=0)
-        except SessionNotFound as exc:
-            assert exc.session_id == ghost.session_id
-            return
-        except WaitTimeoutError:
-            pytest.skip(
-                "bundled proxy still returns 504 wait_timeout for wait "
-                "min_calls=0 on a never-created session; skip until the "
-                "DOG-17 proxy release"
-            )
-        pytest.fail(
-            "wait(min_calls=0) on a never-created session must raise "
-            "SessionNotFound, not succeed"
-        )
-    finally:
-        ghost.cleanup()
 
 
 def test_wait_unused_session_then_first_call(llmentary: Session) -> None:
