@@ -14,12 +14,10 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
 Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
-recorded. The
-[control API contract](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml)
-is the OpenAPI description of `/healthz`, `/sessions`, and
-`/sessions/{id}/wait`. After the
-next proxy release the same file is served at `GET /openapi.yaml` on the
-control listener and ships next to the bundled binary.
+recorded. The control API contract (`GET {control}/openapi.yaml`) describes `/healthz`,
+`/sessions`, and `/sessions/{id}/wait`. Platform wheels bundle the same
+`openapi.yaml` next to the proxy binary. `ControlClient.openapi()` returns the
+served document; `contract_path()` is the bundled file.
 
 Published platform wheels bundle proxy v0.3.0; see
 [docs/binaries.md](docs/binaries.md) for how it is resolved and how to override it.
@@ -204,14 +202,19 @@ except WaitTimeoutError:
     pass
 ```
 
-`expect()` treats that `SessionNotFound` as zero calls. A never-created
-session that will be filled by an async worker should wait with
-`min_calls=1` (or higher), not `0`.
+`wait()` still raises `SessionNotFound` on that 404. `expect()` without
+`allow_empty=True` turns it into `AssertionError('no calls recorded for
+session …; known sessions: …')` — it does not return an empty expectation
+you can chain. Use `expect_no_calls()` or `expect(allow_empty=True)` for
+the negative test. A never-created session that will be filled by an
+async worker should wait with `min_calls=1` (or higher), not `0`.
 
 ## Assertions
 
 ```python
 llmentary.expect().call_count(1).tool_called("search").called_times("search", 1)
+llmentary.expect_no_calls()
+llmentary.expect(allow_empty=True).call_count(0)
 llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
 llmentary.query().without_tools().expect().call_count(1).request_param(
     "response_format.type", "json_schema"
@@ -234,9 +237,39 @@ and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
 `response_json_valid`, `response_json_schema`), and spec observability
 (`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
 with the session trace summary. A filter or `since=` that matches zero calls
-fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
-`llmentary.list_sessions()` when a wait or expect fails with zero calls, so
-the message can name the known session ids.
+fails `no_errors()` / `not_called()` unless you call `allow_empty()` first.
+`expect()` itself still fails on a never-created session unless you pass
+`allow_empty=True`. Use `llmentary.list_sessions()` when a wait or expect
+fails with zero calls, so the message can name the known session ids (once).
+
+Negative tests — asserting zero LLM calls:
+
+```python
+# reading history / a GET that must not hit the model
+unused.expect_no_calls(quiet=0.2)
+unused.expect(allow_empty=True).call_count(0)
+active.expect().allow_empty().isolated_from(unused)
+```
+
+Testing interruptions / barge-in: cancel a streaming call (~50 ms after
+send, or after the first chunk) and read the typed abort fields:
+
+```python
+stream.close()
+expectation = llmentary.expect().aborted()
+call = next(call for call in expectation.trace.calls if call.client_aborted)
+assert call.client_aborted
+assert call.abort_phase in (None, "before_headers", "after_headers")
+assert call.finish_reason in {"cancelled", "unknown"}
+assert call.http_status != 502
+```
+
+`client_aborted` prefers the top-level Call field and falls back to
+`normalized.client_aborted` on older proxies. `abort_phase` is
+`before_headers` or `after_headers` when the call was aborted, and
+omitted (`None`) otherwise. Closing after `[DONE]` or a terminal
+Responses event is not an abort. Proxy 0.3.0 still records
+`finish_reason=unknown` on abort; `cancelled` is the documented value.
 
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session

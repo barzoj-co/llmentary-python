@@ -288,7 +288,34 @@ class CapturedCall:
 
     @property
     def client_aborted(self) -> bool:
-        return self._flag("client_aborted", "clientAborted")
+        """True when the client disconnected before the proxy finished the call.
+
+        Prefers the top-level Call field (DOG-27). Older proxies only set
+        ``normalized.client_aborted``; that remains the fallback.
+        """
+
+        top = first_present(self.raw, "client_aborted", "clientAborted")
+        if isinstance(top, bool):
+            return top
+        return bool_flag(self.normalized_payload, "client_aborted", "clientAborted")
+
+    @property
+    def abort_phase(self) -> Optional[str]:
+        """``before_headers`` or ``after_headers`` when aborted; else ``None``.
+
+        Prefers the top-level Call field, then normalized, then a ``phase``
+        alias when it is one of those two values. ``None`` when the call
+        was not aborted or the value is not a known phase.
+        """
+
+        if not self.client_aborted:
+            return None
+        allowed = {"before_headers", "after_headers"}
+        for mapping in (self.raw, self.normalized_payload):
+            value = first_present(mapping, "abort_phase", "abortPhase", "phase")
+            if isinstance(value, str) and value in allowed:
+                return value
+        return None
 
     @property
     def stream_truncated(self) -> bool:
@@ -565,6 +592,27 @@ class SessionTrace:
         calls = [CapturedCall(raw=call, index=index) for index, call in enumerate(raw_calls)]
         return cls(session_id=session_id, raw=payload, calls=calls)
 
+    def validate_contract(self, contract: Mapping[str, Any]) -> None:
+        """Validate this session against ``components.schemas.Session``."""
+
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import ValidationError
+
+        components = contract.get("components")
+        if not isinstance(components, Mapping):
+            raise AssertionError("control contract has no components")
+        schema = {
+            "$ref": "#/components/schemas/Session",
+            "components": dict(components),
+        }
+        try:
+            Draft202012Validator(schema).validate(dict(self.raw))
+        except ValidationError as exc:
+            pointer = json_pointer(exc.absolute_path) or "/"
+            raise AssertionError(
+                f"session {self.session_id} failed control contract at {pointer}: {exc.message}"
+            ) from exc
+
     def trace_summary(self) -> str:
         if not self.calls:
             return (
@@ -587,9 +635,8 @@ class SessionTrace:
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
             aborted = ", client_aborted" if call.client_aborted else ""
-            phase = first_present(call.raw, "abort_phase", "abortPhase", "phase")
-            if call.client_aborted and isinstance(phase, str) and phase:
-                aborted = f"{aborted}, phase={phase}"
+            if call.client_aborted and call.abort_phase:
+                aborted = f"{aborted}, phase={call.abort_phase}"
             truncated = ", stream_truncated" if call.stream_truncated else ""
             source = f", src={call.session_source}" if call.session_source else ""
             token_pair = call.usage_token_pair()
@@ -1234,6 +1281,16 @@ def stringify_value(value: Any) -> str:
             return content
         return json.dumps(value, sort_keys=True)
     return "" if value is None else str(value)
+
+
+def json_pointer(path: Iterable[object]) -> str:
+    """RFC 6901 JSON Pointer for a jsonschema ``absolute_path``."""
+
+    parts: list[str] = []
+    for item in path:
+        text = str(item).replace("~", "~0").replace("/", "~1")
+        parts.append(text)
+    return "/" + "/".join(parts) if parts else ""
 
 
 def string_or_none(value: Any) -> Optional[str]:

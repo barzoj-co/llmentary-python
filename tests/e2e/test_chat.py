@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 from e2e_helpers import (
@@ -379,3 +380,32 @@ def test_summary_request_only_for_auth_failure_and_abort(llmentary: Session) -> 
             "not checked",
         } or abort.spec_status_label().startswith("skipped:"), summary
     assert "http=0" not in summary
+
+
+def test_client_aborted_typed_accessors(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
+            temperature=0,
+            max_tokens=400,
+            stream=True,
+        )
+    )
+    try:
+        time.sleep(0.05)
+        stream.close()
+    except Exception:
+        pass
+    trace = llmentary.wait()
+    aborted = [call for call in trace.calls if call.client_aborted]
+    assert aborted, trace.trace_summary()
+    call = aborted[0]
+    assert call.client_aborted is True
+    # Proxy 0.3.0 still records finish_reason=unknown on abort; DOG-27
+    # proxy PR #39 sets cancelled. Accept both until that ships.
+    assert call.finish_reason in {"cancelled", "unknown"}, call.finish_reason
+    assert call.http_status != 502
+    assert call.abort_phase in (None, "before_headers", "after_headers")
+    llmentary.expect().aborted()

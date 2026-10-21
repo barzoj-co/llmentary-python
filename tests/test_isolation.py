@@ -198,7 +198,7 @@ def test_repeated_user_text_is_reported_once() -> None:
     assert "llmentary session weather" in summary
 
 
-def test_missing_other_session_is_not_allow_empty() -> None:
+def test_missing_other_session_is_empty_trace() -> None:
     weather = _trace(
         "weather",
         _call(session_id="weather", ident="call_1", seq=1, user="Weather in Paris?"),
@@ -215,8 +215,22 @@ def test_missing_other_session_is_not_allow_empty() -> None:
         session_id = "weather"
         proxy = _Proxy()
 
-    with pytest.raises(SessionNotFound, match="typo"):
-        Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
+    with pytest.raises(AssertionError, match="no calls recorded for session typo") as caught:
+        Expectation(weather, session=_Session()).isolated_from("typo")
+    assert not isinstance(caught.value, SessionNotFound)
+    Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
+
+    class _Other:
+        session_id = "ghost-session"
+
+        def trace(self) -> SessionTrace:
+            raise SessionNotFound(self.session_id)
+
+    with pytest.raises(
+        AssertionError, match="no calls recorded for session ghost-session"
+    ):
+        Expectation(weather).isolated_from(_Other())
+    Expectation(weather).allow_empty().isolated_from(_Other())
 
 
 def test_responses_roleless_message_is_not_user_text() -> None:

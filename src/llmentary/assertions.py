@@ -174,14 +174,22 @@ class Expectation:
             get_session = getattr(getter, "get_session", None)
             if not callable(get_session):
                 raise TypeError("isolated_from(session_id) requires Session.expect()")
-            return cast(SessionTrace, get_session(other))
+            return self._trace_or_empty(lambda: get_session(other), other)
         session_id = getattr(other, "session_id", None)
         trace_fn = getattr(other, "trace", None)
         if callable(trace_fn) and isinstance(session_id, str):
-            return cast(SessionTrace, trace_fn())
+            return self._trace_or_empty(trace_fn, session_id)
         raise TypeError(
             "isolated_from() expects a Session, session id, or SessionTrace"
         )
+
+    def _trace_or_empty(self, loader: Callable[[], object], session_id: str) -> SessionTrace:
+        from .client import SessionNotFound
+
+        try:
+            return cast(SessionTrace, loader())
+        except SessionNotFound:
+            return SessionTrace.from_payload(session_id, {"id": session_id, "calls": []})
 
     def tool_called(self, name: str) -> Expectation:
         self._assert(
@@ -399,6 +407,23 @@ class Expectation:
             self._assert(
                 any(regex_search(pattern, str(error)) for error in errors),
                 f"expected a mid-stream error matching {pattern!r}",
+            )
+        return self
+
+    def aborted(self, *, phase: Optional[str] = None) -> Expectation:
+        """Assert at least one captured call has ``client_aborted``.
+
+        ``phase`` is ``before_headers`` or ``after_headers`` when the proxy
+        recorded ``abort_phase`` (DOG-27 / DOG-28).
+        """
+
+        calls = [call for call in self.trace.calls if call.client_aborted]
+        self._assert(bool(calls), "expected a client-aborted call")
+        if phase is not None:
+            actual = [call.abort_phase for call in calls]
+            self._assert(
+                any(value == phase for value in actual),
+                f"expected abort_phase={phase!r}, got {actual}",
             )
         return self
 

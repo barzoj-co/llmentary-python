@@ -239,3 +239,64 @@ def test_wait_unused_session_then_first_call(llmentary: Session) -> None:
         assert "ping" in successful[0].prompt_text
     finally:
         ghost.cleanup()
+
+
+def test_expect_no_calls_and_isolated_from_unused_session(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=16,
+        )
+    )
+    llmentary.wait(timeout=30, quiet=0.5, min_calls=1)
+
+    unused = Session(
+        session_id=new_session_id("zero"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    try:
+        unused.expect_no_calls(quiet=0.2)
+        unused.expect(allow_empty=True).call_count(0)
+        with pytest.raises(AssertionError, match="expected 0 LLM calls"):
+            llmentary.expect_no_calls(quiet=0.2)
+        llmentary.expect().allow_empty().isolated_from(unused)
+    finally:
+        unused.cleanup()
+
+
+def test_live_session_matches_served_openapi_schema(llmentary: Session) -> None:
+    import yaml
+
+    from llmentary import contract_path
+
+    client = openai_client(llmentary)
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=8,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+    )
+    list(stream)
+    trace = llmentary.wait()
+    successful = [
+        call
+        for call in trace.calls
+        if (call.http_status or 0) == 200 and not call.error
+    ]
+    assert successful, trace.trace_summary()
+    served = llmentary.proxy.control.openapi()
+    assert isinstance(served, dict) and served.get("openapi"), served
+    bundled = contract_path()
+    assert bundled is not None and bundled.is_file(), bundled
+    bundled_doc = yaml.safe_load(bundled.read_text(encoding="utf-8"))
+    assert served == bundled_doc
+    trace.validate_contract(served)

@@ -128,6 +128,18 @@ class ControlClient:
             return value
         raise TypeError(f"GET /config did not include a version string: {payload!r}")
 
+    def openapi(self) -> dict[str, Any]:
+        """Served control contract from ``GET /openapi.yaml`` (with the token)."""
+
+        import yaml  # type: ignore[import-untyped]
+
+        response = self._client.get(f"{self.base_url}/openapi.yaml", headers=self.headers)
+        response.raise_for_status()
+        loaded = yaml.safe_load(response.text)
+        if not isinstance(loaded, dict):
+            raise TypeError(f"GET /openapi.yaml did not parse as a mapping: {type(loaded)!r}")
+        return loaded
+
     def list_sessions(self, *, source: Optional[str] = None) -> list[SessionInfo]:
         params = {"source": source} if source else None
         response = self._client.get(
@@ -247,16 +259,11 @@ class ControlClient:
             if isinstance(raw_message, str):
                 message = raw_message
         known_ids = self._known_session_ids()
-        if known_ids and not message_lists_known_ids(message, known_ids):
-            suffix = f"known sessions: {', '.join(known_ids)}"
-            message = (
-                f"{message}; {suffix}"
-                if message
-                else zero_calls_message(session_id, known_ids)
-            )
-        elif not message:
-            message = zero_calls_message(session_id, known_ids)
-        return SessionNotFound(session_id, message, known_ids=known_ids)
+        return SessionNotFound(
+            session_id,
+            with_known_sessions(message, session_id, known_ids),
+            known_ids=known_ids,
+        )
 
     def _known_session_ids(self) -> list[str]:
         try:
@@ -407,24 +414,90 @@ class Session:
             return 0
         return max(call.sequence_number() for call in trace.calls)
 
-    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
-        trace = self._trace_or_zero_calls()
+    def expect(
+        self,
+        *,
+        soft: bool = False,
+        since: Optional[int] = None,
+        allow_empty: bool = False,
+    ) -> Expectation:
+        """Wait, then return an expectation.
+
+        The default is strict (DOG-2): a never-created session raises
+        ``AssertionError('no calls recorded …')``. Pass ``allow_empty=True``
+        (or chain ``allow_empty()`` after that) to get an empty expectation
+        so ``call_count(0)`` / ``isolated_from`` can run.
+        """
+
+        trace = self._load_trace(allow_empty=allow_empty)
         if since is not None:
             trace = trace.since(since)
-        return (
+        expectation: Expectation = (
             SoftExpectation(trace, session=self)
             if soft
             else Expectation(trace, session=self)
         )
+        if allow_empty:
+            expectation.allow_empty()
+        return expectation
+
+    def expect_no_calls(
+        self,
+        *,
+        timeout: Optional[float] = None,
+        quiet: Optional[float] = None,
+    ) -> None:
+        """Pass when this session recorded zero calls (including 404).
+
+        Calls ``wait(min_calls=0)``. ``SessionNotFound`` and an empty trace
+        pass. A session with calls fails with ``expected 0 LLM calls, got N``
+        plus the trace summary.
+        """
+
+        try:
+            trace = self.wait(timeout=timeout, quiet=quiet, min_calls=0)
+        except SessionNotFound:
+            return
+        count = len(trace.calls)
+        if count == 0:
+            return
+        raise AssertionError(
+            f"expected 0 LLM calls, got {count}\n\n{trace.trace_summary()}"
+        )
 
     @contextlib.contextmanager
-    def soft_expect(self, *, since: Optional[int] = None) -> Iterator[SoftExpectation]:
-        trace = self._trace_or_zero_calls()
+    def soft_expect(
+        self,
+        *,
+        since: Optional[int] = None,
+        allow_empty: bool = False,
+    ) -> Iterator[SoftExpectation]:
+        trace = self._load_trace(allow_empty=allow_empty)
         if since is not None:
             trace = trace.since(since)
         expectation = SoftExpectation(trace, session=self)
+        if allow_empty:
+            expectation.allow_empty()
         yield expectation
         expectation.assert_all()
+
+    def _load_trace(self, *, allow_empty: bool) -> SessionTrace:
+        if allow_empty:
+            return self._trace_allowing_empty()
+        return self._trace_or_zero_calls()
+
+    def _empty_trace(self) -> SessionTrace:
+        return SessionTrace.from_payload(self.session_id, {"id": self.session_id, "calls": []})
+
+    def _trace_allowing_empty(self) -> SessionTrace:
+        try:
+            return self.wait()
+        except WaitTimeoutError as exc:
+            if exc.calls == 0:
+                return self._empty_trace()
+            raise
+        except SessionNotFound:
+            return self._empty_trace()
 
     def _trace_or_zero_calls(self) -> SessionTrace:
         try:
@@ -474,20 +547,29 @@ class Query:
     def since(self, mark: int) -> Query:
         return replace(self, since_seq=mark)
 
-    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
+    def expect(
+        self,
+        *,
+        soft: bool = False,
+        since: Optional[int] = None,
+        allow_empty: bool = False,
+    ) -> Expectation:
         mark = self.since_seq if since is None else since
-        trace = self.session._trace_or_zero_calls().filtered(
+        trace = self.session._load_trace(allow_empty=allow_empty).filtered(
             api_type=normalize_api_type(self.api_type) if self.api_type else None,
             model=self.model,
             offers_tool=self.offers_tool_name,
             with_tools=self.include_tools,
             since=mark,
         )
-        return (
+        expectation: Expectation = (
             SoftExpectation(trace, session=self.session)
             if soft
             else Expectation(trace, session=self.session)
         )
+        if allow_empty:
+            expectation.allow_empty()
+        return expectation
 
 
 @contextlib.contextmanager
@@ -759,6 +841,38 @@ def coerce_session_row(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     return {}
+
+
+KNOWN_SESSIONS_HINT_RE = re.compile(
+    r"(?:;\s*)?known sessions:\s*GET\s+/sessions\b",
+    re.IGNORECASE,
+)
+KNOWN_SESSIONS_TAIL_RE = re.compile(
+    r"(?:;\s*)?known sessions:.*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def strip_known_sessions_hint(message: str) -> str:
+    """Drop the proxy 404 hint ``known sessions: GET /sessions`` (not a list)."""
+
+    cleaned = KNOWN_SESSIONS_HINT_RE.sub("", message)
+    return re.sub(r"\s*;\s*;", ";", cleaned).strip(" ;")
+
+
+def with_known_sessions(
+    message: str,
+    session_id: str,
+    known_ids: Sequence[str],
+) -> str:
+    """One ``known sessions:`` suffix. Replaces the proxy GET /sessions hint."""
+
+    cleaned = strip_known_sessions_hint(message)
+    cleaned = KNOWN_SESSIONS_TAIL_RE.sub("", cleaned).strip(" ;")
+    if not cleaned:
+        return zero_calls_message(session_id, known_ids)
+    listed = ", ".join(known_ids) if known_ids else "(none)"
+    return f"{cleaned}; known sessions: {listed}"
 
 
 def message_lists_known_ids(message: str, known_ids: Sequence[str]) -> bool:
