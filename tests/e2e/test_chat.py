@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 from e2e_helpers import (
@@ -351,7 +350,6 @@ def test_summary_request_only_for_auth_failure_and_abort(llmentary: Session) -> 
         )
     )
     try:
-        time.sleep(0.05)
         for event in stream:
             delta = event.choices[0].delta if event.choices else None
             if delta is not None and delta.content:
