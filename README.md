@@ -16,7 +16,7 @@ Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
 recorded.
 
-Published platform wheels bundle proxy v0.2.1; see
+Published platform wheels bundle proxy v0.2.2; see
 [docs/binaries.md](docs/binaries.md) for how it is resolved and how to override it.
 
 ## Install
@@ -26,7 +26,7 @@ pip install llmentary
 ```
 
 Platform wheels bundle the version-pinned proxy binary (`PROXY_VERSION`,
-currently 0.2.1). The sdist is client-only
+currently 0.2.2). The sdist is client-only
 and does not include a binary. Install a wheel with
 `pip install --only-binary=:all: llmentary`, or set `LLMENTARY_BIN`, or put
 `llmentary` on `PATH`. Run `python -m llmentary doctor` to see what this

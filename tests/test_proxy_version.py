@@ -13,12 +13,12 @@ def read_proxy_pin() -> str:
     return (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_proxy_version_pin_is_0_2_1() -> None:
-    assert read_proxy_pin() == "0.2.1"
+def test_proxy_version_pin_is_0_2_2() -> None:
+    assert read_proxy_pin() == "0.2.2"
 
 
 @pytest.mark.integration
-def test_installed_proxy_version_is_clean_0_2_1() -> None:
+def test_installed_proxy_version_is_clean_0_2_2() -> None:
     pin = read_proxy_pin()
     binary = os.environ.get("LLMENTARY_BIN")
     assert binary, "LLMENTARY_BIN is required for this integration test"
