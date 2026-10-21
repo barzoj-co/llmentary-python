@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/barzoj-co/llmentary-python/compare/v0.3.0...v0.3.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* bundle proxy v0.2.1 ([#23](https://github.com/barzoj-co/llmentary-python/issues/23)) ([6abf622](https://github.com/barzoj-co/llmentary-python/commit/6abf622ee61a778b2958ce7d3d3649f7795ec1af))
+
 ## [0.3.0](https://github.com/barzoj-co/llmentary-python/compare/v0.2.0...v0.3.0) (2026-10-20)
 
 
