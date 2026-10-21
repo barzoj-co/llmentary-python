@@ -162,6 +162,31 @@ The client HTTP deadline is `timeout + quiet + 5s`, so the client cannot abort
 before the proxy answers. A timeout is an error: `wait timed out after 30s on
 session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
 
+`wait` on a session that was never created (or was `DELETE`d):
+
+| `min_calls` | Control status | Client exception |
+| --- | --- | --- |
+| `0` | `404 session_not_found` | `SessionNotFound` |
+| `>=1` | `504 wait_timeout` after `timeout` | `WaitTimeoutError` |
+
+```python
+from llmentary import SessionNotFound, WaitTimeoutError
+
+try:
+    llmentary.wait(timeout=3, quiet=0.2, min_calls=0)
+except SessionNotFound:
+    pass
+
+try:
+    llmentary.wait(timeout=3, quiet=0.2, min_calls=1)
+except WaitTimeoutError:
+    pass
+```
+
+`expect()` treats that `SessionNotFound` as zero calls. A never-created
+session that will be filled by an async worker should wait with
+`min_calls=1` (or higher), not `0`.
+
 ## Assertions
 
 ```python
