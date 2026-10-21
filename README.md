@@ -144,9 +144,11 @@ headers/baggage when the app can set them; (d) run conversations sequentially
 with `DELETE` between them. A second bus worker needs its own topic or
 partition; two consumer groups on one topic both get every event.
 
-Prove isolation with `isolated_from`. The rule is the DOG-29 spec: same
+Prove isolation with `isolated_from`. The rule is the isolation spec: same
 canned user question in two sessions is not a leak; a foreign user turn
-replayed as history is. Comparison is exact (normalized), never substring.
+replayed as history is. Later calls introduce each new user-role message.
+An empty or unknown other session fails unless you pass `allow_empty`.
+Comparison is exact (normalized), never substring.
 
 ```python
 other.expect().isolated_from(llmentary)
@@ -155,7 +157,7 @@ llmentary.expect().isolated_from(other)
 
 See the proxy
 [isolation spec](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md)
-(DOG-29),
+(DOG-29 / DOG-32 / DOG-33),
 [black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md),
 and
 [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
@@ -255,7 +257,7 @@ Negative tests — asserting zero LLM calls:
 # reading history / a GET that must not hit the model
 unused.expect_no_calls(quiet=0.2)
 unused.expect(allow_empty=True).call_count(0)
-active.expect().isolated_from(unused)
+active.expect().allow_empty().isolated_from(unused)
 ```
 
 Testing interruptions / barge-in: cancel a streaming call (~50 ms after

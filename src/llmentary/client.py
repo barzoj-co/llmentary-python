@@ -426,7 +426,8 @@ class Session:
         The default is strict (DOG-2): a never-created session raises
         ``AssertionError('no calls recorded …')``. Pass ``allow_empty=True``
         (or chain ``allow_empty()`` after that) to get an empty expectation
-        so ``call_count(0)`` / ``isolated_from`` can run.
+        so ``call_count(0)`` / ``isolated_from`` against an empty other
+        can run.
         """
 
         trace = self._load_trace(allow_empty=allow_empty)
