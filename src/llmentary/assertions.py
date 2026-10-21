@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Collection, Mapping, Sequence
 from re import Pattern
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, cast
 
 from jsonschema import ValidationError
 from jsonschema.validators import Draft202012Validator
@@ -35,8 +35,9 @@ def require_non_negative_count(name: str, value: object) -> int:
 class Expectation:
     """Fluent deterministic assertions over an llmentary session trace."""
 
-    def __init__(self, trace: SessionTrace) -> None:
+    def __init__(self, trace: SessionTrace, *, session: Optional[object] = None) -> None:
         self.trace = trace
+        self._session = session
         self._allow_empty = False
 
     def allow_empty(self) -> Expectation:
@@ -94,6 +95,93 @@ class Expectation:
                 f"expected at most {max} captured call(s), got {actual}",
             )
         return self
+
+    def isolated_from(
+        self,
+        other: object,
+        *,
+        require_path: bool = False,
+    ) -> Expectation:
+        """Assert this session's calls are isolated from ``other``.
+
+        ``other`` is a ``Session``, a session id, or a ``SessionTrace``.
+        Checks, with one failure line per violated rule:
+
+        1. every call has ``session_id`` equal to this session
+        2. no call id appears in both sessions
+        3. user-role texts do not overlap (system/developer/tools are ignored)
+
+        Empty sessions fail with ``no calls recorded for session X`` unless
+        ``allow_empty()`` was called. ``require_path=True`` also requires
+        ``session_source == "path"``.
+        """
+
+        other_trace = self._resolve_isolated_other(other)
+        findings: list[str] = []
+        if not self.trace.calls:
+            if not self._allow_empty:
+                findings.append(f"no calls recorded for session {self.trace.session_id}")
+        if not other_trace.calls:
+            if not self._allow_empty:
+                findings.append(f"no calls recorded for session {other_trace.session_id}")
+        if findings:
+            self._assert(False, "\n".join(findings))
+            return self
+
+        expected_session = self.trace.session_id
+        for call in self.trace.calls:
+            label = _call_label(call)
+            if call.session_id != expected_session:
+                findings.append(
+                    f"{label} session_id={call.session_id!r}, expected {expected_session!r}"
+                )
+            if require_path and call.session_source != "path":
+                findings.append(
+                    f"{label} session_source={call.session_source!r}, expected 'path'"
+                )
+
+        self_ids = {ident for ident in (_call_id(call) for call in self.trace.calls) if ident}
+        other_ids = {ident for ident in (_call_id(call) for call in other_trace.calls) if ident}
+        shared_ids = sorted(self_ids & other_ids)
+        for ident in shared_ids:
+            findings.append(
+                f"call id {ident} appears in sessions {self.trace.session_id} "
+                f"and {other_trace.session_id}"
+            )
+
+        first_a = _first_user_texts(self.trace.calls)
+        first_b = _first_user_texts(other_trace.calls)
+        for text_a, call_a in first_a.items():
+            for text_b, call_b in first_b.items():
+                if text_a in text_b or text_b in text_a:
+                    findings.append(
+                        f"user text {text_a!r} from session "
+                        f"{self.trace.session_id} {_call_label(call_a)} "
+                        f"appears in session {other_trace.session_id} "
+                        f"{_call_label(call_b)}"
+                    )
+
+        if findings:
+            self._assert(False, "\n".join(findings))
+        return self
+
+    def _resolve_isolated_other(self, other: object) -> SessionTrace:
+        if isinstance(other, SessionTrace):
+            return other
+        if isinstance(other, str):
+            session = self._session
+            getter = getattr(getattr(session, "proxy", None), "control", None)
+            get_session = getattr(getter, "get_session", None)
+            if not callable(get_session):
+                raise TypeError("isolated_from(session_id) requires Session.expect()")
+            return cast(SessionTrace, get_session(other))
+        session_id = getattr(other, "session_id", None)
+        trace_fn = getattr(other, "trace", None)
+        if callable(trace_fn) and isinstance(session_id, str):
+            return cast(SessionTrace, trace_fn())
+        raise TypeError(
+            "isolated_from() expects a Session, session id, or SessionTrace"
+        )
 
     def tool_called(self, name: str) -> Expectation:
         self._assert(
@@ -549,8 +637,8 @@ class Expectation:
 class SoftExpectation(Expectation):
     """Non-fatal variant that accumulates failures until ``assert_all``."""
 
-    def __init__(self, trace: SessionTrace) -> None:
-        super().__init__(trace)
+    def __init__(self, trace: SessionTrace, *, session: Optional[object] = None) -> None:
+        super().__init__(trace, session=session)
         self.failures: list[str] = []
 
     def assert_all(self) -> None:
@@ -564,6 +652,25 @@ class SoftExpectation(Expectation):
     def _assert(self, condition: bool, message: str) -> None:
         if not condition:
             self.failures.append(message)
+
+
+def _first_user_texts(calls: Sequence[CapturedCall]) -> dict[str, CapturedCall]:
+    first: dict[str, CapturedCall] = {}
+    for call in calls:
+        for text in call.user_texts:
+            if text:
+                first.setdefault(text, call)
+    return first
+
+
+def _call_id(call: CapturedCall) -> Optional[str]:
+    value = first_present(call.raw, "id")
+    return value if isinstance(value, str) and value else None
+
+
+def _call_label(call: CapturedCall) -> str:
+    ident = _call_id(call) or "?"
+    return f"#{call.sequence_number()} ({ident})"
 
 
 def mapping_contains(actual: Mapping[str, Any], expected: Mapping[str, Any]) -> bool:

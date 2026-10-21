@@ -98,6 +98,7 @@ llmentary.query().offers_tool("get_weather").expect().tool_called("get_weather")
 llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
 mark = llmentary.mark()
 llmentary.query().since(mark).expect().prompt_contains("turn 2")
+llmentary.expect().isolated_from(other)
 llmentary.expect().call_count(1)
 router = llmentary.query().without_tools().expect()
 router.call_count(1).no_errors()
@@ -136,6 +137,21 @@ Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
 All assertion methods are chainable. Hard expectations raise `AssertionError` on
 the first failure. Soft expectations collect failures and raise from
 `assert_all()` or when leaving `llmentary.soft_expect()`.
+
+### Isolation
+
+`isolated_from(other)` compares this session to another `Session`, session id,
+or `SessionTrace`. It checks `session_id` on every call, that call ids do not
+overlap, and that **user-role** texts do not appear in the other session
+(Chat `messages[role=user]`, Responses `input[role=user]`). System prompts,
+developer instructions, and tool definitions are not compared. Use
+`call.user_texts` to read those turns. Either session with zero calls fails
+unless `allow_empty()` was called. `require_path=True` also requires
+`session_source == "path"`.
+
+A path prefix isolates the process that built the SDK client, not two
+conversations inside one env-configured client. See the proxy
+[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 ### Tool calls
 

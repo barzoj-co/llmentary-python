@@ -134,6 +134,22 @@ def test_import_time_client(llmentary, monkeypatch):
     llmentary.expect().prompt_contains("ping").no_errors()
 ```
 
+A path prefix isolates **client processes**, not conversations. One process
+with one env-configured SDK client is one session. For N parallel
+conversations use one of: (a) one worker process per session; (b) construct
+the SDK client per conversation with `base_url=lm.path_base_url()`; (c)
+headers/baggage when the app can set them; (d) run conversations sequentially
+with `DELETE` between them. A second bus worker needs its own topic or
+partition; two consumer groups on one topic both get every event.
+
+Prove isolation with `isolated_from`, not a substring search over request JSON
+(system prompts and tool names will false-positive):
+
+```python
+other.expect().isolated_from(llmentary)
+llmentary.expect().isolated_from(other)
+```
+
 See the proxy
 [black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md)
 and
