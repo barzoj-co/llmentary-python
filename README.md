@@ -253,7 +253,7 @@ Negative tests — asserting zero LLM calls:
 # reading history / a GET that must not hit the model
 unused.expect_no_calls(quiet=0.2)
 unused.expect(allow_empty=True).call_count(0)
-active.expect().allow_empty().isolated_from(unused)
+active.expect().isolated_from(unused)
 ```
 
 Call `id` values (`call_3`) are unique within one proxy process and can

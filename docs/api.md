@@ -137,7 +137,7 @@ calls in the whole session:
 llmentary.expect(since=mark).allow_empty().no_errors()
 unused.expect_no_calls(quiet=0.2)
 unused.expect(allow_empty=True).call_count(0)
-active.expect().allow_empty().isolated_from(unused)
+active.expect().isolated_from(unused)
 ```
 
 Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
@@ -159,8 +159,9 @@ exact after normalize (trim, collapse whitespace, casefold), never
 substring. `min_chars=8` ignores shorter texts; pass `ignore_texts=…` to
 skip specific messages. System prompts, developer instructions, and tool
 definitions are not compared. Use `call.user_texts` to read those turns.
-Either session with zero calls fails unless `allow_empty()` was called.
-`require_path=True` also requires `session_source == "path"`.
+An empty current session fails unless `allow_empty()` was called. An empty
+or missing other session, including `SessionNotFound`, is not a leak source
+and passes. `require_path=True` also requires `session_source == "path"`.
 
 A path prefix isolates the process that built the SDK client, not two
 conversations inside one env-configured client. See the proxy
