@@ -267,3 +267,36 @@ def test_expect_no_calls_and_isolated_from_unused_session(llmentary: Session) ->
         llmentary.expect().allow_empty().isolated_from(unused)
     finally:
         unused.cleanup()
+
+
+def test_live_session_matches_served_openapi_schema(llmentary: Session) -> None:
+    import yaml
+
+    from llmentary import contract_path
+
+    client = openai_client(llmentary)
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=8,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+    )
+    list(stream)
+    trace = llmentary.wait()
+    successful = [
+        call
+        for call in trace.calls
+        if (call.http_status or 0) == 200 and not call.error
+    ]
+    assert successful, trace.trace_summary()
+    served = llmentary.proxy.control.openapi()
+    assert isinstance(served, dict) and served.get("openapi"), served
+    bundled = contract_path()
+    assert bundled is not None and bundled.is_file(), bundled
+    bundled_doc = yaml.safe_load(bundled.read_text(encoding="utf-8"))
+    assert served == bundled_doc
+    trace.validate_contract(served)

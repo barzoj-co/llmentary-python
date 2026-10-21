@@ -75,6 +75,45 @@ def test_get_session_unknown_raises_session_not_found() -> None:
     assert "GET /sessions" not in str(caught.value)
 
 
+def test_openapi_sends_token_and_parses_yaml() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/openapi.yaml"
+        assert request.headers.get("Authorization") == "Bearer secret-token"
+        return httpx.Response(
+            200,
+            text="openapi: '3.1.0'\ninfo:\n  title: control\n  version: '0.3.0'\n",
+            headers={"content-type": "application/yaml"},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", token="secret-token", client=http)
+        document = client.openapi()
+    assert document["openapi"] == "3.1.0"
+    assert document["info"]["title"] == "control"
+
+
+def test_validate_contract_accepts_session_and_names_pointer() -> None:
+    from llmentary.types import SessionTrace
+
+    contract = {
+        "components": {
+            "schemas": {
+                "Session": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "required": ["id"],
+                    "properties": {"id": {"type": "string"}},
+                }
+            }
+        }
+    }
+    ok = SessionTrace.from_payload("s", {"id": "s", "calls": []})
+    ok.validate_contract(contract)
+    bad = SessionTrace.from_payload("s", {"calls": []})
+    with pytest.raises(AssertionError, match="failed control contract"):
+        bad.validate_contract(contract)
+
+
 def test_config_version() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/config"

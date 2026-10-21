@@ -186,6 +186,10 @@ def test_install_binary_extracts_and_records_version(
         payload = b"#!/bin/sh\necho proxy\n"
         info.size = len(payload)
         tar.addfile(info, io.BytesIO(payload))
+        contract = tarfile.TarInfo(name="openapi.yaml")
+        spec = b"openapi: 3.1.0\ninfo:\n  title: t\n  version: 0.0.0\n"
+        contract.size = len(spec)
+        tar.addfile(contract, io.BytesIO(spec))
     target = wheels.TARGETS[0]
     wheels.PACKAGE_BIN_DIR = tmp_path / "src" / "llmentary" / "bin"
     wheels.install_binary(
@@ -200,6 +204,11 @@ def test_install_binary_extracts_and_records_version(
     assert (dest / "VERSION").read_text(encoding="utf-8") == "1.2.3\n"
     agpl_text = (dest / "AGPL-3.0.txt").read_text(encoding="utf-8")
     assert "GNU AFFERO GENERAL PUBLIC LICENSE" in agpl_text
+    assert (dest / "openapi.yaml").read_text(encoding="utf-8") == (
+        "openapi: 3.1.0\ninfo:\n  title: t\n  version: 0.0.0\n"
+    )
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "src/llmentary/bin/*/openapi.yaml" in pyproject
 
 
 def test_assert_clean_release_version_rejects_dirty(tmp_path: Path) -> None:

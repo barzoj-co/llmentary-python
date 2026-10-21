@@ -553,6 +553,27 @@ class SessionTrace:
         calls = [CapturedCall(raw=call, index=index) for index, call in enumerate(raw_calls)]
         return cls(session_id=session_id, raw=payload, calls=calls)
 
+    def validate_contract(self, contract: Mapping[str, Any]) -> None:
+        """Validate this session against ``components.schemas.Session``."""
+
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import ValidationError
+
+        components = contract.get("components")
+        if not isinstance(components, Mapping):
+            raise AssertionError("control contract has no components")
+        schema = {
+            "$ref": "#/components/schemas/Session",
+            "components": dict(components),
+        }
+        try:
+            Draft202012Validator(schema).validate(dict(self.raw))
+        except ValidationError as exc:
+            pointer = exc.json_path or exc.absolute_path
+            raise AssertionError(
+                f"session {self.session_id} failed control contract at {pointer}: {exc.message}"
+            ) from exc
+
     def trace_summary(self) -> str:
         if not self.calls:
             return (

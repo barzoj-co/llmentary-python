@@ -38,6 +38,7 @@ def test_package_exports_session_not_lab_aliases() -> None:
     assert llmentary.proxy_version is proxy_version
     assert "SessionNotFound" in llmentary.__all__
     assert llmentary.SessionNotFound is SessionNotFound
+    assert "contract_path" in llmentary.__all__
     for removed in ("LabSession", "LlmentarySession"):
         assert removed not in llmentary.__all__
         assert not hasattr(llmentary, removed)

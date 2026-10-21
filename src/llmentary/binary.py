@@ -120,6 +120,17 @@ def install_kind() -> str:
     return "sdist or source tree"
 
 
+def contract_path(*, env: Optional[dict[str, str]] = None) -> Optional[Path]:
+    """Bundled ``openapi.yaml`` next to the wheel binary, or beside ``LLMENTARY_BIN``."""
+
+    try:
+        binary = find_binary(env=env)
+    except BinaryResolutionError:
+        return None
+    candidate = binary.parent / "openapi.yaml"
+    return candidate if candidate.is_file() else None
+
+
 def bundled_proxy_version() -> str:
     bundled = bundled_binary()
     if bundled is None:

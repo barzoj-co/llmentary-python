@@ -246,6 +246,11 @@ def extract_binary(archive: bytes, asset_name: str, dest: Path, binary_name: str
             raise SystemExit("Refusing to install a binary outside the extract directory")
         shutil.copy2(binary, dest)
         dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        contract = find_extracted_named_file(tmp_path, "openapi.yaml")
+        if contract is not None:
+            if not contract.resolve().is_relative_to(tmp_path.resolve()):
+                raise SystemExit("Refusing to install openapi.yaml outside the extract directory")
+            shutil.copy2(contract, dest.parent / "openapi.yaml")
     return dest
 
 
@@ -377,6 +382,11 @@ def find_extracted_binary(root: Path, binary_name: str) -> Path:
     if not matches:
         raise SystemExit(f"Archive did not contain {binary_name}")
     return matches[0]
+
+
+def find_extracted_named_file(root: Path, name: str) -> Optional[Path]:
+    matches = [path for path in root.rglob(name) if path.is_file() and path.name == name]
+    return matches[0] if matches else None
 
 
 def rewrite_wheel_license_metadata(metadata: str) -> str:
