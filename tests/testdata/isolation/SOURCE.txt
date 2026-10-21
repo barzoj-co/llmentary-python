@@ -6,4 +6,5 @@ branch cursor/dog-29-isolation-spec-f2b6; testdata/isolation/README.md
 is the spec note on that branch).
 
 tests/test_isolation_vectors.py compares this directory to that path,
-trying the PR branch first and then v{PROXY_VERSION}.
+trying the PR branch first and then v{PROXY_VERSION}. CI fetches the
+same path during the proxy-install step (one secret-bearing step).

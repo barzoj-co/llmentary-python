@@ -25,6 +25,9 @@ PROXY_VECTOR_REFS = (
 )
 PROXY_VECTOR_PATH = "testdata/isolation"
 PROXY_VECTOR_REPO = "barzoj-co/llmentary"
+OFFICIAL_DIR = Path(
+    os.environ.get("LLMENTARY_ISOLATION_VECTORS", "/tmp/llmentary-isolation-vectors")
+)
 
 
 def _vector_files() -> list[Path]:
@@ -33,16 +36,16 @@ def _vector_files() -> list[Path]:
 
 def _session_pair(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     for left_key, right_key in (
+        ("x", "y"),
         ("self", "other"),
         ("left", "right"),
         ("a", "b"),
-        ("x", "y"),
     ):
         left = payload.get(left_key)
         right = payload.get(right_key)
         if isinstance(left, dict) and isinstance(right, dict):
             return left, right
-    raise KeyError(f"vector {payload.get('name')!r} has no session pair")
+    raise KeyError(f"vector {payload.get('id') or payload.get('name')!r} has no session pair")
 
 
 def _session_id(session: dict[str, Any]) -> str:
@@ -53,26 +56,49 @@ def _session_id(session: dict[str, Any]) -> str:
     raise KeyError(f"session payload has no id: {list(session)}")
 
 
-def _expect(payload: dict[str, Any]) -> str:
+def _expect_isolated(payload: dict[str, Any]) -> bool:
+    raw = payload.get("expect")
+    if isinstance(raw, dict) and isinstance(raw.get("isolated"), bool):
+        return raw["isolated"]
     value = payload.get("expect") or payload.get("verdict") or payload.get("want")
     if value == "pass":
-        return "pass"
+        return True
     if value == "fail":
-        return "fail"
-    raise KeyError(f"vector {payload.get('name')!r} has no pass/fail expect")
+        return False
+    raise KeyError(f"vector {payload.get('id') or payload.get('name')!r} has no isolated expect")
 
 
 def _message_fragments(payload: dict[str, Any]) -> list[str]:
-    raw = payload.get("message_contains")
-    if raw is None:
-        raw = payload.get("message")
-    if raw is None:
-        raw = payload.get("error_contains")
+    raw = payload.get("expect")
+    if isinstance(raw, dict):
+        raw = raw.get("message_contains")
+    else:
+        raw = payload.get("message_contains")
+        if raw is None:
+            raw = payload.get("message")
+        if raw is None:
+            raw = payload.get("error_contains")
     if raw is None:
         return []
     if isinstance(raw, str):
         return [raw] if raw else []
     return [str(item) for item in raw]
+
+
+def _ignore_texts(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("ignore_texts")
+    if raw is None:
+        raw = payload.get("ignoreTexts")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    return [str(item) for item in raw]
+
+
+def _min_chars(payload: dict[str, Any]) -> int:
+    raw = payload.get("min_chars", payload.get("minChars", 8))
+    return int(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else 8
 
 
 @pytest.mark.parametrize("path", _vector_files(), ids=lambda path: path.stem)
@@ -84,11 +110,15 @@ def test_isolation_vector(path: Path) -> None:
     expectation = Expectation(left)
     if payload.get("allow_empty") or payload.get("allowEmpty"):
         expectation.allow_empty()
-    if _expect(payload) == "pass":
-        expectation.isolated_from(right)
+    kwargs: dict[str, Any] = {"min_chars": _min_chars(payload)}
+    ignored = _ignore_texts(payload)
+    if ignored:
+        kwargs["ignore_texts"] = ignored
+    if _expect_isolated(payload):
+        expectation.isolated_from(right, **kwargs)
         return
     with pytest.raises(AssertionError) as caught:
-        expectation.isolated_from(right)
+        expectation.isolated_from(right, **kwargs)
     message = str(caught.value)
     for fragment in _message_fragments(payload):
         assert fragment in message, message
@@ -97,42 +127,72 @@ def test_isolation_vector(path: Path) -> None:
 def test_isolation_vectors_match_proxy_pin() -> None:
     """Fail when testdata/isolation drifted from the proxy DOG-29 copy."""
 
-    token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
+    remote_files = _official_files()
+    if remote_files is None:
+        token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            return
+        listing, ref = _fetch_proxy_listing(token)
+        if listing is None or ref is None:
+            return
+        remote = {
+            item["name"]: item
+            for item in listing
+            if isinstance(item, dict)
+            and isinstance(item.get("name"), str)
+            and str(item["name"]).endswith(".json")
+        }
+        if not remote:
+            return
+        local = {path.name: _git_blob_sha(path) for path in _vector_files()}
+        missing = sorted(set(remote) - set(local))
+        extra = sorted(set(local) - set(remote))
+        changed = sorted(
+            name
+            for name, item in remote.items()
+            if name in local and local[name] != item.get("sha")
+        )
+        if missing or extra or changed:
+            snippets: list[str] = []
+            for name in missing + changed:
+                try:
+                    body = _download_file(token, ref, name).decode("utf-8")
+                except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError) as exc:
+                    body = f"<download failed: {type(exc).__name__}>"
+                snippets.append(f"----- {name} -----\n{body}")
+            raise AssertionError(
+                f"vendored isolation vectors drifted from {PROXY_VECTOR_REPO} "
+                f"{PROXY_VECTOR_PATH}@{ref}: missing={missing} extra={extra} "
+                f"changed={changed}\n" + "\n".join(snippets)
+            )
         return
-    listing, ref = _fetch_proxy_listing(token)
-    if listing is None or ref is None:
-        return
-    remote = {
-        item["name"]: item
-        for item in listing
-        if isinstance(item, dict)
-        and isinstance(item.get("name"), str)
-        and str(item["name"]).endswith(".json")
-    }
-    if not remote:
-        return
-    local = {path.name: _git_blob_sha(path) for path in _vector_files()}
-    missing = sorted(set(remote) - set(local))
-    extra = sorted(set(local) - set(remote))
+
+    local = {path.name: path.read_bytes() for path in _vector_files()}
+    missing = sorted(set(remote_files) - set(local))
+    extra = sorted(set(local) - set(remote_files))
     changed = sorted(
-        name
-        for name, item in remote.items()
-        if name in local and local[name] != item.get("sha")
+        name for name in set(remote_files) & set(local) if local[name] != remote_files[name]
     )
     if missing or extra or changed:
-        snippets: list[str] = []
+        snippets = []
         for name in missing + changed:
-            try:
-                body = _download_file(token, ref, name).decode("utf-8")
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError) as exc:
-                body = f"<download failed: {type(exc).__name__}>"
+            body = remote_files.get(name, b"<missing>").decode("utf-8", errors="replace")
             snippets.append(f"----- {name} -----\n{body}")
         raise AssertionError(
-            f"vendored isolation vectors drifted from {PROXY_VECTOR_REPO} "
-            f"{PROXY_VECTOR_PATH}@{ref}: missing={missing} extra={extra} "
-            f"changed={changed}\n" + "\n".join(snippets)
+            f"vendored isolation vectors drifted from {PROXY_VECTOR_PATH}: "
+            f"missing={missing} extra={extra} changed={changed}\n" + "\n".join(snippets)
         )
+
+
+def _official_files() -> dict[str, bytes] | None:
+    if not OFFICIAL_DIR.is_dir():
+        return None
+    files = {
+        path.name: path.read_bytes()
+        for path in OFFICIAL_DIR.glob("*.json")
+        if path.is_file()
+    }
+    return files or None
 
 
 def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None]:

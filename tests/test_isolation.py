@@ -231,8 +231,7 @@ def test_empty_session_fails_unless_allow_empty() -> None:
     )
     with pytest.raises(AssertionError, match="no calls recorded for session ghost"):
         Expectation(empty).isolated_from(other)
-    with pytest.raises(AssertionError, match="no calls recorded for session ghost"):
-        Expectation(other).isolated_from(empty)
+    Expectation(other).isolated_from(empty)
     Expectation(empty).allow_empty().isolated_from(other)
     Expectation(other).allow_empty().isolated_from(empty)
 

@@ -120,25 +120,22 @@ class Expectation:
         ``min_chars`` (default 8) ignores shorter texts. ``ignore_texts``
         skips those normalized messages. System/developer/tools are ignored.
 
-        Empty sessions fail with ``no calls recorded for session X`` unless
-        ``allow_empty()`` was called. ``require_path=True`` also requires
-        ``session_source == "path"``.
+        Empty self fails with ``no calls recorded for session X`` unless
+        ``allow_empty()`` was called. An empty other is not a leak source.
+        ``require_path=True`` also requires ``session_source == "path"``.
         """
 
         other_trace = self._resolve_isolated_other(other)
         findings: list[str] = []
         if not self.trace.calls:
             if not self._allow_empty:
-                findings.append(f"no calls recorded for session {self.trace.session_id}")
-        if not other_trace.calls:
-            if not self._allow_empty:
-                findings.append(f"no calls recorded for session {other_trace.session_id}")
-        if findings:
-            self._assert(False, "\n".join(findings))
+                self._assert(
+                    False, f"no calls recorded for session {self.trace.session_id}"
+                )
             return self
 
         expected_session = self.trace.session_id
-        for call in self.trace.calls:
+        for call in _calls_in_seq(self.trace.calls):
             label = _call_label(call)
             if call.session_id != expected_session:
                 findings.append(
@@ -166,7 +163,7 @@ class Expectation:
         intro_self = _introduced_user_texts(self.trace.calls, min_chars, ignored)
         intro_other = _introduced_user_texts(other_trace.calls, min_chars, ignored)
         seen_leaks: set[str] = set()
-        for call in self.trace.calls:
+        for call in _calls_in_seq(self.trace.calls):
             for text in call.user_texts:
                 key = normalize_user_text(text)
                 if not key or len(key) < min_chars or key in ignored or key in intro_self:
@@ -177,9 +174,9 @@ class Expectation:
                 _other_text, other_call = intro_other[key]
                 findings.append(
                     f"user text {text!r} from session "
-                    f"{self.trace.session_id} {_call_label(call)} "
-                    f"appears in session {other_trace.session_id} "
-                    f"{_call_label(other_call)}"
+                    f"{other_trace.session_id} {_call_label(other_call)} "
+                    f"appears in session {self.trace.session_id} "
+                    f"{_call_label(call)}"
                 )
 
         if findings:
@@ -689,23 +686,37 @@ def normalize_user_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip()).casefold()
 
 
+def _calls_in_seq(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
+    return sorted(calls, key=lambda call: (call.sequence_number(), call.index))
+
+
 def _introduced_user_texts(
     calls: Sequence[CapturedCall],
     min_chars: int,
     ignored: set[str],
 ) -> dict[str, tuple[str, CapturedCall]]:
-    """Last user-role message of each call (the turn this session sent)."""
+    """Last user-role message of each call, walked in ``seq`` order.
+
+    Inbound history (user texts before the last turn of a call) is seen,
+    not introduced. A later call that repeats that history still does not
+    count as introducing it.
+    """
 
     introduced: dict[str, tuple[str, CapturedCall]] = {}
-    for call in calls:
+    seen_history: set[str] = set()
+    for call in _calls_in_seq(calls):
         texts = [text for text in call.user_texts if text]
         if not texts:
             continue
-        text = texts[-1]
-        key = normalize_user_text(text)
-        if not key or len(key) < min_chars or key in ignored:
+        last = texts[-1]
+        for hist in texts[:-1]:
+            key = normalize_user_text(hist)
+            if key:
+                seen_history.add(key)
+        key = normalize_user_text(last)
+        if not key or len(key) < min_chars or key in ignored or key in seen_history:
             continue
-        introduced.setdefault(key, (text, call))
+        introduced.setdefault(key, (last, call))
     return introduced
 
 
