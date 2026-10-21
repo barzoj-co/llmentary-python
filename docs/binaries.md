@@ -2,8 +2,8 @@
 
 There is no download-on-first-run. Platform wheels bundle a version-pinned Go
 proxy binary taken from the `barzoj-co/llmentary` GoReleaser release named in
-`PROXY_VERSION` (currently `0.2.1`, tag commit
-`b55b9bf`). That pin is independent of this
+`PROXY_VERSION` (currently `0.2.2`, tag commit
+`ea5b41e`). That pin is independent of this
 Python package version. The bundled version is also written to the wheel
 `VERSION` file. Release packaging and CI verify each downloaded archive against
 `checksums.txt` (sha256) before the binary is used. The release also publishes
