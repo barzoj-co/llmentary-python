@@ -99,23 +99,113 @@ def test_system_prompt_tool_name_is_not_a_leak() -> None:
     Expectation(barge).isolated_from(weather)
 
 
-def test_shared_user_text_fails_and_names_call() -> None:
+def _replay_call(
+    *,
+    session_id: str,
+    ident: str,
+    seq: int,
+    history: str,
+    user: str,
+) -> dict[str, Any]:
+    return {
+        "id": ident,
+        "session_id": session_id,
+        "session_source": "path",
+        "seq": seq,
+        "api_family": "chat.completions",
+        "request": {
+            "messages": [
+                {"role": "user", "content": history},
+                {"role": "assistant", "content": "ok"},
+                {"role": "user", "content": user},
+            ]
+        },
+        "response": {"choices": [{"message": {"content": "ok"}}]},
+    }
+
+
+def test_same_canned_question_is_not_a_leak() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_3", seq=1, user="What is my biological age?"),
+    )
+    barge = _trace(
+        "barge",
+        _call(session_id="barge", ident="call_7", seq=1, user="What is my biological age?"),
+    )
+    Expectation(weather).isolated_from(barge)
+    Expectation(barge).isolated_from(weather)
+
+
+def test_short_hi_is_not_a_substring_leak() -> None:
+    hello = _trace(
+        "hello",
+        _call(session_id="hello", ident="call_1", seq=1, user="Hi"),
+    )
+    long = _trace(
+        "long",
+        _call(
+            session_id="long",
+            ident="call_2",
+            seq=1,
+            user="Hi, what is my biological age? This text is long.",
+        ),
+    )
+    Expectation(hello).isolated_from(long)
+    Expectation(long).isolated_from(hello)
+
+
+def test_history_replay_fails_and_names_call() -> None:
     weather = _trace(
         "weather",
         _call(session_id="weather", ident="call_3", seq=1, user="Amsterdam canal boats"),
     )
-    barge = _trace(
+    replayed = SessionTrace.from_payload(
         "barge",
-        _call(session_id="barge", ident="call_7", seq=2, user="Amsterdam canal boats"),
+        {
+            "id": "barge",
+            "calls": [
+                _replay_call(
+                    session_id="barge",
+                    ident="call_7",
+                    seq=1,
+                    history="Amsterdam canal boats",
+                    user="And the locks?",
+                )
+            ],
+        },
     )
     with pytest.raises(AssertionError, match="user text") as caught:
-        Expectation(weather).isolated_from(barge)
-    message = str(caught.value)
-    assert "Amsterdam canal boats" in message
-    assert "weather" in message
-    assert "barge" in message
-    assert "#1 (call_3)" in message
-    assert "#2 (call_7)" in message
+        Expectation(replayed).isolated_from(weather)
+    findings, _, _ = str(caught.value).partition("\n\n")
+    assert "Amsterdam canal boats" in findings
+    assert "weather" in findings
+    assert "barge" in findings
+    assert "#1 (call_3)" in findings
+    assert "#1 (call_7)" in findings
+
+
+def test_ignore_texts_skips_history_replay() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_3", seq=1, user="Amsterdam canal boats"),
+    )
+    replayed = SessionTrace.from_payload(
+        "barge",
+        {
+            "id": "barge",
+            "calls": [
+                _replay_call(
+                    session_id="barge",
+                    ident="call_7",
+                    seq=1,
+                    history="Amsterdam canal boats",
+                    user="And the locks?",
+                )
+            ],
+        },
+    )
+    Expectation(replayed).isolated_from(weather, ignore_texts=["Amsterdam canal boats"])
 
 
 def test_foreign_session_id_fails() -> None:
@@ -133,6 +223,40 @@ def test_foreign_session_id_fails() -> None:
     assert "#1 (call_3)" in str(caught.value)
 
 
+def test_trailing_empty_user_is_not_introduced() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_1", seq=1, user="Weather in Paris?"),
+    )
+    barge = SessionTrace.from_payload(
+        "barge",
+        {
+            "id": "barge",
+            "calls": [
+                {
+                    "id": "call_2",
+                    "session_id": "barge",
+                    "session_source": "path",
+                    "seq": 1,
+                    "api_family": "chat.completions",
+                    "request": {
+                        "messages": [
+                            {"role": "user", "content": "Weather in Paris?"},
+                            {"role": "user", "content": ""},
+                        ]
+                    },
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                }
+            ],
+        },
+    )
+    assert barge.calls[0].user_texts == ["Weather in Paris?", ""]
+    with pytest.raises(AssertionError, match="Weather in Paris") as caught:
+        Expectation(barge).isolated_from(weather)
+    assert "#1 (call_1)" in str(caught.value)
+    assert "#1 (call_2)" in str(caught.value)
+
+
 def test_empty_session_fails_unless_allow_empty() -> None:
     empty = _trace("ghost")
     other = _trace(
@@ -141,8 +265,7 @@ def test_empty_session_fails_unless_allow_empty() -> None:
     )
     with pytest.raises(AssertionError, match="no calls recorded for session ghost"):
         Expectation(empty).isolated_from(other)
-    with pytest.raises(AssertionError, match="no calls recorded for session ghost"):
-        Expectation(other).isolated_from(empty)
+    Expectation(other).isolated_from(empty)
     Expectation(empty).allow_empty().isolated_from(other)
     Expectation(other).allow_empty().isolated_from(empty)
 
@@ -181,13 +304,30 @@ def test_repeated_user_text_is_reported_once() -> None:
         _call(session_id="weather", ident="call_3", seq=1, user="Amsterdam canal boats"),
         _call(session_id="weather", ident="call_5", seq=2, user="Amsterdam canal boats"),
     )
-    barge = _trace(
+    barge = SessionTrace.from_payload(
         "barge",
-        _call(session_id="barge", ident="call_7", seq=1, user="Amsterdam canal boats"),
-        _call(session_id="barge", ident="call_8", seq=2, user="Amsterdam canal boats"),
+        {
+            "id": "barge",
+            "calls": [
+                _replay_call(
+                    session_id="barge",
+                    ident="call_7",
+                    seq=1,
+                    history="Amsterdam canal boats",
+                    user="And the locks?",
+                ),
+                _replay_call(
+                    session_id="barge",
+                    ident="call_8",
+                    seq=2,
+                    history="Amsterdam canal boats",
+                    user="Again the locks?",
+                ),
+            ],
+        },
     )
     with pytest.raises(AssertionError, match="user text") as caught:
-        Expectation(weather).isolated_from(barge)
+        Expectation(barge).isolated_from(weather)
     findings, sep, summary = str(caught.value).partition("\n\n")
     assert sep, str(caught.value)
     assert findings.count("Amsterdam canal boats") == 1
@@ -195,7 +335,7 @@ def test_repeated_user_text_is_reported_once() -> None:
     assert "#1 (call_7)" in findings
     assert "#2 (call_5)" not in findings
     assert "#2 (call_8)" not in findings
-    assert "llmentary session weather" in summary
+    assert "llmentary session barge" in summary
 
 
 def test_missing_other_session_is_empty_trace() -> None:
@@ -215,9 +355,8 @@ def test_missing_other_session_is_empty_trace() -> None:
         session_id = "weather"
         proxy = _Proxy()
 
-    with pytest.raises(AssertionError, match="no calls recorded for session typo") as caught:
-        Expectation(weather, session=_Session()).isolated_from("typo")
-    assert not isinstance(caught.value, SessionNotFound)
+    # SessionNotFound is an empty Y. Empty Y is not a leak source (DOG-29).
+    Expectation(weather, session=_Session()).isolated_from("typo")
     Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
 
     class _Other:
@@ -226,10 +365,7 @@ def test_missing_other_session_is_empty_trace() -> None:
         def trace(self) -> SessionTrace:
             raise SessionNotFound(self.session_id)
 
-    with pytest.raises(
-        AssertionError, match="no calls recorded for session ghost-session"
-    ):
-        Expectation(weather).isolated_from(_Other())
+    Expectation(weather).isolated_from(_Other())
     Expectation(weather).allow_empty().isolated_from(_Other())
 
 

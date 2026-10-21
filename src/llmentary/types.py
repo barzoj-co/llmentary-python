@@ -1194,16 +1194,14 @@ def extract_user_texts(request: Mapping[str, Any]) -> list[str]:
         mapping = as_mapping(message)
         if mapping.get("role") != "user":
             continue
-        text = _user_content_text(mapping.get("content"))
-        if text:
-            texts.append(text)
+        texts.append(_user_content_text(mapping.get("content")))
 
     raw_input = request.get("input")
-    if isinstance(raw_input, str) and raw_input.strip():
+    if isinstance(raw_input, str):
         texts.append(raw_input.strip())
     elif isinstance(raw_input, list):
         for item in raw_input:
-            if isinstance(item, str) and item.strip():
+            if isinstance(item, str):
                 texts.append(item.strip())
                 continue
             mapping = as_mapping(item)
@@ -1212,11 +1210,9 @@ def extract_user_texts(request: Mapping[str, Any]) -> list[str]:
             if typ in {"function_call", "function_call_output", "tool_result"}:
                 continue
             if role == "user" or (role is None and typ == "input_text"):
-                text = _user_content_text(
-                    first_present(mapping, "content", "text")
+                texts.append(
+                    _user_content_text(first_present(mapping, "content", "text"))
                 )
-                if text:
-                    texts.append(text)
     return texts
 
 

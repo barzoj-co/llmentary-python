@@ -101,35 +101,41 @@ class Expectation:
         other: object,
         *,
         require_path: bool = False,
+        min_chars: int = 8,
+        ignore_texts: Optional[Sequence[str]] = None,
     ) -> Expectation:
         """Assert this session's calls are isolated from ``other``.
 
         ``other`` is a ``Session``, a session id, or a ``SessionTrace``.
-        Checks, with one failure line per violated rule:
+        Checks, with one failure line per violated rule (DOG-29):
 
         1. every call has ``session_id`` equal to this session
         2. no call id appears in both sessions
-        3. user-role texts do not overlap (system/developer/tools are ignored)
+        3. no **foreign** user turn: a user-role message in this session's
+           prompt that this session never introduced (last user message of
+           each call) but ``other`` did. Comparison is exact after
+           normalize (trim, collapse whitespace, casefold), never substring.
+           Texts both sessions introduced themselves are not a leak.
 
-        Empty sessions fail with ``no calls recorded for session X`` unless
-        ``allow_empty()`` was called. ``require_path=True`` also requires
-        ``session_source == "path"``.
+        ``min_chars`` (default 8) ignores shorter texts. ``ignore_texts``
+        skips those normalized messages. System/developer/tools are ignored.
+
+        Empty self fails with ``no calls recorded for session X`` unless
+        ``allow_empty()`` was called. An empty other is not a leak source.
+        ``require_path=True`` also requires ``session_source == "path"``.
         """
 
         other_trace = self._resolve_isolated_other(other)
         findings: list[str] = []
         if not self.trace.calls:
             if not self._allow_empty:
-                findings.append(f"no calls recorded for session {self.trace.session_id}")
-        if not other_trace.calls:
-            if not self._allow_empty:
-                findings.append(f"no calls recorded for session {other_trace.session_id}")
-        if findings:
-            self._assert(False, "\n".join(findings))
+                self._assert(
+                    False, f"no calls recorded for session {self.trace.session_id}"
+                )
             return self
 
         expected_session = self.trace.session_id
-        for call in self.trace.calls:
+        for call in _calls_in_seq(self.trace.calls):
             label = _call_label(call)
             if call.session_id != expected_session:
                 findings.append(
@@ -149,17 +155,29 @@ class Expectation:
                 f"and {other_trace.session_id}"
             )
 
-        first_a = _first_user_texts(self.trace.calls)
-        first_b = _first_user_texts(other_trace.calls)
-        for text_a, call_a in first_a.items():
-            for text_b, call_b in first_b.items():
-                if text_a in text_b or text_b in text_a:
-                    findings.append(
-                        f"user text {text_a!r} from session "
-                        f"{self.trace.session_id} {_call_label(call_a)} "
-                        f"appears in session {other_trace.session_id} "
-                        f"{_call_label(call_b)}"
-                    )
+        ignored = {
+            normalize_user_text(text)
+            for text in (ignore_texts or ())
+            if normalize_user_text(text)
+        }
+        intro_self = _introduced_user_texts(self.trace.calls, min_chars, ignored)
+        intro_other = _introduced_user_texts(other_trace.calls, min_chars, ignored)
+        seen_leaks: set[str] = set()
+        for call in _calls_in_seq(self.trace.calls):
+            for text in call.user_texts:
+                key = normalize_user_text(text)
+                if not key or len(key) < min_chars or key in ignored or key in intro_self:
+                    continue
+                if key not in intro_other or key in seen_leaks:
+                    continue
+                seen_leaks.add(key)
+                _other_text, other_call = intro_other[key]
+                findings.append(
+                    f"user text {text!r} from session "
+                    f"{other_trace.session_id} {_call_label(other_call)} "
+                    f"appears in session {self.trace.session_id} "
+                    f"{_call_label(call)}"
+                )
 
         if findings:
             self._assert(False, "\n".join(findings))
@@ -679,13 +697,44 @@ class SoftExpectation(Expectation):
             self.failures.append(message)
 
 
-def _first_user_texts(calls: Sequence[CapturedCall]) -> dict[str, CapturedCall]:
-    first: dict[str, CapturedCall] = {}
-    for call in calls:
-        for text in call.user_texts:
-            if text:
-                first.setdefault(text, call)
-    return first
+def normalize_user_text(text: str) -> str:
+    """Trim, collapse whitespace, casefold. Exact-match key for isolation."""
+
+    return re.sub(r"\s+", " ", text.strip()).casefold()
+
+
+def _calls_in_seq(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
+    return sorted(calls, key=lambda call: (call.sequence_number(), call.index))
+
+
+def _introduced_user_texts(
+    calls: Sequence[CapturedCall],
+    min_chars: int,
+    ignored: set[str],
+) -> dict[str, tuple[str, CapturedCall]]:
+    """Last user-role message of each call, walked in ``seq`` order.
+
+    Inbound history (user texts before the last turn of a call) is seen,
+    not introduced. A later call that repeats that history still does not
+    count as introducing it.
+    """
+
+    introduced: dict[str, tuple[str, CapturedCall]] = {}
+    seen_history: set[str] = set()
+    for call in _calls_in_seq(calls):
+        texts = list(call.user_texts)
+        if not texts:
+            continue
+        last = texts[-1]
+        for hist in texts[:-1]:
+            key = normalize_user_text(hist)
+            if key:
+                seen_history.add(key)
+        key = normalize_user_text(last)
+        if not key or len(key) < min_chars or key in ignored or key in seen_history:
+            continue
+        introduced.setdefault(key, (last, call))
+    return introduced
 
 
 def _call_id(call: CapturedCall) -> Optional[str]:
