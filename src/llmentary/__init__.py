@@ -25,7 +25,7 @@ from .wait import WaitTimeoutError
 try:
     __version__ = version("llmentary")
 except PackageNotFoundError:
-    __version__ = "0.3.0"  # x-release-please-version
+    __version__ = "0.3.1"  # x-release-please-version
 
 __all__ = [
     "APIType",
