@@ -405,14 +405,18 @@ class Session:
         trace = self._trace_or_zero_calls()
         if since is not None:
             trace = trace.since(since)
-        return SoftExpectation(trace) if soft else Expectation(trace)
+        return (
+            SoftExpectation(trace, session=self)
+            if soft
+            else Expectation(trace, session=self)
+        )
 
     @contextlib.contextmanager
     def soft_expect(self, *, since: Optional[int] = None) -> Iterator[SoftExpectation]:
         trace = self._trace_or_zero_calls()
         if since is not None:
             trace = trace.since(since)
-        expectation = SoftExpectation(trace)
+        expectation = SoftExpectation(trace, session=self)
         yield expectation
         expectation.assert_all()
 
@@ -473,7 +477,11 @@ class Query:
             with_tools=self.include_tools,
             since=mark,
         )
-        return SoftExpectation(trace) if soft else Expectation(trace)
+        return (
+            SoftExpectation(trace, session=self.session)
+            if soft
+            else Expectation(trace, session=self.session)
+        )
 
 
 @contextlib.contextmanager

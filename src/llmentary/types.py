@@ -464,6 +464,19 @@ class CapturedCall:
         return str(self.sequence_number())
 
     @property
+    def session_id(self) -> Optional[str]:
+        """Session id recorded on the call, when the proxy sent one."""
+
+        value = first_present(self.raw, "session_id", "sessionId")
+        return value if isinstance(value, str) and value else None
+
+    @property
+    def user_texts(self) -> list[str]:
+        """User-role turn texts only (Chat ``messages``, Responses ``input``)."""
+
+        return extract_user_texts(self.request)
+
+    @property
     def session_source(self) -> Optional[str]:
         """How the proxy attributed this call: ``header``, ``baggage``, ``path``, or ``default``."""
 
@@ -1092,6 +1105,59 @@ def extract_tool_results(mapping: Mapping[str, Any]) -> list[Mapping[str, Any]]:
             if item_map.get("type") in {"function_call_output", "tool_result"}:
                 results.append(item_map)
     return results
+
+
+def extract_user_texts(request: Mapping[str, Any]) -> list[str]:
+    """User-role texts from Chat ``messages`` and Responses ``input``.
+
+    System, developer, assistant, and tool turns are ignored.
+    """
+
+    texts: list[str] = []
+    for message in sequence_at(request, "messages"):
+        mapping = as_mapping(message)
+        if mapping.get("role") != "user":
+            continue
+        text = _user_content_text(mapping.get("content"))
+        if text:
+            texts.append(text)
+
+    raw_input = request.get("input")
+    if isinstance(raw_input, str) and raw_input.strip():
+        texts.append(raw_input.strip())
+    elif isinstance(raw_input, list):
+        for item in raw_input:
+            if isinstance(item, str) and item.strip():
+                texts.append(item.strip())
+                continue
+            mapping = as_mapping(item)
+            role = mapping.get("role")
+            typ = mapping.get("type")
+            if role not in (None, "user"):
+                continue
+            if typ in {None, "message", "input_text", "input_image"} or role == "user":
+                if typ in {"function_call", "function_call_output", "tool_result"}:
+                    continue
+                text = _user_content_text(
+                    first_present(mapping, "content", "text")
+                )
+                if text:
+                    texts.append(text)
+    return texts
+
+
+def _user_content_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts = [_user_content_text(item) for item in value]
+        return "\n".join(part for part in parts if part)
+    if isinstance(value, Mapping):
+        text = first_present(value, "text", "content")
+        if text is value:
+            return ""
+        return _user_content_text(text)
+    return ""
 
 
 def stringify_messages(mapping: Mapping[str, Any]) -> str:

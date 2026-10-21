@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -110,3 +111,60 @@ def test_concurrent_sessions_are_isolated(llmentary: Session) -> None:
     finally:
         session_a.cleanup()
         session_b.cleanup()
+
+
+def test_isolated_from_path_clients(llmentary: Session) -> None:
+    from openai import OpenAI
+
+    other = Session(
+        session_id=new_session_id("iso-path-b"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    shared = (
+        "You may mention get_current_weather and AMSTERDAM_CANAL in instructions. "
+        "Reply with one word."
+    )
+
+    def path_client(session: Session) -> OpenAI:
+        return OpenAI(
+            api_key=os.environ["OPENAI_API_KEY"],
+            base_url=session.path_base_url(),
+            max_retries=0,
+        )
+
+    try:
+        call_openai(
+            lambda: path_client(llmentary).chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "system", "content": shared},
+                    {"role": "user", "content": "Reply with the single word PARIS_BRIDGE."},
+                ],
+                temperature=0,
+                max_tokens=16,
+            )
+        )
+        call_openai(
+            lambda: path_client(other).chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "system", "content": shared},
+                    {
+                        "role": "user",
+                        "content": "Reply with the single word AMSTERDAM_CANAL.",
+                    },
+                ],
+                temperature=0,
+                max_tokens=16,
+            )
+        )
+        llmentary.expect().isolated_from(other)
+        other.expect().isolated_from(llmentary)
+        call = llmentary.expect().trace.calls[0]
+        assert call.user_texts == ["Reply with the single word PARIS_BRIDGE."]
+        assert call.session_id == llmentary.session_id
+        assert "get_current_weather" not in call.user_texts
+    finally:
+        other.cleanup()
