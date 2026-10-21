@@ -626,6 +626,49 @@ def test_client_aborted_falls_back_to_normalized_when_top_level_absent() -> None
     assert captured.abort_phase == "after_headers"
 
 
+def test_top_level_after_headers_abort_phase() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "count"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": [{"message": {"content": "One,"}}]},
+    )
+    call["http_status"] = 200
+    call["client_aborted"] = True
+    call["abort_phase"] = "after_headers"
+    call["normalized"] = {"finish_reason": "cancelled", "client_aborted": True}
+    captured = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).calls[0]
+    assert captured.client_aborted is True
+    assert captured.abort_phase == "after_headers"
+    Expectation(
+        SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]})
+    ).aborted(phase="after_headers")
+
+
+def test_done_then_close_is_not_aborted() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}]},
+    )
+    call["http_status"] = 200
+    call["stream"] = True
+    call["normalized"] = {
+        "finish_reason": "stop",
+        "client_aborted": False,
+    }
+    captured = SessionTrace.from_payload("done", {"id": "done", "calls": [call]}).calls[0]
+    assert captured.client_aborted is False
+    assert captured.abort_phase is None
+    assert "abort_phase" not in captured.raw
+    summary = SessionTrace.from_payload("done", {"id": "done", "calls": [call]}).trace_summary()
+    assert "client_aborted" not in summary
+    assert "phase=" not in summary
+
+
 def test_top_level_client_aborted_false_wins() -> None:
     request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
     call = go_call(

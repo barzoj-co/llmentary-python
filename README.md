@@ -253,7 +253,9 @@ assert call.http_status != 502
 
 `client_aborted` prefers the top-level Call field and falls back to
 `normalized.client_aborted` on older proxies. `abort_phase` is
-`before_headers` or `after_headers` when the proxy recorded it.
+`before_headers` or `after_headers` when the call was aborted, and
+omitted (`None`) otherwise. Closing after `[DONE]` or a terminal
+Responses event is not an abort.
 
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session
