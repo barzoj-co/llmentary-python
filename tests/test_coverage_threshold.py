@@ -22,14 +22,14 @@ CI_YML = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 def test_thresholds_live_in_one_pyproject_table() -> None:
     regular, release = threshold.load_thresholds()
-    assert regular == 83
+    assert regular == 92
     assert release == 90
-    assert regular <= release
+    assert regular >= release
 
 
 def test_regular_prs_use_floored_fail_under() -> None:
     assert (
-        threshold.fail_under_for(title="fix: return proxy semver", labels="bug") == 83
+        threshold.fail_under_for(title="fix: return proxy semver", labels="bug") == 92
     )
 
 
@@ -43,7 +43,7 @@ def test_regular_prs_use_floored_fail_under() -> None:
     ],
 )
 def test_release_please_uses_release_fail_under(kwargs: dict[str, str]) -> None:
-    assert threshold.fail_under_for(**kwargs) == 90
+    assert threshold.fail_under_for(**kwargs) == 92
 
 
 def test_release_please_never_lowers_ratchet(tmp_path: Path) -> None:
@@ -70,11 +70,11 @@ def test_cli_prints_threshold(
     monkeypatch.delenv("COVERAGE_PR_LABELS", raising=False)
     monkeypatch.delenv("COVERAGE_HEAD_REF", raising=False)
     assert threshold.main([]) == 0
-    assert capsys.readouterr().out == "83\n"
+    assert capsys.readouterr().out == "92\n"
 
     monkeypatch.setenv("COVERAGE_PR_TITLE", "chore(main): release 0.6.0")
     assert threshold.main([]) == 0
-    assert capsys.readouterr().out == "90\n"
+    assert capsys.readouterr().out == "92\n"
 
 
 def test_ci_job_names_are_byte_identical() -> None:

@@ -115,14 +115,17 @@ Coverage is measured in the required `coverage` job with
 `coverage run -m pytest` (not `pytest --cov`) so the pytest11 plugin does not
 import `llmentary` before coverage starts, then
 `coverage report --fail-under=<threshold>`. The threshold lives in one place:
-`[tool.llmentary.coverage]` in `pyproject.toml`. `fail_under` starts at the
-floored true branch coverage (83) and must only move up. release-please PRs
+`[tool.llmentary.coverage]` in `pyproject.toml`. `fail_under` is 92 and must
+only move up. release-please PRs
 (`autorelease: pending`, a `chore(main): release` title, or a
-`release-please--*` head ref) use `release_fail_under` (90). Denis requires
->=90 for releases.
+`release-please--*` head ref) use
+`max(fail_under, release_fail_under)` (92 today; `release_fail_under` is
+the 90 floor Denis requires for releases).
 
 Codecov upload stays tokenless (no OIDC) and informational (`codecov.yml`).
-It does not gate PRs. A failed Codecov upload is not a coverage failure.
+It does not gate PRs: `fail_ci_if_error` is true only when
+`vars.CODECOV_REQUIRED` is the string `true` (unset today). A failed Codecov
+upload is not a coverage-threshold failure.
 
 ## CI configuration required
 
