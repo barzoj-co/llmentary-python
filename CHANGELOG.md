@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/barzoj-co/llmentary-python/compare/v0.5.0...v0.5.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* fail isolated_from on empty other ([#43](https://github.com/barzoj-co/llmentary-python/issues/43)) ([7c6986a](https://github.com/barzoj-co/llmentary-python/commit/7c6986a0410b53fde361a9fa4dbc94cf1298a3fb))
+* return proxy semver and aborted summary status ([#39](https://github.com/barzoj-co/llmentary-python/issues/39)) ([19e7218](https://github.com/barzoj-co/llmentary-python/commit/19e7218605268586313aefb40436a9507df63468))
+
 ## [0.5.0](https://github.com/barzoj-co/llmentary-python/compare/v0.4.0...v0.5.0) (2026-10-21)
 
 
