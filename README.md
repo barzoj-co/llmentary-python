@@ -243,8 +243,8 @@ send, or after the first chunk) and read the typed abort fields:
 
 ```python
 stream.close()
-llmentary.expect().aborted()
-call = llmentary.expect().trace.calls[0]
+expectation = llmentary.expect().aborted()
+call = next(call for call in expectation.trace.calls if call.client_aborted)
 assert call.client_aborted
 assert call.abort_phase in (None, "before_headers", "after_headers")
 assert call.finish_reason == "cancelled"

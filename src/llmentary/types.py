@@ -303,16 +303,17 @@ class CapturedCall:
         """``before_headers`` or ``after_headers`` when aborted; else ``None``.
 
         Prefers the top-level Call field, then normalized, then a ``phase``
-        alias when it is one of those two values.
+        alias when it is one of those two values. ``None`` when the call
+        was not aborted or the value is not a known phase.
         """
 
+        if not self.client_aborted:
+            return None
+        allowed = {"before_headers", "after_headers"}
         for mapping in (self.raw, self.normalized_payload):
-            value = first_present(mapping, "abort_phase", "abortPhase")
-            if isinstance(value, str) and value:
+            value = first_present(mapping, "abort_phase", "abortPhase", "phase")
+            if isinstance(value, str) and value in allowed:
                 return value
-            phase = first_present(mapping, "phase")
-            if isinstance(phase, str) and phase in {"before_headers", "after_headers"}:
-                return phase
         return None
 
     @property

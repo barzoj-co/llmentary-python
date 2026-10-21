@@ -635,9 +635,27 @@ def test_top_level_client_aborted_false_wins() -> None:
         response_body={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
     )
     call["client_aborted"] = False
-    call["normalized"] = {"client_aborted": True}
+    call["normalized"] = {
+        "client_aborted": True,
+        "abort_phase": "after_headers",
+    }
     captured = SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]}).calls[0]
     assert captured.client_aborted is False
+    assert captured.abort_phase is None
+
+
+def test_abort_phase_rejects_unknown_value() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": []},
+    )
+    call["client_aborted"] = True
+    call["abort_phase"] = "upstream"
+    captured = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).calls[0]
+    assert captured.client_aborted is True
     assert captured.abort_phase is None
 
 
