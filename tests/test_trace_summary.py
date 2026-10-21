@@ -159,7 +159,29 @@ def test_trace_summary_langgraph_snapshot() -> None:
     assert "unparsed call" not in summary
     lines = summary.splitlines()
     assert lines[0] == "llmentary session graph-8: 8 captured call(s)"
-    assert sum(1 for line in lines if line.startswith("  [")) == 8
+    assert sum(1 for line in lines if line.startswith("  #")) == 8
+
+
+def test_seq_alias_and_summary_prints_global_id() -> None:
+    trace = SessionTrace.from_payload(
+        "weather",
+        {
+            "calls": [
+                {
+                    "id": "call_3",
+                    "seq": 1,
+                    "api_family": "chat.completions",
+                    "request": {"messages": [{"role": "user", "content": "weather"}]},
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                }
+            ]
+        },
+    )
+    call = trace.calls[0]
+    assert call.seq == 1
+    assert call.sequence_number() == 1
+    assert call.id == "call_3"
+    assert "#1 (call_3)" in trace.trace_summary()
 
 
 def test_unparsed_call_prints_keys_once() -> None:

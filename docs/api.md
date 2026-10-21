@@ -110,7 +110,9 @@ Accepted API type spellings include `chat`, `chat_completions`, `chat.completion
 calls that offered none (router-style structured output). `since(mark)` keeps
 calls whose sequence number is greater than `mark`. The same filters exist on
 `SessionTrace.filtered(...)` and as chainable `SessionTrace` methods.
-`trace_summary()` prints those sequence numbers.
+`trace_summary()` prints those sequence numbers as `#seq (id)`. Call `id`
+values are unique within one proxy process and are not session order; use
+`CapturedCall.seq` (`sequence_number()` is the same value).
 
 ### Filters and empty traces
 
@@ -275,8 +277,8 @@ assert call.upstream_url is not None and "/s/" not in call.upstream_url
 
 Every hard assertion failure includes `SessionTrace.trace_summary()` once.
 `SoftExpectation.assert_all()` prints each failure message, then the summary
-once at the end. The summary lists each captured call with its sequence number
-(the same numbers `mark` / `since` use), API type, model, status, source,
+once at the end. The summary lists each captured call as `#seq (id)` (seq is
+per session; id is process-global), API type, model, status, source,
 tokens, finish reason (omitted when absent or `unknown`), timings, and tools.
 Unparsed records (no request and no response) print `unparsed call, keys=[…]`.
 Passing pytest tests that used the `llmentary` fixture also print that summary.

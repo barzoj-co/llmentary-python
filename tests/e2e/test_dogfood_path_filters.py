@@ -12,6 +12,7 @@ from e2e_helpers import (
 )
 
 from llmentary import Session
+from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
 
@@ -124,6 +125,48 @@ def test_empty_since_mark_is_not_vacuous(llmentary: Session) -> None:
         llmentary.expect(since=mark).not_called("get_weather")
     llmentary.expect(since=mark).allow_empty().no_errors()
     llmentary.expect().call_count(1).no_errors()
+
+
+def test_seq_is_per_session_id_is_global(llmentary: Session) -> None:
+    session_a = Session(
+        session_id=new_session_id("seq-a"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    session_b = Session(
+        session_id=new_session_id("seq-b"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+
+    def once(session: Session, word: str) -> None:
+        client = openai_client(session)
+        call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": f"Reply with the single word {word}."}],
+                temperature=0,
+                max_tokens=16,
+            )
+        )
+
+    try:
+        once(session_a, "alpha")
+        once(session_b, "bravo")
+        once(session_a, "charlie")
+        trace_a = session_a.wait()
+        trace_b = session_b.wait()
+        assert [call.seq for call in trace_a.calls] == [1, 2], trace_a.trace_summary()
+        assert [call.seq for call in trace_b.calls] == [1], trace_b.trace_summary()
+        assert trace_b.calls[0].sequence_number() == 1
+        assert trace_b.calls[0].id != "call_1", trace_b.trace_summary()
+        assert trace_b.calls[0].id != trace_a.calls[0].id
+        assert "#1 (" in trace_b.trace_summary()
+    finally:
+        session_a.cleanup()
+        session_b.cleanup()
 
 
 @pytest.mark.parametrize("repeat", [1, 2, 3])
