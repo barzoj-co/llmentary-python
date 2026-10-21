@@ -135,6 +135,18 @@ def test_call_count_exact_and_range() -> None:
         Expectation(_h1_trace()).call_count()
     with pytest.raises(TypeError, match="not both"):
         Expectation(_h1_trace()).call_count(2, min=1)
+    Expectation(_h1_trace().since(3)).call_count(0)
+    Expectation(_h1_trace().since(3)).call_count(min=0, max=0)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(-1)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace().since(3)).call_count(min=-1)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(True)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(min=True)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count("2")  # type: ignore[arg-type]
 
 
 def test_empty_filter_no_errors_and_not_called_fail() -> None:

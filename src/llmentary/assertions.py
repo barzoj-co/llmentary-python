@@ -26,6 +26,12 @@ ArgsMatcher = Union[Mapping[str, Any], Callable[[Mapping[str, Any]], bool]]
 Regex = Union[str, Pattern[str]]
 
 
+def require_non_negative_count(name: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise TypeError(f"call_count() {name} must be a non-negative integer, got {value!r}")
+    return value
+
+
 class Expectation:
     """Fluent deterministic assertions over an llmentary session trace."""
 
@@ -61,6 +67,12 @@ class Expectation:
             raise TypeError("call_count() takes either an exact count or min/max, not both")
         if expected is None and min is None and max is None:
             raise TypeError("call_count() requires an exact count or min/max")
+        if expected is not None:
+            expected = require_non_negative_count("expected", expected)
+        if min is not None:
+            min = require_non_negative_count("min", min)
+        if max is not None:
+            max = require_non_negative_count("max", max)
         if min is not None and max is not None and min > max:
             raise TypeError(f"call_count() min={min} is greater than max={max}")
 
