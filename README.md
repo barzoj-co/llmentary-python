@@ -238,6 +238,23 @@ fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
 `llmentary.list_sessions()` when a wait or expect fails with zero calls, so
 the message can name the known session ids.
 
+Testing interruptions / barge-in: cancel a streaming call (~50 ms after
+send, or after the first chunk) and read the typed abort fields:
+
+```python
+stream.close()
+llmentary.expect().aborted()
+call = llmentary.expect().trace.calls[0]
+assert call.client_aborted
+assert call.abort_phase in (None, "before_headers", "after_headers")
+assert call.finish_reason == "cancelled"
+assert call.http_status != 502
+```
+
+`client_aborted` prefers the top-level Call field and falls back to
+`normalized.client_aborted` on older proxies. `abort_phase` is
+`before_headers` or `after_headers` when the proxy recorded it.
+
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session
 (`sequence_number()` is an alias). The trace summary prints `#seq (id)`.

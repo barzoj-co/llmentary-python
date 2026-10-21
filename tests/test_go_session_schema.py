@@ -579,6 +579,66 @@ def test_parses_normalized_client_aborted_on_disconnect() -> None:
     assert captured.stream_truncated is True
     summary = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).trace_summary()
     assert "client_aborted" in summary
+    assert captured.abort_phase is None
+
+
+def test_top_level_client_aborted_and_abort_phase() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "count"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": []},
+    )
+    call["http_status"] = 0
+    call["client_aborted"] = True
+    call["abort_phase"] = "before_headers"
+    call["normalized"] = {
+        "client_aborted": True,
+        "finish_reason": "cancelled",
+    }
+    captured = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).calls[0]
+    assert captured.client_aborted is True
+    assert captured.abort_phase == "before_headers"
+    summary = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).trace_summary()
+    assert "client_aborted" in summary
+    assert "phase=before_headers" in summary
+    Expectation(
+        SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]})
+    ).aborted(phase="before_headers")
+
+
+def test_client_aborted_falls_back_to_normalized_when_top_level_absent() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "count"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": []},
+    )
+    call["normalized"] = {
+        "client_aborted": True,
+        "abort_phase": "after_headers",
+        "finish_reason": "cancelled",
+    }
+    captured = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).calls[0]
+    assert captured.client_aborted is True
+    assert captured.abort_phase == "after_headers"
+
+
+def test_top_level_client_aborted_false_wins() -> None:
+    request_body = {"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]}
+    call = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=request_body,
+        response_body={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+    )
+    call["client_aborted"] = False
+    call["normalized"] = {"client_aborted": True}
+    captured = SessionTrace.from_payload("ok", {"id": "ok", "calls": [call]}).calls[0]
+    assert captured.client_aborted is False
+    assert captured.abort_phase is None
 
 
 def test_missing_ended_at_is_not_client_aborted() -> None:

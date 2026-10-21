@@ -287,7 +287,33 @@ class CapturedCall:
 
     @property
     def client_aborted(self) -> bool:
-        return self._flag("client_aborted", "clientAborted")
+        """True when the client disconnected before the proxy finished the call.
+
+        Prefers the top-level Call field (DOG-27). Older proxies only set
+        ``normalized.client_aborted``; that remains the fallback.
+        """
+
+        top = first_present(self.raw, "client_aborted", "clientAborted")
+        if isinstance(top, bool):
+            return top
+        return bool_flag(self.normalized_payload, "client_aborted", "clientAborted")
+
+    @property
+    def abort_phase(self) -> Optional[str]:
+        """``before_headers`` or ``after_headers`` when aborted; else ``None``.
+
+        Prefers the top-level Call field, then normalized, then a ``phase``
+        alias when it is one of those two values.
+        """
+
+        for mapping in (self.raw, self.normalized_payload):
+            value = first_present(mapping, "abort_phase", "abortPhase")
+            if isinstance(value, str) and value:
+                return value
+            phase = first_present(mapping, "phase")
+            if isinstance(phase, str) and phase in {"before_headers", "after_headers"}:
+                return phase
+        return None
 
     @property
     def stream_truncated(self) -> bool:
@@ -575,6 +601,8 @@ class SessionTrace:
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
             aborted = ", client_aborted" if call.client_aborted else ""
+            if call.client_aborted and call.abort_phase:
+                aborted = f"{aborted}, phase={call.abort_phase}"
             truncated = ", stream_truncated" if call.stream_truncated else ""
             source = f", src={call.session_source}" if call.session_source else ""
             token_pair = call.usage_token_pair()
