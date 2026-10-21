@@ -284,6 +284,10 @@ common fields used for assertions:
 `CapturedCall.session_source` is `header`, `baggage`, `path`, or `default` when
 the proxy recorded attribution. `CapturedCall.upstream_url` is the forwarded
 upstream URL (string or `upstream.url`); it should not contain `/s/{session}`.
+`CapturedCall.http_status` is the upstream HTTP status, or ``None`` when the
+wire value is missing or `0` (before-headers abort). The trace summary omits
+`http=` in that case and uses the proxy spec labels (`clean`,
+`request_only`, `not checked`, `N violations`, `skipped:…`).
 
 ```python
 call = llmentary.expect().trace.calls[0]

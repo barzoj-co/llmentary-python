@@ -262,13 +262,14 @@ class CapturedCall:
         if isinstance(value, bool):
             value = None
         if isinstance(value, int):
-            return value
+            return None if value == 0 else value
         if isinstance(value, str) and value.isdigit():
-            return int(value)
+            parsed = int(value)
+            return None if parsed == 0 else parsed
         wrapped = coerce_mapping(self.raw.get("response"))
         nested = first_present(wrapped, "status", "status_code", "http_status", "httpStatus")
         if isinstance(nested, int) and not isinstance(nested, bool):
-            return nested
+            return None if nested == 0 else nested
         return None
 
     @property
@@ -463,9 +464,20 @@ class CapturedCall:
         return [ignored_field_from_mapping(item) for item in raw_list]
 
     def spec_status_label(self) -> str:
-        """``clean``, ``N violations``, or ``not checked`` for ``trace_summary``."""
+        """Proxy log labels: clean, request_only, N violations, not checked, skipped:."""
 
+        wire = first_present(self.raw, "spec", "spec_status", "specStatus")
+        if isinstance(wire, str) and wire:
+            return wire
+        validation = self.validation
+        if validation is not None and validation.skipped_reason:
+            return f"skipped:{validation.skipped_reason}"
         items = self.spec_violations
+        if validation is not None and validation.response_checked is False:
+            if items:
+                count = len(items)
+                return f"{count} violation" if count == 1 else f"{count} violations"
+            return "request_only"
         if items is None:
             return "not checked"
         if not items:
@@ -575,6 +587,9 @@ class SessionTrace:
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
             aborted = ", client_aborted" if call.client_aborted else ""
+            phase = first_present(call.raw, "abort_phase", "abortPhase", "phase")
+            if call.client_aborted and isinstance(phase, str) and phase:
+                aborted = f"{aborted}, phase={phase}"
             truncated = ", stream_truncated" if call.stream_truncated else ""
             source = f", src={call.session_source}" if call.session_source else ""
             token_pair = call.usage_token_pair()
