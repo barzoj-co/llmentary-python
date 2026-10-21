@@ -401,15 +401,28 @@ class Session:
             return 0
         return max(call.sequence_number() for call in trace.calls)
 
-    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
+    def expect(
+        self,
+        *,
+        soft: bool = False,
+        since: Optional[int] = None,
+        allow_empty: bool = False,
+    ) -> Expectation:
         trace = self._trace_or_zero_calls()
         if since is not None:
             trace = trace.since(since)
-        return SoftExpectation(trace) if soft else Expectation(trace)
+        if soft:
+            return SoftExpectation(trace, allow_empty=allow_empty)
+        return Expectation(trace, allow_empty=allow_empty)
 
     @contextlib.contextmanager
-    def soft_expect(self) -> Iterator[SoftExpectation]:
-        expectation = SoftExpectation(self._trace_or_zero_calls())
+    def soft_expect(
+        self, *, since: Optional[int] = None, allow_empty: bool = False
+    ) -> Iterator[SoftExpectation]:
+        trace = self._trace_or_zero_calls()
+        if since is not None:
+            trace = trace.since(since)
+        expectation = SoftExpectation(trace, allow_empty=allow_empty)
         yield expectation
         expectation.assert_all()
 
@@ -461,7 +474,13 @@ class Query:
     def since(self, mark: int) -> Query:
         return replace(self, since_seq=mark)
 
-    def expect(self, *, soft: bool = False, since: Optional[int] = None) -> Expectation:
+    def expect(
+        self,
+        *,
+        soft: bool = False,
+        since: Optional[int] = None,
+        allow_empty: bool = False,
+    ) -> Expectation:
         mark = self.since_seq if since is None else since
         trace = self.session._trace_or_zero_calls().filtered(
             api_type=normalize_api_type(self.api_type) if self.api_type else None,
@@ -470,7 +489,9 @@ class Query:
             with_tools=self.include_tools,
             since=mark,
         )
-        return SoftExpectation(trace) if soft else Expectation(trace)
+        if soft:
+            return SoftExpectation(trace, allow_empty=allow_empty)
+        return Expectation(trace, allow_empty=allow_empty)
 
 
 @contextlib.contextmanager

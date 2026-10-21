@@ -63,8 +63,10 @@ Methods:
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session
 - `llmentary.mark()`: current max call sequence number (`0` if none)
-- `llmentary.expect(soft=False, since=None)`: wait, then return an expectation object
-  scoped to calls after `since` when that mark is set
+- `llmentary.expect(soft=False, since=None, allow_empty=False)`: wait, then return
+  an expectation object scoped to calls after `since` when that mark is set.
+  `allow_empty=True` opts out of the empty-filter guard on `no_errors` /
+  `not_called`
 - `llmentary.query(api_type=None, model=None)`: scope assertions by API type/model
 - `llmentary.soft_expect()`: context manager that accumulates assertion failures
 
@@ -77,6 +79,9 @@ llmentary.query().offers_tool("get_weather").expect().tool_called("get_weather")
 llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
 mark = llmentary.mark()
 llmentary.query().since(mark).expect().prompt_contains("turn 2")
+llmentary.expect().call_count(1)
+router = llmentary.query().without_tools().expect()
+router.call_count(1).no_errors()
 ```
 
 Accepted API type spellings include `chat`, `chat_completions`, `chat.completions`,
@@ -88,6 +93,23 @@ calls whose sequence number is greater than `mark`. The same filters exist on
 `SessionTrace.filtered(...)` and as chainable `SessionTrace` methods.
 `trace_summary()` prints those sequence numbers.
 
+### Filters and empty traces
+
+`Session.expect()` still fails when the **whole session** has zero calls. After a
+filter or `since=` cuts the trace to zero matching calls, `no_errors()` and
+`not_called()` also fail, with
+`no calls matched query (without_tools, since=3); session has 8 calls` plus the
+trace summary. That stops a missed turn or a bypassed proxy from looking green.
+
+Opt out only when the test really expects zero matching calls:
+
+```python
+llmentary.expect(since=mark, allow_empty=True).no_errors()
+```
+
+Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
+(filtered) trace should have.
+
 ## Assertions
 
 All assertion methods are chainable. Hard expectations raise `AssertionError` on
@@ -97,6 +119,8 @@ the first failure. Soft expectations collect failures and raise from
 ### Tool calls
 
 ```python
+expect.call_count(2)
+expect.call_count(min=1, max=4)
 expect.tool_called("get_weather")
 expect.not_called("delete_user")
 expect.called_times("search", 2)

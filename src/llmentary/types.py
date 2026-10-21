@@ -471,6 +471,7 @@ class SessionTrace:
     session_id: str
     raw: Mapping[str, Any]
     calls: Sequence[CapturedCall]
+    filter_labels: tuple[str, ...] = ()
 
     @classmethod
     def from_payload(cls, session_id: str, payload: Mapping[str, Any]) -> SessionTrace:
@@ -534,7 +535,34 @@ class SessionTrace:
             calls = [call for call in calls if call.offered_tool_names()]
         elif with_tools is False:
             calls = [call for call in calls if not call.offered_tool_names()]
-        return SessionTrace(session_id=self.session_id, raw=self.raw, calls=calls)
+        labels = list(self.filter_labels)
+        if offers_tool:
+            labels.append(f'offers_tool("{offers_tool}")')
+        if with_tools is True:
+            labels.append("with_tools")
+        elif with_tools is False:
+            labels.append("without_tools")
+        if since is not None:
+            labels.append(f"since={since}")
+        if api_type:
+            labels.append(f"api_type={api_type}")
+        if model:
+            labels.append(f"model={model}")
+        return SessionTrace(
+            session_id=self.session_id,
+            raw=self.raw,
+            calls=calls,
+            filter_labels=tuple(labels),
+        )
+
+    def empty_match_message(self) -> str:
+        """Describe a filter that matched no calls, including the session size."""
+
+        query = f" ({', '.join(self.filter_labels)})" if self.filter_labels else ""
+        return (
+            f"no calls matched query{query}; "
+            f"session has {len(find_call_list(self.raw))} calls"
+        )
 
     def spec_violations(self) -> list[SpecViolation]:
         found: list[SpecViolation] = []
