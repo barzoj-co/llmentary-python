@@ -36,9 +36,11 @@ def test_trace_summary_uses_seq_not_zero_index() -> None:
         },
     )
     summary = trace.trace_summary()
-    assert "[1]" in summary
-    assert "[4]" in summary
-    assert "[0]" not in summary
+    assert "#1" in summary
+    assert "#4" in summary
+    assert "#0" not in summary
+    assert trace.calls[0].seq == 1
+    assert trace.calls[1].seq == 4
     assert trace.calls[0].sequence_number() == 1
     assert trace.calls[1].sequence_number() == 4
     assert trace.calls[0].call_number() == "1"

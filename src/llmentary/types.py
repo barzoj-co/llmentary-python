@@ -385,13 +385,26 @@ class CapturedCall:
             results.extend(extract_tool_results(normalized))
         return results
 
-    def sequence_number(self) -> int:
-        """1-based sequence used by ``mark`` / ``since`` (``seq``, else ``index + 1``)."""
+    @property
+    def id(self) -> Optional[str]:
+        """Process-global call id (``call_N``). Not session order; use ``seq``."""
+
+        value = first_present(self.raw, "id")
+        return value if isinstance(value, str) and value else None
+
+    @property
+    def seq(self) -> int:
+        """1-based per-session sequence (``seq``, else ``index + 1``)."""
 
         seq = first_present(self.raw, "seq", "sequence", "sequence_number", "sequenceNumber")
         if isinstance(seq, int) and not isinstance(seq, bool):
             return seq
         return self.index + 1
+
+    def sequence_number(self) -> int:
+        """Alias of ``seq``. Kept for 0.x compatibility."""
+
+        return self.seq
 
     def offered_tool_names(self) -> list[str]:
         """Tool names offered on the request (not tools the model called)."""
@@ -461,7 +474,7 @@ class CapturedCall:
         return f"{count} violation" if count == 1 else f"{count} violations"
 
     def call_number(self) -> str:
-        return str(self.sequence_number())
+        return str(self.seq)
 
     @property
     def session_source(self) -> Optional[str]:
@@ -555,8 +568,9 @@ class SessionTrace:
             tokens = f", tokens={token_pair[0]}/{token_pair[1]}" if token_pair else ""
             api_label = call.api_type or first_present(call.raw, "api_family", "apiFamily") or "?"
             spec = f", spec: {call.spec_status_label()}"
+            call_id = call.id or "?"
             lines.append(
-                f"  [{call.sequence_number()}] api={api_label} model={call.model or '?'} "
+                f"  #{call.seq} ({call_id}) api={api_label} model={call.model or '?'} "
                 f"status={status}{http_status}{streamed}{aborted}{truncated}{finish}"
                 f"{latency}{ttft}{source}{tokens} tools=[{tool_names}]{spec}"
             )

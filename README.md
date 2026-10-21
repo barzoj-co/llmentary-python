@@ -192,6 +192,10 @@ fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
 `llmentary.list_sessions()` when a wait or expect fails with zero calls, so
 the message can name the known session ids.
 
+Call `id` values (`call_3`) are unique within one proxy process and can
+interleave across sessions. `CapturedCall.seq` is 1-based per session
+(`sequence_number()` is an alias). The trace summary prints `#seq (id)`.
+
 See [`docs/api.md`](docs/api.md), [`docs/pytest.md`](docs/pytest.md), and the
 proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
