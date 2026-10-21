@@ -63,10 +63,14 @@ jobs:
 
       - name: Unit and fake-upstream integration tests
         if: matrix.python-version != '3.13'
+        env:
+          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
         run: pytest -m "not e2e"
 
       - name: Unit and fake-upstream integration tests
         if: matrix.python-version == '3.13'
+        env:
+          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
         run: pytest -m "not e2e" --cov --cov-report=xml:coverage.xml
 
       - name: Upload coverage artifact

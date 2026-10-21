@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,65 +17,98 @@ from llmentary.types import SessionTrace
 ROOT = Path(__file__).resolve().parents[1]
 VECTOR_DIR = ROOT / "tests" / "testdata" / "isolation"
 PROXY_VERSION = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
-PROXY_VECTOR_API = (
-    f"https://api.github.com/repos/barzoj-co/llmentary/contents/testdata/isolation"
-    f"?ref=v{PROXY_VERSION}"
+# Proxy DOG-29 PR #35 publishes testdata/isolation on this branch first;
+# the pin tag is the long-term source after that PR merges.
+PROXY_VECTOR_REFS = (
+    "cursor/dog-29-isolation-spec-f2b6",
+    f"v{PROXY_VERSION}",
 )
+PROXY_VECTOR_PATH = "testdata/isolation"
+PROXY_VECTOR_REPO = "barzoj-co/llmentary"
 
 
 def _vector_files() -> list[Path]:
     return sorted(path for path in VECTOR_DIR.glob("*.json") if path.is_file())
 
 
+def _session_pair(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    for left_key, right_key in (
+        ("self", "other"),
+        ("left", "right"),
+        ("a", "b"),
+        ("x", "y"),
+    ):
+        left = payload.get(left_key)
+        right = payload.get(right_key)
+        if isinstance(left, dict) and isinstance(right, dict):
+            return left, right
+    raise KeyError(f"vector {payload.get('name')!r} has no session pair")
+
+
+def _session_id(session: dict[str, Any]) -> str:
+    for key in ("id", "session_id", "sessionId"):
+        value = session.get(key)
+        if isinstance(value, str) and value:
+            return value
+    raise KeyError(f"session payload has no id: {list(session)}")
+
+
+def _expect(payload: dict[str, Any]) -> str:
+    value = payload.get("expect") or payload.get("verdict") or payload.get("want")
+    if value == "pass":
+        return "pass"
+    if value == "fail":
+        return "fail"
+    raise KeyError(f"vector {payload.get('name')!r} has no pass/fail expect")
+
+
+def _message_fragments(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("message_contains")
+    if raw is None:
+        raw = payload.get("message")
+    if raw is None:
+        raw = payload.get("error_contains")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw] if raw else []
+    return [str(item) for item in raw]
+
+
 @pytest.mark.parametrize("path", _vector_files(), ids=lambda path: path.stem)
 def test_isolation_vector(path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    left = SessionTrace.from_payload(payload["self"]["id"], payload["self"])
-    right = SessionTrace.from_payload(payload["other"]["id"], payload["other"])
+    left_raw, right_raw = _session_pair(payload)
+    left = SessionTrace.from_payload(_session_id(left_raw), left_raw)
+    right = SessionTrace.from_payload(_session_id(right_raw), right_raw)
     expectation = Expectation(left)
-    if payload.get("allow_empty"):
+    if payload.get("allow_empty") or payload.get("allowEmpty"):
         expectation.allow_empty()
-    if payload.get("expect") == "pass":
+    if _expect(payload) == "pass":
         expectation.isolated_from(right)
         return
     with pytest.raises(AssertionError) as caught:
         expectation.isolated_from(right)
     message = str(caught.value)
-    for fragment in payload.get("message_contains") or ():
+    for fragment in _message_fragments(payload):
         assert fragment in message, message
 
 
 def test_isolation_vectors_match_proxy_pin() -> None:
-    """Fail when the proxy pin publishes testdata that drifted from ours.
-
-    Offline ``pytest -m "not e2e"`` stays hermetic: without a GitHub token
-    this returns. CI sets ``GITHUB_TOKEN`` / ``LLMTESTLAB_REPO_TOKEN`` and
-    then fails on a real drift. 404/403 (vectors not published yet) and
-    transport errors are not failures.
-    """
+    """Fail when testdata/isolation drifted from the proxy DOG-29 copy."""
 
     token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
         return
-    request = urllib.request.Request(PROXY_VECTOR_API)
-    request.add_header("Authorization", f"Bearer {token}")
-    request.add_header("Accept", "application/vnd.github+json")
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            listing = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        if exc.code in {404, 403}:
-            return
-        raise
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return
-
-    if not isinstance(listing, list):
+    listing, ref = _fetch_proxy_listing(token)
+    if listing is None or ref is None:
         return
     remote = {
-        item["name"]: item.get("sha")
+        item["name"]: item
         for item in listing
-        if isinstance(item, dict) and str(item.get("name", "")).endswith(".json")
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and str(item["name"]).endswith(".json")
     }
     if not remote:
         return
@@ -81,12 +116,62 @@ def test_isolation_vectors_match_proxy_pin() -> None:
     missing = sorted(set(remote) - set(local))
     extra = sorted(set(local) - set(remote))
     changed = sorted(
-        name for name, sha in remote.items() if name in local and local[name] != sha
+        name
+        for name, item in remote.items()
+        if name in local and local[name] != item.get("sha")
     )
-    assert not missing and not extra and not changed, (
-        f"vendored isolation vectors drifted from proxy v{PROXY_VERSION}: "
-        f"missing={missing} extra={extra} changed={changed}"
+    if missing or extra or changed:
+        snippets: list[str] = []
+        for name in missing + changed:
+            try:
+                body = _download_file(token, ref, name).decode("utf-8")
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError) as exc:
+                body = f"<download failed: {type(exc).__name__}>"
+            snippets.append(f"----- {name} -----\n{body}")
+        raise AssertionError(
+            f"vendored isolation vectors drifted from {PROXY_VECTOR_REPO} "
+            f"{PROXY_VECTOR_PATH}@{ref}: missing={missing} extra={extra} "
+            f"changed={changed}\n" + "\n".join(snippets)
+        )
+
+
+def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None]:
+    for ref in PROXY_VECTOR_REFS:
+        url = (
+            f"https://api.github.com/repos/{PROXY_VECTOR_REPO}/contents/"
+            f"{PROXY_VECTOR_PATH}?ref={ref}"
+        )
+        request = urllib.request.Request(url)
+        request.add_header("Authorization", f"Bearer {token}")
+        request.add_header("Accept", "application/vnd.github+json")
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                listing = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in {404, 403}:
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return None, None
+        if isinstance(listing, list):
+            return listing, ref
+    return None, None
+
+
+def _download_file(token: str, ref: str, name: str) -> bytes:
+    url = (
+        f"https://api.github.com/repos/{PROXY_VECTOR_REPO}/contents/"
+        f"{PROXY_VECTOR_PATH}/{name}?ref={ref}"
     )
+    request = urllib.request.Request(url)
+    request.add_header("Authorization", f"Bearer {token}")
+    request.add_header("Accept", "application/vnd.github+json")
+    with urllib.request.urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    encoded = payload.get("content")
+    if not isinstance(encoded, str):
+        raise ValueError(f"{name} had no content")
+    return base64.b64decode(encoded)
 
 
 def _git_blob_sha(path: Path) -> str:
