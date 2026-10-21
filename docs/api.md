@@ -280,7 +280,9 @@ expect.no_ignored_fields()
 `validation was not run` when nothing was checked, unless
 `allow_unvalidated=True`. Finding failures use
 `<call#> <api_family> <side> <path>: <message> — <hint>`.
-`trace_summary()` adds `spec: clean | N violations | not checked` per call.
+`trace_summary()` adds
+`spec: clean | request_only | N violations | not checked | skipped:<reason>`
+per call.
 `no_spec_violations` also fails on `ignored_fields` with
 `kind=unknown_request_field` (the live unknown nested message field): the
 proxy records that on `ignored_fields`, not `spec_violations`.
@@ -302,6 +304,10 @@ common fields used for assertions:
 `CapturedCall.session_source` is `header`, `baggage`, `path`, or `default` when
 the proxy recorded attribution. `CapturedCall.upstream_url` is the forwarded
 upstream URL (string or `upstream.url`); it should not contain `/s/{session}`.
+`CapturedCall.http_status` is the upstream HTTP status, or ``None`` when the
+wire value is missing or `0` (before-headers abort). The trace summary omits
+`http=` in that case and uses the proxy spec labels (`clean`,
+`request_only`, `not checked`, `N violations`, `skipped:…`).
 `CapturedCall.client_aborted` prefers the top-level Call field and falls
 back to `normalized.client_aborted`. `CapturedCall.abort_phase` is
 `before_headers` or `after_headers` on an aborted call, and `None` when

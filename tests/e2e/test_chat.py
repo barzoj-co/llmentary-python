@@ -331,6 +331,57 @@ def test_chat_cancel_mid_stream_keeps_proxy_healthy(llmentary: Session) -> None:
     ).no_errors()
 
 
+def test_summary_request_only_for_auth_failure_and_abort(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    with pytest.raises(openai_invalid_key_errors()):
+        client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "ping"}],
+            temperature=0,
+            max_tokens=8,
+            extra_headers=INVALID_KEY_HEADERS,
+        )
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
+            temperature=0,
+            max_tokens=400,
+            stream=True,
+        )
+    )
+    try:
+        for event in stream:
+            delta = event.choices[0].delta if event.choices else None
+            if delta is not None and delta.content:
+                break
+    finally:
+        stream.close()
+    trace = llmentary.wait()
+    summary = trace.trace_summary()
+    assert "http=0" not in summary, summary
+    assert "spec: request_only" in summary, summary
+    auth = [call for call in trace.calls if call.http_status == INVALID_KEY_STATUS]
+    assert auth, summary
+    assert auth[0].spec_status_label() == "request_only"
+    aborted = [call for call in trace.calls if call.client_aborted]
+    assert aborted, summary
+    abort = aborted[0]
+    assert abort.http_status != 502
+    # Live OpenAI headers arrive before 50ms, so this is after_headers:
+    # the request was validated (clean). before_headers abort is request_only
+    # with http_status None; unit fixture A2 covers that shape.
+    if abort.http_status is None:
+        assert abort.spec_status_label() == "request_only", summary
+    else:
+        assert abort.spec_status_label() in {
+            "clean",
+            "request_only",
+            "not checked",
+        } or abort.spec_status_label().startswith("skipped:"), summary
+    assert "http=0" not in summary
+
+
 def test_client_aborted_typed_accessors(llmentary: Session) -> None:
     client = openai_client(llmentary)
     stream = call_openai(

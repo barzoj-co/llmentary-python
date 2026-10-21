@@ -324,3 +324,60 @@ def test_trace_summary_includes_spec_status() -> None:
     assert "spec: clean" in clean.trace_summary()
     missing = _trace(_call(normalized={"model": "x"}), session_id="summary-off")
     assert "spec: not checked" in missing.trace_summary()
+    request_only = _trace(
+        _call(
+            normalized={
+                "validation": {
+                    "mode": "warn",
+                    "request_checked": True,
+                    "response_checked": False,
+                },
+                "spec_violations": [],
+            }
+        ),
+        session_id="auth-401",
+    )
+    assert request_only.calls[0].spec_status_label() == "request_only"
+    assert "spec: request_only" in request_only.trace_summary()
+    Expectation(request_only).no_spec_violations()
+    both = _trace(
+        _call(
+            normalized={
+                "validation": {
+                    "mode": "warn",
+                    "request_checked": True,
+                    "response_checked": True,
+                },
+                "spec_violations": [],
+            }
+        ),
+        session_id="both-checked",
+    )
+    assert both.calls[0].spec_status_label() == "clean"
+    skipped = _trace(
+        _call(normalized={"validation": {"skipped_reason": "no_schema"}}),
+        session_id="skipped",
+    )
+    assert skipped.calls[0].spec_status_label() == "skipped:no_schema"
+
+
+def test_abort_http_status_zero_is_none_and_omitted() -> None:
+    call = _call(
+        normalized={
+            "validation": {"request_checked": True, "response_checked": False},
+            "spec_violations": [],
+            "client_aborted": True,
+            "finish_reason": "cancelled",
+        }
+    )
+    call["http_status"] = 0
+    call["abort_phase"] = "before_headers"
+    call["stream"] = True
+    trace = _trace(call, session_id="abort")
+    captured = trace.calls[0]
+    assert captured.http_status is None
+    summary = trace.trace_summary()
+    assert "http=0" not in summary
+    assert "http=" not in summary
+    assert "phase=before_headers" in summary
+    assert "spec: request_only" in summary
