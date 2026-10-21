@@ -594,3 +594,43 @@ def test_unknown_session_id_fails_without_allow_empty() -> None:
     ):
         Expectation(weather, session=_Session()).isolated_from("weather-typo")
     Expectation(weather, session=_Session()).allow_empty().isolated_from("weather-typo")
+
+
+def test_userless_first_call_does_not_consume_first_call_status() -> None:
+    peer = _trace(
+        "q",
+        _call(session_id="q", ident="call_q1", seq=1, user="Amsterdam canal boats"),
+    )
+    own = SessionTrace.from_payload(
+        "p",
+        {
+            "id": "p",
+            "calls": [
+                {
+                    "id": "call_empty",
+                    "session_id": "p",
+                    "session_source": "path",
+                    "seq": 1,
+                    "api_family": "chat.completions",
+                    "request": {"messages": [{"role": "assistant", "content": "hi"}]},
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                },
+                {
+                    "id": "call_p2",
+                    "session_id": "p",
+                    "session_source": "path",
+                    "seq": 2,
+                    "api_family": "chat.completions",
+                    "request": {
+                        "messages": [
+                            {"role": "user", "content": "Amsterdam canal boats"},
+                            {"role": "user", "content": "And the locks after that?"},
+                        ]
+                    },
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                },
+            ],
+        },
+    )
+    with pytest.raises(AssertionError, match="Amsterdam canal boats"):
+        Expectation(own).isolated_from(peer)

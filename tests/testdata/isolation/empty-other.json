@@ -1,6 +1,6 @@
 {
   "id": "empty-other",
-  "description": "Empty Y fails unless allow_empty is set (DOG-32).",
+  "description": "Y exists as an id but has 0 recorded calls (unused session). Fail and name Y.",
   "allow_empty": false,
   "min_chars": 8,
   "ignore_texts": [],
@@ -21,13 +21,13 @@
     ]
   },
   "y": {
-    "id": "sess-y",
+    "id": "sess-ghost",
     "calls": []
   },
   "expect": {
     "isolated": false,
     "message_contains": [
-      "no calls recorded for session sess-y",
+      "no calls recorded for session sess-ghost",
       "isolated_from needs calls on both sides"
     ]
   }

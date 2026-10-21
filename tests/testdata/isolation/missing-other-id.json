@@ -1,6 +1,6 @@
 {
   "id": "missing-other-id",
-  "description": "Unknown / mistyped Y has no calls. Fail unless allow_empty (DOG-32).",
+  "description": "A mistyped Y id with no calls fails and names the typo.",
   "allow_empty": false,
   "min_chars": 8,
   "ignore_texts": [],

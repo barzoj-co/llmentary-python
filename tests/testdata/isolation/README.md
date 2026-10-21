@@ -11,6 +11,6 @@ Each `*.json` file is two recorded sessions (`x`, `y`) plus `expect.isolated`
 and `expect.message_contains`. Clients vendor this directory and fail CI if
 the copy drifts from that path.
 
-DOG-32: `empty-other.json` (fail), `empty-other-allow.json` (pass),
-`missing-other-id.json` (fail). DOG-33: `later-call-two-new-user-messages.json`
-and `responses-later-call-two-new-user-messages.json` (pass).
+DOG-32: `empty-other.json`, `empty-other-allow.json`, `missing-other-id.json`,
+`unknown-other-id.json`. DOG-33: `later-call-two-new-user-messages.json`,
+`later-call-two-new-user-messages-responses.json`, `multi-turn-own-history.json`.

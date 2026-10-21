@@ -1,15 +1,15 @@
 {
-  "id": "responses-later-call-two-new-user-messages",
-  "description": "Responses input[]: later X call introduces each new user-role item (DOG-33).",
+  "id": "later-call-two-new-user-messages-responses",
+  "description": "Responses input[] variant of later-call-two-new-user-messages. X call 2 introduces both new role=user items.",
   "allow_empty": false,
   "min_chars": 8,
   "ignore_texts": [],
   "x": {
-    "id": "sess-x",
+    "id": "sess-p",
     "calls": [
       {
-        "id": "call_x1",
-        "session_id": "sess-x",
+        "id": "call_p1",
+        "session_id": "sess-p",
         "seq": 1,
         "raw_request": {
           "model": "gpt-4.1-nano",
@@ -19,8 +19,8 @@
         }
       },
       {
-        "id": "call_x2",
-        "session_id": "sess-x",
+        "id": "call_p2",
+        "session_id": "sess-p",
         "seq": 2,
         "raw_request": {
           "model": "gpt-4.1-nano",
@@ -34,11 +34,11 @@
     ]
   },
   "y": {
-    "id": "sess-y",
+    "id": "sess-q",
     "calls": [
       {
-        "id": "call_y1",
-        "session_id": "sess-y",
+        "id": "call_q1",
+        "session_id": "sess-q",
         "seq": 1,
         "raw_request": {
           "model": "gpt-4.1-nano",

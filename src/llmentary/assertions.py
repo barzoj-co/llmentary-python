@@ -41,10 +41,12 @@ class Expectation:
         self._allow_empty = False
 
     def allow_empty(self) -> Expectation:
-        """Opt out of the empty-filter guard on ``no_errors`` / ``not_called``.
+        """Opt out of the empty-trace guard on assertions that need calls.
 
-        Same semantics as Go ``AllowEmpty()``: a filtered or ``since`` trace
-        with zero matching calls then passes those assertions.
+        Same semantics as Go ``AllowEmpty()``: a filtered, ``since``, or
+        never-created trace with zero matching calls then passes
+        ``no_errors`` / ``not_called``. ``isolated_from`` also uses this
+        to allow an empty self or an empty/unknown other session.
         """
 
         self._allow_empty = True
@@ -188,7 +190,7 @@ class Expectation:
                 seen_leaks.add(key)
                 _other_text, other_call = intro_other[key]
                 findings.append(
-                    f"user text {text!r} from session "
+                    f"user text {text!r} also introduced by session "
                     f"{other_trace.session_id} {_call_label(other_call)} "
                     f"appears in session {self.trace.session_id} "
                     f"{_call_label(call)}"
@@ -740,10 +742,10 @@ def _introduced_user_texts(
     first = True
     for call in _calls_in_seq(calls):
         texts = list(call.user_texts)
-        is_first = first
-        first = False
         if not texts:
             continue
+        is_first = first
+        first = False
         if is_first:
             for hist in texts[:-1]:
                 key = normalize_user_text(hist)

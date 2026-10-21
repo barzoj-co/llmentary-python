@@ -1,6 +1,6 @@
 {
   "id": "empty-other-allow",
-  "description": "Empty Y passes when allow_empty is true (DOG-32).",
+  "description": "Empty Y passes when allow_empty is true.",
   "allow_empty": true,
   "min_chars": 8,
   "ignore_texts": [],
@@ -21,7 +21,7 @@
     ]
   },
   "y": {
-    "id": "sess-y",
+    "id": "sess-ghost",
     "calls": []
   },
   "expect": {
