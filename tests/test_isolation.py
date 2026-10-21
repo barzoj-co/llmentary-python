@@ -223,6 +223,40 @@ def test_foreign_session_id_fails() -> None:
     assert "#1 (call_3)" in str(caught.value)
 
 
+def test_trailing_empty_user_is_not_introduced() -> None:
+    weather = _trace(
+        "weather",
+        _call(session_id="weather", ident="call_1", seq=1, user="Weather in Paris?"),
+    )
+    barge = SessionTrace.from_payload(
+        "barge",
+        {
+            "id": "barge",
+            "calls": [
+                {
+                    "id": "call_2",
+                    "session_id": "barge",
+                    "session_source": "path",
+                    "seq": 1,
+                    "api_family": "chat.completions",
+                    "request": {
+                        "messages": [
+                            {"role": "user", "content": "Weather in Paris?"},
+                            {"role": "user", "content": ""},
+                        ]
+                    },
+                    "response": {"choices": [{"message": {"content": "ok"}}]},
+                }
+            ],
+        },
+    )
+    assert barge.calls[0].user_texts == ["Weather in Paris?", ""]
+    with pytest.raises(AssertionError, match="Weather in Paris") as caught:
+        Expectation(barge).isolated_from(weather)
+    assert "#1 (call_1)" in str(caught.value)
+    assert "#1 (call_2)" in str(caught.value)
+
+
 def test_empty_session_fails_unless_allow_empty() -> None:
     empty = _trace("ghost")
     other = _trace(

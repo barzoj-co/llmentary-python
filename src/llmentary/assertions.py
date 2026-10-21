@@ -705,7 +705,7 @@ def _introduced_user_texts(
     introduced: dict[str, tuple[str, CapturedCall]] = {}
     seen_history: set[str] = set()
     for call in _calls_in_seq(calls):
-        texts = [text for text in call.user_texts if text]
+        texts = list(call.user_texts)
         if not texts:
             continue
         last = texts[-1]
