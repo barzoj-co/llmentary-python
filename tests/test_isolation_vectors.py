@@ -142,8 +142,6 @@ def test_isolation_vectors_match_proxy_pin() -> None:
             and isinstance(item.get("name"), str)
             and str(item["name"]).endswith(".json")
         }
-        if not remote:
-            return
         local = {path.name: _git_blob_sha(path) for path in _vector_files()}
         missing = sorted(set(remote) - set(local))
         extra = sorted(set(local) - set(remote))
@@ -187,12 +185,11 @@ def test_isolation_vectors_match_proxy_pin() -> None:
 def _official_files() -> dict[str, bytes] | None:
     if not OFFICIAL_DIR.is_dir():
         return None
-    files = {
+    return {
         path.name: path.read_bytes()
         for path in OFFICIAL_DIR.glob("*.json")
         if path.is_file()
     }
-    return files or None
 
 
 def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None]:
