@@ -98,6 +98,14 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 
+[tool.llmentary.coverage]
+# Ratchet fail_under upward; do not lower it. CI `coverage report --fail-under`
+# reads this table (scripts/coverage_fail_under.py). Floored true branch
+# coverage on main with the real proxy is 83.
+fail_under = 83
+# Denis: releases require >=90. Applied on release-please PRs.
+release_fail_under = 90
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
