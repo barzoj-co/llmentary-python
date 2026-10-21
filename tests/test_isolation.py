@@ -321,9 +321,8 @@ def test_missing_other_session_is_empty_trace() -> None:
         session_id = "weather"
         proxy = _Proxy()
 
-    with pytest.raises(AssertionError, match="no calls recorded for session typo") as caught:
-        Expectation(weather, session=_Session()).isolated_from("typo")
-    assert not isinstance(caught.value, SessionNotFound)
+    # SessionNotFound is an empty Y. Empty Y is not a leak source (DOG-29).
+    Expectation(weather, session=_Session()).isolated_from("typo")
     Expectation(weather, session=_Session()).allow_empty().isolated_from("typo")
 
     class _Other:
@@ -332,10 +331,7 @@ def test_missing_other_session_is_empty_trace() -> None:
         def trace(self) -> SessionTrace:
             raise SessionNotFound(self.session_id)
 
-    with pytest.raises(
-        AssertionError, match="no calls recorded for session ghost-session"
-    ):
-        Expectation(weather).isolated_from(_Other())
+    Expectation(weather).isolated_from(_Other())
     Expectation(weather).allow_empty().isolated_from(_Other())
 
 
