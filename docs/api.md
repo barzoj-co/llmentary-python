@@ -14,6 +14,7 @@ trace = control.wait_session("session-id", timeout=30, quiet=0.5, min_calls=2)
 control.delete_session("session-id")
 otlp_bytes = control.otlp("session-id")
 version = control.version()
+contract = control.openapi()
 ```
 
 The Go proxy serves OpenAI-compatible traffic on `-listen` and the control API
@@ -28,6 +29,12 @@ uses:
 - fallback `POST /sessions/{id}/wait`
 - `DELETE /sessions/{id}`
 - `GET /sessions/{id}/otlp`
+- `GET /openapi.yaml` (`ControlClient.openapi()`)
+
+`SessionTrace.validate_contract(contract)` checks the raw session against
+`components.schemas.Session` and names the JSON pointer on failure.
+`contract_path()` is the wheel-bundled `openapi.yaml` next to the proxy
+binary.
 
 `GET /sessions/{id}` and `GET /sessions/{id}/otlp` raise `SessionNotFound` on
 404. `GET /sessions/{id}/wait` does the same when `min_calls=0` and the

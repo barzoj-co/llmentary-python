@@ -24,6 +24,7 @@ def test_doctor_wheel_case_prints_path(tmp_path: Path) -> None:
     assert str(binary) in completed.stdout
     assert "llmentary " in completed.stdout
     assert "platform tag:" in completed.stdout
+    assert "contract:" in completed.stdout
 
 
 def test_doctor_binless_case_exits_1() -> None:

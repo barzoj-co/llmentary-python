@@ -128,6 +128,18 @@ class ControlClient:
             return value
         raise TypeError(f"GET /config did not include a version string: {payload!r}")
 
+    def openapi(self) -> dict[str, Any]:
+        """Served control contract from ``GET /openapi.yaml`` (with the token)."""
+
+        import yaml  # type: ignore[import-untyped]
+
+        response = self._client.get(f"{self.base_url}/openapi.yaml", headers=self.headers)
+        response.raise_for_status()
+        loaded = yaml.safe_load(response.text)
+        if not isinstance(loaded, dict):
+            raise TypeError(f"GET /openapi.yaml did not parse as a mapping: {type(loaded)!r}")
+        return loaded
+
     def list_sessions(self, *, source: Optional[str] = None) -> list[SessionInfo]:
         params = {"source": source} if source else None
         response = self._client.get(

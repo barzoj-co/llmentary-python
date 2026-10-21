@@ -3,7 +3,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .assertions import Expectation, SoftExpectation, answer_mentions_any
-from .binary import BinaryResolutionError, find_binary
+from .binary import BinaryResolutionError, contract_path, find_binary
 from .client import (
     ControlClient,
     ProxyHandle,
@@ -46,6 +46,7 @@ __all__ = [
     "WaitTimeoutError",
     "__version__",
     "answer_mentions_any",
+    "contract_path",
     "find_binary",
     "proxy_binary_path",
     "proxy_report_header",

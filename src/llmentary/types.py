@@ -580,6 +580,27 @@ class SessionTrace:
         calls = [CapturedCall(raw=call, index=index) for index, call in enumerate(raw_calls)]
         return cls(session_id=session_id, raw=payload, calls=calls)
 
+    def validate_contract(self, contract: Mapping[str, Any]) -> None:
+        """Validate this session against ``components.schemas.Session``."""
+
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import ValidationError
+
+        components = contract.get("components")
+        if not isinstance(components, Mapping):
+            raise AssertionError("control contract has no components")
+        schema = {
+            "$ref": "#/components/schemas/Session",
+            "components": dict(components),
+        }
+        try:
+            Draft202012Validator(schema).validate(dict(self.raw))
+        except ValidationError as exc:
+            pointer = json_pointer(exc.absolute_path) or "/"
+            raise AssertionError(
+                f"session {self.session_id} failed control contract at {pointer}: {exc.message}"
+            ) from exc
+
     def trace_summary(self) -> str:
         if not self.calls:
             return (
@@ -1248,6 +1269,16 @@ def stringify_value(value: Any) -> str:
             return content
         return json.dumps(value, sort_keys=True)
     return "" if value is None else str(value)
+
+
+def json_pointer(path: Iterable[object]) -> str:
+    """RFC 6901 JSON Pointer for a jsonschema ``absolute_path``."""
+
+    parts: list[str] = []
+    for item in path:
+        text = str(item).replace("~", "~0").replace("/", "~1")
+        parts.append(text)
+    return "/" + "/".join(parts) if parts else ""
 
 
 def string_or_none(value: Any) -> Optional[str]:

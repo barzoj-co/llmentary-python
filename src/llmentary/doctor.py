@@ -7,6 +7,7 @@ from typing import Optional, TextIO
 from .binary import (
     BinaryResolutionError,
     bundled_proxy_version,
+    contract_path,
     detected_platform_tag,
     find_binary,
     install_kind,
@@ -35,6 +36,7 @@ def doctor(*, env: Optional[dict[str, str]] = None, out: Optional[TextIO] = None
         f"binary --version: {binary_version_output(resolved)}",
         f"platform tag: {detected_platform_tag()}",
         f"install: {install_kind()}",
+        f"contract: {contract_path(env=env) or 'not bundled'}",
     ]
     stream.write("\n".join(lines) + "\n")
     if error is not None:

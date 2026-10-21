@@ -9,8 +9,23 @@ from llmentary.binary import (
     SUPPORTED_WHEEL_TAGS,
     BinaryResolutionError,
     bundled_platform_tag,
+    contract_path,
     find_binary,
 )
+
+
+def test_contract_path_resolves_beside_binary(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    spec = tmp_path / "openapi.yaml"
+    spec.write_text("openapi: 3.1.0\n", encoding="utf-8")
+    assert contract_path(env={"LLMENTARY_BIN": str(binary), "PATH": ""}) == spec
+
+
+def test_contract_path_missing_when_not_bundled(tmp_path: Path) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    assert contract_path(env={"LLMENTARY_BIN": str(binary), "PATH": ""}) is None
 
 
 def test_find_binary_uses_env_path(tmp_path: Path) -> None:
