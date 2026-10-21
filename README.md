@@ -16,7 +16,8 @@ Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
 recorded. The
 [control API contract](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml)
-is the OpenAPI description of `/healthz`, `/sessions`, and `wait`. After the
+is the OpenAPI description of `/healthz`, `/sessions`, and
+`/sessions/{id}/wait`. After the
 next proxy release the same file is served at `GET /openapi.yaml` on the
 control listener and ships next to the bundled binary.
 
