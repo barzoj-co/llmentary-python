@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/barzoj-co/llmentary-python/compare/v0.4.0...v0.5.0) (2026-10-21)
+
+
+### Features
+
+* add typed client_aborted and abort_phase accessors ([#36](https://github.com/barzoj-co/llmentary-python/issues/36)) ([bb48a5a](https://github.com/barzoj-co/llmentary-python/commit/bb48a5a040ed97efcaaecb2e0eb21babdbab168e))
+* ship openapi.yaml and ControlClient.openapi() ([#35](https://github.com/barzoj-co/llmentary-python/issues/35)) ([d460089](https://github.com/barzoj-co/llmentary-python/commit/d4600899e1c8a5957030719fc95df71f42d5edce))
+
+
+### Bug Fixes
+
+* add expect_no_calls and allow_empty on never-created sessions ([#32](https://github.com/barzoj-co/llmentary-python/issues/32)) ([875f784](https://github.com/barzoj-co/llmentary-python/commit/875f784dc8543f52d3d30092ef9414529413ad5c))
+* bundle proxy v0.4.0 ([#38](https://github.com/barzoj-co/llmentary-python/issues/38)) ([ca5644a](https://github.com/barzoj-co/llmentary-python/commit/ca5644a54763ba55e0c51b2d3af3e2285bed4a0e))
+* label unchecked responses request_only in the summary ([#33](https://github.com/barzoj-co/llmentary-python/issues/33)) ([877ab4f](https://github.com/barzoj-co/llmentary-python/commit/877ab4ff3f6e3ca4d2f7183373f3b7863b5a5ad5))
+* match isolated_from on foreign user turns only ([#34](https://github.com/barzoj-co/llmentary-python/issues/34)) ([98ce37b](https://github.com/barzoj-co/llmentary-python/commit/98ce37b1ed614192adc5357b84350eb7684d24e5))
+
 ## [0.4.0](https://github.com/barzoj-co/llmentary-python/compare/v0.3.1...v0.4.0) (2026-10-21)
 
 
