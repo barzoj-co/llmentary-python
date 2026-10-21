@@ -122,7 +122,9 @@ only move up. release-please PRs
 >=90 for releases.
 
 Codecov upload stays tokenless (no OIDC) and informational (`codecov.yml`).
-It does not gate PRs. A failed Codecov upload is not a coverage failure.
+It does not gate PRs: `fail_ci_if_error` is true only when
+`vars.CODECOV_REQUIRED` is the string `true` (unset today). A failed Codecov
+upload is not a coverage-threshold failure.
 
 ## CI configuration required
 
