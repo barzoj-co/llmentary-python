@@ -83,6 +83,31 @@ def test_config_version() -> None:
         assert "openai" in client.config()["upstreams"]
 
 
+def test_wait_404_raises_session_not_found() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/sessions":
+            return httpx.Response(200, json={"sessions": [{"id": "known", "calls": 1}]})
+        if request.url.path.endswith("/wait"):
+            return httpx.Response(
+                404,
+                json={
+                    "error": {
+                        "type": "session_not_found",
+                        "message": 'no calls recorded for session "ghost"',
+                    }
+                },
+            )
+        return httpx.Response(404, json={"error": {"type": "session_not_found"}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(SessionNotFound, match="ghost") as caught:
+            client.wait_session("ghost", timeout=3, quiet=0.2, min_calls=0)
+
+    assert caught.value.session_id == "ghost"
+    assert "known" in caught.value.known_ids
+
+
 def test_wait_504_json_uses_calls_seen() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -114,6 +139,34 @@ def test_zero_calls_message_includes_session_and_known_ids() -> None:
     assert "no calls recorded for session sess-a" in message
     assert "default" in message
     assert "sess-b" in message
+
+
+def test_expect_wait_404_is_zero_calls() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/wait"):
+            return httpx.Response(
+                404,
+                json={"error": {"type": "session_not_found", "message": "missing"}},
+            )
+        if request.url.path == "/sessions":
+            return httpx.Response(200, json={"sessions": [{"id": "other", "calls": 2}]})
+        return httpx.Response(
+            404,
+            json={"error": {"type": "session_not_found", "message": "missing"}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        control = ControlClient("http://127.0.0.1:7778", client=http)
+        session = Session(
+            session_id="empty-404",
+            proxy=ProxyHandle(url="http://127.0.0.1:7777", control=control),
+        )
+        with pytest.raises(
+            AssertionError, match="no calls recorded for session empty-404"
+        ) as caught:
+            session.expect()
+
+    assert "other" in str(caught.value)
 
 
 def test_expect_zero_calls_uses_known_session_ids() -> None:

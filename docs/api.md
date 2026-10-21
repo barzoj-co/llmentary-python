@@ -30,8 +30,25 @@ uses:
 - `GET /sessions/{id}/otlp`
 
 `GET /sessions/{id}` and `GET /sessions/{id}/otlp` raise `SessionNotFound` on
-404. Expect helpers on a session with zero calls fail with
-`no calls recorded for session <id>; known sessions: …`.
+404. `GET /sessions/{id}/wait` does the same when `min_calls=0` and the
+session was never created (or was `DELETE`d). `wait` with `min_calls>=1`
+keeps waiting until a call arrives, then raises `WaitTimeoutError` on 504 if
+none does. Expect helpers treat `SessionNotFound` from wait as zero calls and
+fail with `no calls recorded for session <id>; known sessions: …`.
+
+```python
+from llmentary import SessionNotFound, WaitTimeoutError
+
+try:
+    llmentary.wait(timeout=3, quiet=0.2, min_calls=0)
+except SessionNotFound:
+    pass
+
+try:
+    llmentary.wait(timeout=3, quiet=0.2, min_calls=1)
+except WaitTimeoutError:
+    pass
+```
 
 For non-loopback proxies, pass the bearer token as `token` or set
 `LLMENTARY_CONTROL_TOKEN`.
@@ -57,7 +74,9 @@ Methods:
   quiescence and return a trace. `quiet_for` remains a deprecated alias of
   `quiet`. Defaults are `timeout=30s` and `quiet=500ms`
   (`LLMENTARY_WAIT_TIMEOUT` / `LLMENTARY_WAIT_QUIET`). `min_calls` waits until
-  that many finished calls exist. A 504 raises `WaitTimeoutError`.
+  that many finished calls exist. A 404 raises `SessionNotFound` (never
+  created, `min_calls=0`). A 504 raises `WaitTimeoutError` (`min_calls>=1`
+  and no call before `timeout`).
 - `llmentary.trace()`: fetch the current trace without waiting
 - `llmentary.list_sessions()`: cheap session list from `GET /sessions`
 - `llmentary.otlp()`: fetch OTLP bytes for the session

@@ -41,7 +41,13 @@ BAGGAGE_SESSION_KEY = "llmentary.session.id"
 
 
 class SessionNotFound(LookupError):
-    """Raised when a control-API GET returns 404 ``session_not_found``."""
+    """Raised when the control API returns 404 ``session_not_found``.
+
+    That is ``GET /sessions/{id}``, ``GET /sessions/{id}/otlp``, and
+    ``GET /sessions/{id}/wait`` with ``min_calls=0`` on a session that was
+    never created (or was ``DELETE``d). ``wait`` with ``min_calls>=1`` still
+    raises ``WaitTimeoutError`` (504) if no call arrives before ``timeout``.
+    """
 
     def __init__(
         self,
