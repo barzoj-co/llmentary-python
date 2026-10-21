@@ -17,7 +17,7 @@ def test_green_run_call_summary_prints_seq() -> None:
     )
     summary = green_run_call_summary(session)
     assert summary is not None
-    assert "[3]" in summary
+    assert "#3" in summary
     assert "llmentary session green" in summary
 
 
