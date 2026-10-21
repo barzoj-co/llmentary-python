@@ -53,7 +53,7 @@ def require_e2e() -> None:
 
 
 def openai_client(
-    lm: Session, *, api_key: str | None = None, timeout: float | None = None
+    lm: Session, *, api_key: str | None = None, timeout: float | Any | None = None
 ) -> Any:
     from openai import OpenAI
 

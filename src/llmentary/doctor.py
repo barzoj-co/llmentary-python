@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional, TextIO
@@ -11,6 +12,12 @@ from .binary import (
     detected_platform_tag,
     find_binary,
     install_kind,
+)
+
+_SEMVER_TOKEN = re.compile(
+    r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
 )
 
 
@@ -89,7 +96,7 @@ def parse_proxy_semver(line: Optional[str]) -> Optional[str]:
     if not tokens:
         return None
     token = tokens[0].lstrip("v").strip("(),")
-    if not token or not token[0].isdigit():
+    if not _SEMVER_TOKEN.fullmatch(token):
         return None
     return token
 

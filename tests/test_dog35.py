@@ -102,6 +102,10 @@ def _ok_call() -> dict[str, Any]:
         (None, None),
         ("llmentary 0.4.0\nsecond line", "0.4.0"),
         ("other-bin 1.2.3", None),
+        ("1garbage", None),
+        ("llmentary 1garbage", None),
+        ("0.4", None),
+        ("llmentary 0.4", None),
     ],
 )
 def test_parse_proxy_semver_corners(line: str | None, expected: str | None) -> None:

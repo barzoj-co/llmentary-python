@@ -12,8 +12,9 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 `llmentary` is the Python/pytest client for the
 [`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) recording proxy.
 `llmentary.__version__` is the Python package; `llmentary.proxy_version()` is
-the bundled proxy semver (`0.4.0`); `proxy_version_line()` is the full
-`llmentary --version` line.
+the semver of the resolved proxy binary (for example `0.4.0`, or `None` when
+no binary resolves); `proxy_version_line()` is the full `llmentary --version`
+line.
 It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
 Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy

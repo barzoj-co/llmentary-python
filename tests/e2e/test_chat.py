@@ -412,9 +412,14 @@ def test_client_aborted_typed_accessors(llmentary: Session) -> None:
 
 
 def test_before_headers_timeout_is_status_aborted(llmentary: Session) -> None:
+    from httpx import Timeout
     from openai import APIConnectionError, APITimeoutError
 
-    client = openai_client(llmentary, timeout=0.05)
+    # Connect/write stay generous so the proxy can forward the request.
+    # A short read timeout aborts before response headers (DOG-35 A4).
+    client = openai_client(
+        llmentary, timeout=Timeout(5.0, connect=5.0, write=5.0, read=0.05, pool=5.0)
+    )
     with pytest.raises((APITimeoutError, APIConnectionError, TimeoutError)):
         client.chat.completions.create(
             model=CHEAP_MODEL,
