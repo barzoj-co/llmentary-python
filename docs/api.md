@@ -262,7 +262,9 @@ expect.no_ignored_fields()
 `validation was not run` when nothing was checked, unless
 `allow_unvalidated=True`. Finding failures use
 `<call#> <api_family> <side> <path>: <message> — <hint>`.
-`trace_summary()` adds `spec: clean | N violations | not checked` per call.
+`trace_summary()` adds
+`spec: clean | request_only | N violations | not checked | skipped:<reason>`
+per call.
 `no_spec_violations` also fails on `ignored_fields` with
 `kind=unknown_request_field` (the live unknown nested message field): the
 proxy records that on `ignored_fields`, not `spec_violations`.
