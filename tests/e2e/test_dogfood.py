@@ -16,7 +16,7 @@ from e2e_helpers import (
     require_e2e,
 )
 
-from llmentary import Session
+from llmentary import Session, SessionNotFound
 from llmentary.client import new_session_id, start_proxy
 
 pytestmark = pytest.mark.e2e
@@ -174,6 +174,41 @@ def test_unknown_nested_field_fails_no_spec_violations(llmentary: Session) -> No
     assert "validation was not run" not in message
     assert " — " in message
     assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
+
+
+def test_wait_never_created_min_calls_zero_is_session_not_found(
+    llmentary: Session,
+) -> None:
+    ghost = Session(
+        session_id=new_session_id("ghost0"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    try:
+        with pytest.raises(SessionNotFound) as caught:
+            ghost.wait(timeout=3, quiet=0.2, min_calls=0)
+        assert caught.value.session_id == ghost.session_id
+
+        client = openai_client(ghost)
+        call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": "Reply with the single word ping."}],
+                temperature=0,
+                max_tokens=16,
+            )
+        )
+        trace = ghost.wait(timeout=30, quiet=0.5, min_calls=1)
+        successful = [
+            call
+            for call in trace.calls
+            if (call.http_status or 0) == 200 and not call.error
+        ]
+        assert len(successful) == 1, trace.trace_summary()
+        assert "ping" in successful[0].prompt_text
+    finally:
+        ghost.cleanup()
 
 
 def test_wait_unused_session_then_first_call(llmentary: Session) -> None:

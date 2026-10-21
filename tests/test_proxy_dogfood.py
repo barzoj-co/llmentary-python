@@ -88,6 +88,21 @@ def test_zero_calls_expect_includes_session_and_known_ids(llmentary: Session) ->
 
 
 @pytest.mark.integration
+def test_wait_never_created_min_calls_zero_is_session_not_found(
+    llmentary: Session,
+) -> None:
+    ghost = Session(
+        session_id="ghost-dog17-zero",
+        proxy=llmentary.proxy,
+        wait_timeout=3,
+        quiet_for=0.2,
+    )
+    with pytest.raises(SessionNotFound, match="ghost-dog17-zero") as caught:
+        ghost.wait(timeout=3, quiet=0.2, min_calls=0)
+    assert caught.value.session_id == "ghost-dog17-zero"
+
+
+@pytest.mark.integration
 def test_wait_min_calls_against_real_proxy(llmentary: Session) -> None:
     def later_calls() -> None:
         time.sleep(1.0)
