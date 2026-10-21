@@ -247,7 +247,7 @@ expectation = llmentary.expect().aborted()
 call = next(call for call in expectation.trace.calls if call.client_aborted)
 assert call.client_aborted
 assert call.abort_phase in (None, "before_headers", "after_headers")
-assert call.finish_reason == "cancelled"
+assert call.finish_reason in {"cancelled", "unknown"}
 assert call.http_status != 502
 ```
 
@@ -255,7 +255,8 @@ assert call.http_status != 502
 `normalized.client_aborted` on older proxies. `abort_phase` is
 `before_headers` or `after_headers` when the call was aborted, and
 omitted (`None`) otherwise. Closing after `[DONE]` or a terminal
-Responses event is not an abort.
+Responses event is not an abort. Proxy 0.3.0 still records
+`finish_reason=unknown` on abort; `cancelled` is the documented value.
 
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session
