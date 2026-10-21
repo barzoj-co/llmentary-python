@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 import pytest
@@ -341,20 +342,37 @@ def test_summary_request_only_for_auth_failure_and_abort(llmentary: Session) -> 
             max_tokens=8,
             extra_headers=INVALID_KEY_HEADERS,
         )
-    stream = call_openai(
-        lambda: client.chat.completions.create(
-            model=CHEAP_MODEL,
-            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
-            temperature=0,
-            max_tokens=400,
-            stream=True,
-        )
-    )
+    holder: list[object] = []
+
+    def _send() -> None:
+        try:
+            holder.append(
+                client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[
+                        {"role": "user", "content": "Count slowly from 1 to 80 in words."}
+                    ],
+                    temperature=0,
+                    max_tokens=400,
+                    stream=True,
+                )
+            )
+        except Exception:
+            pass
+
+    sender = threading.Thread(target=_send)
+    sender.start()
+    time.sleep(0.05)
+    if holder:
+        try:
+            holder[0].close()
+        except Exception:
+            pass
     try:
-        time.sleep(0.05)
-        stream.close()
+        client.close()
     except Exception:
         pass
+    sender.join(timeout=5)
     trace = llmentary.wait()
     summary = trace.trace_summary()
     assert "http=0" not in summary, summary
