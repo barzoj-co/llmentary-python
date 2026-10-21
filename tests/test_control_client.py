@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 import httpx
 import pytest
@@ -207,7 +208,9 @@ def test_expect_zero_calls_uses_known_session_ids() -> None:
     assert str(caught.value).lower().count("known sessions:") == 1
 
 
-def _never_created_handler(session_id: str, *, calls: Optional[list[object]] = None):
+def _never_created_handler(
+    session_id: str, *, calls: Optional[list[Any]] = None
+) -> Callable[[httpx.Request], httpx.Response]:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/sessions":
             return httpx.Response(200, json={"sessions": [{"id": "other", "calls": 1}]})
