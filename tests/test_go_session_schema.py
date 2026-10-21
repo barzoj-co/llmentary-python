@@ -578,7 +578,7 @@ def test_parses_normalized_client_aborted_on_disconnect() -> None:
     assert captured.client_aborted is True
     assert captured.stream_truncated is True
     summary = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).trace_summary()
-    assert "client_aborted" in summary
+    assert "status=aborted" in summary
     assert captured.abort_phase is None
 
 
@@ -601,7 +601,7 @@ def test_top_level_client_aborted_and_abort_phase() -> None:
     assert captured.client_aborted is True
     assert captured.abort_phase == "before_headers"
     summary = SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]}).trace_summary()
-    assert "client_aborted" in summary
+    assert "status=aborted" in summary
     assert "phase=before_headers" in summary
     Expectation(
         SessionTrace.from_payload("abort", {"id": "abort", "calls": [call]})

@@ -11,6 +11,9 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 
 `llmentary` is the Python/pytest client for the
 [`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) recording proxy.
+`llmentary.__version__` is the Python package; `llmentary.proxy_version()` is
+the bundled proxy semver (`0.4.0`); `proxy_version_line()` is the full
+`llmentary --version` line.
 It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
 Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
@@ -262,17 +265,29 @@ stream.close()
 expectation = llmentary.expect().aborted()
 call = next(call for call in expectation.trace.calls if call.client_aborted)
 assert call.client_aborted
+assert call.upstream_called is True
 assert call.abort_phase in (None, "before_headers", "after_headers")
 assert call.finish_reason in {"cancelled", "unknown"}
 assert call.http_status != 502
+assert "status=aborted" in expectation.trace.trace_summary()
 ```
 
 `client_aborted` prefers the top-level Call field and falls back to
 `normalized.client_aborted` on older proxies. `abort_phase` is
 `before_headers` or `after_headers` when the call was aborted, and
-omitted (`None`) otherwise. Closing after `[DONE]` or a terminal
-Responses event is not an abort. Proxy 0.3.0 still records
-`finish_reason=unknown` on abort; `cancelled` is the documented value.
+omitted (`None`) otherwise. `upstream_called` is the top-level Call
+field (`True`/`False`), or `None` on older proxies. Closing after
+`[DONE]` or a terminal Responses event is not an abort. Proxy 0.3.0 still
+records `finish_reason=unknown` on abort; `cancelled` is the documented
+value.
+
+Trace-summary `status=` is `ok`, `error`, or `aborted`. Both abort
+phases print `status=aborted` (a scan for `status=error` must not miss
+an after-headers cancel that already has `http=200`). `http=` is
+included only when an upstream status was recorded (after-headers,
+typically 200; omitted for before-headers). `stream_truncated` is
+printed only when the proxy recorded a truncated stream (after-headers).
+`phase=` is printed when `abort_phase` is known.
 
 Call `id` values (`call_3`) are unique within one proxy process and can
 interleave across sessions. `CapturedCall.seq` is 1-based per session

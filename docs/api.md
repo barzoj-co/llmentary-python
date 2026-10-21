@@ -314,9 +314,12 @@ wire value is missing or `0` (before-headers abort). The trace summary omits
 `CapturedCall.client_aborted` prefers the top-level Call field and falls
 back to `normalized.client_aborted`. `CapturedCall.abort_phase` is
 `before_headers` or `after_headers` on an aborted call, and `None` when
-the call is not aborted (the wire field is omitted). Closing after
-`[DONE]` or a terminal Responses event is not an abort.
-`expect().aborted()` asserts at least one call was client-aborted.
+the call is not aborted (the wire field is omitted).
+`CapturedCall.upstream_called` is the top-level Call field (`True` /
+`False`) or `None` when absent. Closing after `[DONE]` or a terminal
+Responses event is not an abort. `expect().aborted()` asserts at least
+one call was client-aborted. Aborted calls print `status=aborted` for
+both phases; `http=` stays when an upstream status was recorded.
 
 ```python
 call = llmentary.expect().trace.calls[0]
@@ -324,6 +327,7 @@ assert call.session_source == "path"
 assert call.upstream_url is not None and "/s/" not in call.upstream_url
 assert call.client_aborted is False
 assert call.abort_phase is None
+assert call.upstream_called is None
 ```
 
 Every hard assertion failure includes `SessionTrace.trace_summary()` once.
@@ -335,7 +339,8 @@ Unparsed records (no request and no response) print `unparsed call, keys=[…]`.
 Passing pytest tests that used the `llmentary` fixture also print that summary.
 
 ```python
-from llmentary import proxy_version
+from llmentary import proxy_version, proxy_version_line
 
-print(proxy_version())  # first line of `llmentary --version`, or "not found"
+print(proxy_version())  # "0.4.0", or None when the binary is missing
+print(proxy_version_line())  # full `llmentary --version` line, or None
 ```

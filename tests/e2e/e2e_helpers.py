@@ -52,16 +52,21 @@ def require_e2e() -> None:
         pytest.fail("OPENAI_API_KEY is required when LLMENTARY_E2E=1")
 
 
-def openai_client(lm: Session, *, api_key: str | None = None) -> Any:
+def openai_client(
+    lm: Session, *, api_key: str | None = None, timeout: float | None = None
+) -> Any:
     from openai import OpenAI
 
     key = api_key if api_key is not None else os.environ["OPENAI_API_KEY"]
-    return OpenAI(
-        api_key=key,
-        base_url=lm.openai_base_url,
-        default_headers=lm.headers,
-        max_retries=0,
-    )
+    kwargs: dict[str, Any] = {
+        "api_key": key,
+        "base_url": lm.openai_base_url,
+        "default_headers": lm.headers,
+        "max_retries": 0,
+    }
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    return OpenAI(**kwargs)
 
 
 def openai_invalid_model_errors() -> tuple[type[BaseException], ...]:
