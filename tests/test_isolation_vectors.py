@@ -44,12 +44,19 @@ def test_isolation_vector(path: Path) -> None:
 
 
 def test_isolation_vectors_match_proxy_pin() -> None:
-    """Fail when the proxy pin publishes testdata that drifted from ours."""
+    """Fail when the proxy pin publishes testdata that drifted from ours.
 
-    request = urllib.request.Request(PROXY_VECTOR_API)
+    Offline ``pytest -m "not e2e"`` stays hermetic: without a GitHub token
+    this returns. CI sets ``GITHUB_TOKEN`` / ``LLMTESTLAB_REPO_TOKEN`` and
+    then fails on a real drift. 404/403 (vectors not published yet) and
+    transport errors are not failures.
+    """
+
     token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if token:
-        request.add_header("Authorization", f"Bearer {token}")
+    if not token:
+        return
+    request = urllib.request.Request(PROXY_VECTOR_API)
+    request.add_header("Authorization", f"Bearer {token}")
     request.add_header("Accept", "application/vnd.github+json")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -58,6 +65,8 @@ def test_isolation_vectors_match_proxy_pin() -> None:
         if exc.code in {404, 403}:
             return
         raise
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return
 
     if not isinstance(listing, list):
         return
