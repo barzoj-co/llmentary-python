@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, Optional
+
 import httpx
 import pytest
 
@@ -9,6 +12,7 @@ from llmentary.client import (
     ProxyHandle,
     Session,
     message_lists_known_ids,
+    with_known_sessions,
 )
 from llmentary.types import zero_calls_message
 
@@ -67,6 +71,8 @@ def test_get_session_unknown_raises_session_not_found() -> None:
     assert caught.value.session_id == "nope"
     assert "known" in caught.value.known_ids
     assert "known sessions: known" in str(caught.value)
+    assert str(caught.value).lower().count("known sessions:") == 1
+    assert "GET /sessions" not in str(caught.value)
 
 
 def test_config_version() -> None:
@@ -167,6 +173,7 @@ def test_expect_wait_404_is_zero_calls() -> None:
             session.expect()
 
     assert "other" in str(caught.value)
+    assert str(caught.value).lower().count("known sessions:") == 1
 
 
 def test_expect_zero_calls_uses_known_session_ids() -> None:
@@ -198,3 +205,103 @@ def test_expect_zero_calls_uses_known_session_ids() -> None:
             session.expect()
 
     assert "other" in str(caught.value)
+    assert str(caught.value).lower().count("known sessions:") == 1
+
+
+def _never_created_handler(
+    session_id: str, *, calls: Optional[list[Any]] = None
+) -> Callable[[httpx.Request], httpx.Response]:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/sessions":
+            return httpx.Response(200, json={"sessions": [{"id": "other", "calls": 1}]})
+        if request.url.path.endswith("/wait") or request.url.path.endswith(
+            f"/sessions/{session_id}"
+        ):
+            if calls is not None:
+                return httpx.Response(200, json={"id": session_id, "calls": calls})
+            return httpx.Response(
+                404,
+                json={
+                    "error": {
+                        "type": "session_not_found",
+                        "message": (
+                            f'no calls recorded for session "{session_id}"; '
+                            "known sessions: GET /sessions"
+                        ),
+                    }
+                },
+            )
+        return httpx.Response(404, json={"error": {"type": "session_not_found"}})
+
+    return handler
+
+
+def test_expect_no_calls_passes_on_404() -> None:
+    with httpx.Client(
+        transport=httpx.MockTransport(_never_created_handler("ghost-zero"))
+    ) as http:
+        session = Session(
+            session_id="ghost-zero",
+            proxy=ProxyHandle(
+                url="http://127.0.0.1:7777",
+                control=ControlClient("http://127.0.0.1:7778", client=http),
+            ),
+        )
+        session.expect_no_calls(quiet=0.1)
+
+
+def test_expect_no_calls_fails_on_one_call() -> None:
+    calls = [
+        {
+            "id": "call_1",
+            "seq": 1,
+            "session_id": "busy",
+            "api_family": "chat.completions",
+            "request": {"messages": [{"role": "user", "content": "ping"}]},
+            "response": {"choices": [{"message": {"content": "ok"}}]},
+        }
+    ]
+    with httpx.Client(
+        transport=httpx.MockTransport(_never_created_handler("busy", calls=calls))
+    ) as http:
+        session = Session(
+            session_id="busy",
+            proxy=ProxyHandle(
+                url="http://127.0.0.1:7777",
+                control=ControlClient("http://127.0.0.1:7778", client=http),
+            ),
+        )
+        with pytest.raises(AssertionError, match="expected 0 LLM calls, got 1") as caught:
+            session.expect_no_calls(quiet=0.1)
+    assert "llmentary session busy" in str(caught.value)
+    assert "#1 (call_1)" in str(caught.value)
+
+
+def test_expect_allow_empty_call_count_zero() -> None:
+    with httpx.Client(
+        transport=httpx.MockTransport(_never_created_handler("empty-opt"))
+    ) as http:
+        session = Session(
+            session_id="empty-opt",
+            proxy=ProxyHandle(
+                url="http://127.0.0.1:7777",
+                control=ControlClient("http://127.0.0.1:7778", client=http),
+            ),
+        )
+        session.expect(allow_empty=True).call_count(0)
+        with pytest.raises(
+            AssertionError, match="no calls recorded for session empty-opt"
+        ):
+            session.expect()
+
+
+def test_with_known_sessions_dedupes_proxy_hint() -> None:
+    message = with_known_sessions(
+        'no calls recorded for session "ghost"; known sessions: GET /sessions',
+        "ghost",
+        ["iso-a", "iso-b"],
+    )
+    assert message.count("known sessions:") == 1
+    assert "GET /sessions" not in message
+    assert "iso-a" in message
+    assert "iso-b" in message

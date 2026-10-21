@@ -239,3 +239,31 @@ def test_wait_unused_session_then_first_call(llmentary: Session) -> None:
         assert "ping" in successful[0].prompt_text
     finally:
         ghost.cleanup()
+
+
+def test_expect_no_calls_and_isolated_from_unused_session(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Reply with the single word ping."}],
+            temperature=0,
+            max_tokens=16,
+        )
+    )
+    llmentary.wait(timeout=30, quiet=0.5, min_calls=1)
+
+    unused = Session(
+        session_id=new_session_id("zero"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    try:
+        unused.expect_no_calls(quiet=0.2)
+        unused.expect(allow_empty=True).call_count(0)
+        with pytest.raises(AssertionError, match="expected 0 LLM calls"):
+            llmentary.expect_no_calls(quiet=0.2)
+        llmentary.expect().allow_empty().isolated_from(unused)
+    finally:
+        unused.cleanup()

@@ -87,6 +87,7 @@ def test_doc_python_snippets_compile_and_match_api() -> None:
         "otlp",
         "cleanup",
         "expect",
+        "expect_no_calls",
         "query",
         "mark",
         "soft_expect",
