@@ -408,8 +408,11 @@ class Session:
         return SoftExpectation(trace) if soft else Expectation(trace)
 
     @contextlib.contextmanager
-    def soft_expect(self) -> Iterator[SoftExpectation]:
-        expectation = SoftExpectation(self._trace_or_zero_calls())
+    def soft_expect(self, *, since: Optional[int] = None) -> Iterator[SoftExpectation]:
+        trace = self._trace_or_zero_calls()
+        if since is not None:
+            trace = trace.since(since)
+        expectation = SoftExpectation(trace)
         yield expectation
         expectation.assert_all()
 

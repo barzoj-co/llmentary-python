@@ -26,11 +26,74 @@ ArgsMatcher = Union[Mapping[str, Any], Callable[[Mapping[str, Any]], bool]]
 Regex = Union[str, Pattern[str]]
 
 
+def require_non_negative_count(name: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise TypeError(f"call_count() {name} must be a non-negative integer, got {value!r}")
+    return value
+
+
 class Expectation:
     """Fluent deterministic assertions over an llmentary session trace."""
 
     def __init__(self, trace: SessionTrace) -> None:
         self.trace = trace
+        self._allow_empty = False
+
+    def allow_empty(self) -> Expectation:
+        """Opt out of the empty-filter guard on ``no_errors`` / ``not_called``.
+
+        Same semantics as Go ``AllowEmpty()``: a filtered or ``since`` trace
+        with zero matching calls then passes those assertions.
+        """
+
+        self._allow_empty = True
+        return self
+
+    def call_count(
+        self,
+        expected: Optional[int] = None,
+        *,
+        min: Optional[int] = None,
+        max: Optional[int] = None,
+    ) -> Expectation:
+        """Assert how many captured calls the (possibly filtered) trace has.
+
+        ``call_count(2)`` requires an exact count. ``call_count(min=1, max=4)``
+        is the range form. The failure message includes the actual count and
+        the trace summary.
+        """
+
+        if expected is not None and (min is not None or max is not None):
+            raise TypeError("call_count() takes either an exact count or min/max, not both")
+        if expected is None and min is None and max is None:
+            raise TypeError("call_count() requires an exact count or min/max")
+        if expected is not None:
+            expected = require_non_negative_count("expected", expected)
+        if min is not None:
+            min = require_non_negative_count("min", min)
+        if max is not None:
+            max = require_non_negative_count("max", max)
+        if min is not None and max is not None and min > max:
+            raise TypeError(f"call_count() min={min} is greater than max={max}")
+
+        actual = len(self.trace.calls)
+        if expected is not None:
+            self._assert(
+                actual == expected,
+                f"expected {expected} captured call(s), got {actual}",
+            )
+            return self
+        if min is not None:
+            self._assert(
+                actual >= min,
+                f"expected at least {min} captured call(s), got {actual}",
+            )
+        if max is not None:
+            self._assert(
+                actual <= max,
+                f"expected at most {max} captured call(s), got {actual}",
+            )
+        return self
 
     def tool_called(self, name: str) -> Expectation:
         self._assert(
@@ -40,6 +103,8 @@ class Expectation:
         return self
 
     def not_called(self, name: str) -> Expectation:
+        if not self._require_matching_calls():
+            return self
         self._assert(
             all(call.name != name for call in self._tool_calls()),
             f"expected tool {name!r} not to be called",
@@ -223,6 +288,8 @@ class Expectation:
         return self.retries(max_count=0)
 
     def no_errors(self) -> Expectation:
+        if not self._require_matching_calls():
+            return self
         errors = [call for call in self.trace.calls if call.error or call.mid_stream_error]
         self._assert(not errors, f"expected no errors, got {len(errors)} errored call(s)")
         return self
@@ -467,6 +534,12 @@ class Expectation:
             if maximum is not None:
                 self._assert(value <= maximum, f"expected {name} <= {maximum}ms, got {value}ms")
         return self
+
+    def _require_matching_calls(self) -> bool:
+        if self.trace.calls or self._allow_empty:
+            return True
+        self._assert(False, self.trace.empty_match_message())
+        return False
 
     def _assert(self, condition: bool, message: str) -> None:
         if not condition:

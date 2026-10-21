@@ -105,7 +105,7 @@ def test_tool_flow(llmentary):
         ],
     )
 
-    llmentary.expect().tool_called("get_weather").args_subset(
+    llmentary.expect().call_count(2).tool_called("get_weather").args_subset(
         "get_weather", {"city": "Paris"}
     ).tool_result_fed_back("get_weather").no_errors()
 ```
@@ -165,9 +165,11 @@ session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
 ## Assertions
 
 ```python
-llmentary.expect().tool_called("search").called_times("search", 1)
+llmentary.expect().call_count(1).tool_called("search").called_times("search", 1)
 llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
-llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
+llmentary.query().without_tools().expect().call_count(1).request_param(
+    "response_format.type", "json_schema"
+)
 mark = llmentary.mark()
 llmentary.expect(since=mark).final_response_mentions_any("20", "sunny")
 
@@ -176,17 +178,19 @@ with llmentary.soft_expect() as expect:
     expect.response_contains("done")
 ```
 
-Supported deterministic assertions include tool calls (`tool_called`,
-`not_called`, `called_times`, `args_subset`, `args_matcher`, `order`,
-`parallel_tool_calls`, `tool_result_fed_back`), request and finish metadata
-(`model`, `request_param`, `finish_reason`), usage and timing (`tokens`,
-`latency`, `ttft`, `retries`, `no_retries`), errors (`no_errors`, `has_error`,
-`mid_stream_error`), prompt or response text (`prompt_contains`,
-`prompt_regex`, `response_contains`, `response_regex`, `response_json_valid`,
-`response_json_schema`), and spec observability (`no_spec_violations`,
-`no_ignored_fields`). Failures raise `AssertionError` with the session trace
-summary. Use `llmentary.list_sessions()` when a wait or expect fails with
-zero calls, so the message can name the known session ids.
+Supported deterministic assertions include call count (`call_count`), tool
+calls (`tool_called`, `not_called`, `called_times`, `args_subset`,
+`args_matcher`, `order`, `parallel_tool_calls`, `tool_result_fed_back`),
+request and finish metadata (`model`, `request_param`, `finish_reason`), usage
+and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
+(`no_errors`, `has_error`, `mid_stream_error`), prompt or response text
+(`prompt_contains`, `prompt_regex`, `response_contains`, `response_regex`,
+`response_json_valid`, `response_json_schema`), and spec observability
+(`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
+with the session trace summary. A filter or `since=` that matches zero calls
+fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
+`llmentary.list_sessions()` when a wait or expect fails with zero calls, so
+the message can name the known session ids.
 
 See [`docs/api.md`](docs/api.md), [`docs/pytest.md`](docs/pytest.md), and the
 proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).

@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional
 
+import pytest
+
+from llmentary.assertions import Expectation
 from llmentary.types import SessionTrace
 
 SPECIALIST_TOOLS = [
@@ -109,3 +112,76 @@ def test_filtered_kwargs_match_chainable_methods() -> None:
         3,
     ]
     assert [call.sequence_number() for call in trace.filtered(since=1).calls] == [2, 3]
+
+
+def test_call_count_exact_and_range() -> None:
+    expect = Expectation(_h1_trace())
+    expect.call_count(3)
+    expect.call_count(min=2, max=4)
+    expect.call_count(min=3)
+    expect.call_count(max=3)
+
+    with pytest.raises(AssertionError, match="expected 2 captured call\\(s\\), got 3") as caught:
+        Expectation(_h1_trace()).call_count(2)
+    message = str(caught.value)
+    assert "llmentary session h1" in message
+    assert "3 captured call" in message
+
+    with pytest.raises(AssertionError, match="expected at least 4 captured call\\(s\\), got 3"):
+        Expectation(_h1_trace()).call_count(min=4)
+    with pytest.raises(AssertionError, match="expected at most 2 captured call\\(s\\), got 3"):
+        Expectation(_h1_trace()).call_count(max=2)
+    with pytest.raises(TypeError, match="exact count or min/max"):
+        Expectation(_h1_trace()).call_count()
+    with pytest.raises(TypeError, match="not both"):
+        Expectation(_h1_trace()).call_count(2, min=1)
+    Expectation(_h1_trace().since(3)).call_count(0)
+    Expectation(_h1_trace().since(3)).call_count(min=0, max=0)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(-1)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace().since(3)).call_count(min=-1)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(True)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count(min=True)
+    with pytest.raises(TypeError, match="non-negative integer"):
+        Expectation(_h1_trace()).call_count("2")  # type: ignore[arg-type]
+
+
+def test_empty_filter_no_errors_and_not_called_fail() -> None:
+    trace = _h1_trace()
+    cases = [
+        trace.without_tools().since(1),
+        trace.offers_tool("missing"),
+        trace.since(3),
+    ]
+    for empty in cases:
+        assert empty.calls == []
+        with pytest.raises(AssertionError, match="no calls matched query") as no_errors:
+            Expectation(empty).no_errors()
+        with pytest.raises(AssertionError, match="no calls matched query") as not_called:
+            Expectation(empty).not_called("tool_0")
+        for caught in (no_errors, not_called):
+            message = str(caught.value)
+            assert "no calls matched query (" in message
+            assert "session has" not in message
+            assert "llmentary session h1" in message
+        Expectation(empty).allow_empty().no_errors()
+        Expectation(empty).allow_empty().not_called("tool_0")
+
+    with pytest.raises(
+        AssertionError, match=r"no calls matched query \(without_tools, since=1\)"
+    ):
+        Expectation(trace.without_tools().since(1)).no_errors()
+    with pytest.raises(
+        AssertionError, match=r'no calls matched query \(offers_tool\("missing"\)\)'
+    ):
+        Expectation(trace.offers_tool("missing")).not_called("x")
+    with pytest.raises(AssertionError, match=r"no calls matched query \(since=3\)"):
+        Expectation(trace.since(3)).no_errors()
+
+
+def test_non_empty_filter_no_errors_still_passes() -> None:
+    Expectation(_h1_trace().without_tools()).call_count(1).no_errors()
+    Expectation(_h1_trace().offers_tool("tool_0")).call_count(2).not_called("missing")
