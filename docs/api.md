@@ -220,7 +220,26 @@ common fields used for assertions:
 - usage, latency, TTFT, retry, and error fields in the names used by the Go
   proxy and OpenAI APIs
 
-Every assertion failure includes `SessionTrace.trace_summary()`, which lists each
-captured call with its sequence number (the same numbers `mark` / `since` use),
-API type, model, status, finish reason, timings, and tools. Passing pytest tests
-that used the `llmentary` fixture also print that summary.
+`CapturedCall.session_source` is `header`, `baggage`, `path`, or `default` when
+the proxy recorded attribution. `CapturedCall.upstream_url` is the forwarded
+upstream URL (string or `upstream.url`); it should not contain `/s/{session}`.
+
+```python
+call = llmentary.expect().trace.calls[0]
+assert call.session_source == "path"
+assert call.upstream_url is not None and "/s/" not in call.upstream_url
+```
+
+Every hard assertion failure includes `SessionTrace.trace_summary()` once.
+`SoftExpectation.assert_all()` prints each failure message, then the summary
+once at the end. The summary lists each captured call with its sequence number
+(the same numbers `mark` / `since` use), API type, model, status, source,
+tokens, finish reason (omitted when absent or `unknown`), timings, and tools.
+Unparsed records (no request and no response) print `unparsed call, keys=[…]`.
+Passing pytest tests that used the `llmentary` fixture also print that summary.
+
+```python
+from llmentary import proxy_version
+
+print(proxy_version())  # first line of `llmentary --version`, or "not found"
+```

@@ -12,6 +12,7 @@ import pytest
 
 from .binary import BinaryResolutionError
 from .client import ProxyHandle, Session, SessionNotFound, new_session_id, start_proxy
+from .doctor import proxy_report_header
 from .wait import default_wait_quiet, default_wait_timeout, parse_duration
 
 
@@ -72,6 +73,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "also LLMENTARY_WAIT_QUIET). --llmentary-quiet-for is a deprecated alias."
         ),
     )
+
+
+def pytest_report_header(config: pytest.Config) -> str:
+    """Print client and proxy versions once at the start of the pytest run."""
+
+    del config
+    return proxy_report_header()
 
 
 @pytest.fixture(scope="session")

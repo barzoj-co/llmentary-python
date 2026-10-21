@@ -12,6 +12,7 @@ from .client import (
     SessionNotFound,
     start_proxy,
 )
+from .doctor import proxy_binary_path, proxy_report_header, proxy_version
 from .types import (
     APIType,
     IgnoredField,
@@ -46,5 +47,8 @@ __all__ = [
     "__version__",
     "answer_mentions_any",
     "find_binary",
+    "proxy_binary_path",
+    "proxy_report_header",
+    "proxy_version",
     "start_proxy",
 ]
