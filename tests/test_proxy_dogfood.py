@@ -11,7 +11,7 @@ import pytest
 from fake_upstream import FakeOpenAIServer
 
 from llmentary import Session, SessionNotFound
-from llmentary.client import start_proxy
+from llmentary.client import new_session_id, start_proxy
 from llmentary.types import zero_calls_message
 
 CHAT_BODY: dict[str, Any] = {
@@ -85,6 +85,22 @@ def test_zero_calls_expect_includes_session_and_known_ids(llmentary: Session) ->
     assert llmentary.session_id in message
     assert "known sessions" in message
     assert zero_calls_message("empty-dog2-zero", [llmentary.session_id]).split(";")[0] in message
+
+
+@pytest.mark.integration
+def test_wait_never_created_min_calls_zero_is_session_not_found(
+    llmentary: Session,
+) -> None:
+    session_id = new_session_id("ghost-dog17-zero")
+    ghost = Session(
+        session_id=session_id,
+        proxy=llmentary.proxy,
+        wait_timeout=3,
+        quiet_for=0.2,
+    )
+    with pytest.raises(SessionNotFound, match=session_id) as caught:
+        ghost.wait(timeout=3, quiet=0.2, min_calls=0)
+    assert caught.value.session_id == session_id
 
 
 @pytest.mark.integration

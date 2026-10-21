@@ -188,12 +188,14 @@ def test_repeated_user_text_is_reported_once() -> None:
     )
     with pytest.raises(AssertionError, match="user text") as caught:
         Expectation(weather).isolated_from(barge)
-    message = str(caught.value)
-    assert message.count("Amsterdam canal boats") == 1
-    assert "#1 (call_3)" in message
-    assert "#1 (call_7)" in message
-    assert "#2 (call_5)" not in message
-    assert "#2 (call_8)" not in message
+    findings, sep, summary = str(caught.value).partition("\n\n")
+    assert sep, str(caught.value)
+    assert findings.count("Amsterdam canal boats") == 1
+    assert "#1 (call_3)" in findings
+    assert "#1 (call_7)" in findings
+    assert "#2 (call_5)" not in findings
+    assert "#2 (call_8)" not in findings
+    assert "llmentary session weather" in summary
 
 
 def test_missing_other_session_is_not_allow_empty() -> None:
