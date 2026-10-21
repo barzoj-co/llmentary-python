@@ -409,3 +409,58 @@ def test_client_aborted_typed_accessors(llmentary: Session) -> None:
     assert call.http_status != 502
     assert call.abort_phase in (None, "before_headers", "after_headers")
     llmentary.expect().aborted()
+
+
+def test_before_headers_timeout_is_status_aborted(llmentary: Session) -> None:
+    from httpx import Timeout
+    from openai import APIConnectionError, APITimeoutError
+
+    # Connect/write stay generous so the proxy can forward the request.
+    # A short read timeout aborts before response headers (DOG-35 A4).
+    client = openai_client(
+        llmentary, timeout=Timeout(5.0, connect=5.0, write=5.0, read=0.05, pool=5.0)
+    )
+    with pytest.raises((APITimeoutError, APIConnectionError, TimeoutError)):
+        client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
+            temperature=0,
+            max_tokens=400,
+            stream=True,
+        )
+    trace = llmentary.wait()
+    aborted = [call for call in trace.calls if call.client_aborted]
+    assert aborted, trace.trace_summary()
+    call = aborted[0]
+    assert call.upstream_called is True, trace.trace_summary()
+    assert call.abort_phase == "before_headers", trace.trace_summary()
+    assert "status=aborted" in trace.trace_summary()
+    assert "http=0" not in trace.trace_summary()
+
+
+def test_after_first_chunk_close_is_status_aborted(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
+            temperature=0,
+            max_tokens=400,
+            stream=True,
+        )
+    )
+    try:
+        for event in stream:
+            delta = event.choices[0].delta if event.choices else None
+            if delta is not None and delta.content:
+                break
+    finally:
+        stream.close()
+    trace = llmentary.wait()
+    aborted = [call for call in trace.calls if call.client_aborted]
+    assert aborted, trace.trace_summary()
+    call = aborted[0]
+    assert call.upstream_called is True, trace.trace_summary()
+    assert call.abort_phase == "after_headers", trace.trace_summary()
+    assert "status=aborted" in trace.trace_summary()
+    assert "http=200" in trace.trace_summary()

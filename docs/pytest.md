@@ -162,6 +162,7 @@ The plugin also adds a `pytest_report_header` line:
 
 `llmentary <client>; proxy: <binary --version first line>; binary: <path>`
 
-When no binary resolves, that stays one line: `proxy: not found`. The same
-values are available as `llmentary.proxy_version()` and
-`llmentary.proxy_binary_path()`.
+When no binary resolves, that stays one line: `proxy: not found`. The
+header still uses the full `--version` line (`proxy_version_line()`).
+`llmentary.proxy_version()` is the semver token (`0.4.0`, or `None` when
+unresolved). `llmentary.proxy_binary_path()` is the resolved binary.

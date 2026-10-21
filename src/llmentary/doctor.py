@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional, TextIO
@@ -11,6 +12,12 @@ from .binary import (
     detected_platform_tag,
     find_binary,
     install_kind,
+)
+
+_SEMVER_TOKEN = re.compile(
+    r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
 )
 
 
@@ -54,13 +61,44 @@ def proxy_binary_path(*, env: Optional[dict[str, str]] = None) -> Optional[Path]
         return None
 
 
-def proxy_version(*, env: Optional[dict[str, str]] = None) -> str:
-    """First line of ``llmentary --version``, or ``not found``."""
+def proxy_version_line(*, env: Optional[dict[str, str]] = None) -> Optional[str]:
+    """First line of ``llmentary --version``, or ``None`` when unresolved."""
 
     path = proxy_binary_path(env=env)
     if path is None:
-        return "not found"
-    return binary_version_output(path)
+        return None
+    text = binary_version_output(path)
+    if text in {"", "unknown"}:
+        return None
+    return text
+
+
+def proxy_version(*, env: Optional[dict[str, str]] = None) -> Optional[str]:
+    """Proxy semver from ``llmentary --version``, or ``None`` when unresolved.
+
+    The full ``--version`` line stays on :func:`proxy_version_line`.
+    """
+
+    return parse_proxy_semver(proxy_version_line(env=env))
+
+
+def parse_proxy_semver(line: Optional[str]) -> Optional[str]:
+    """Return the version token from a ``--version`` line, or ``None``."""
+
+    if line is None:
+        return None
+    first = line.splitlines()[0].strip() if line else ""
+    if not first or first in {"unknown", "not found"}:
+        return None
+    tokens = first.split()
+    if tokens and tokens[0] == "llmentary":
+        tokens = tokens[1:]
+    if not tokens:
+        return None
+    token = tokens[0].lstrip("v").strip("(),")
+    if not _SEMVER_TOKEN.fullmatch(token):
+        return None
+    return token
 
 
 def proxy_report_header(*, env: Optional[dict[str, str]] = None) -> str:

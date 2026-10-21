@@ -321,6 +321,16 @@ class CapturedCall:
     def stream_truncated(self) -> bool:
         return self._flag("stream_truncated", "streamTruncated")
 
+    @property
+    def upstream_called(self) -> Optional[bool]:
+        """Whether the proxy forwarded this call upstream.
+
+        Reads the top-level Call field (DOG-35). ``None`` when the field is
+        absent (older proxies) or not a boolean.
+        """
+
+        return optional_bool(self.raw, "upstream_called", "upstreamCalled")
+
     def _flag(self, *keys: str) -> bool:
         return bool_flag(self.normalized_payload, *keys) or bool_flag(self.raw, *keys)
 
@@ -623,7 +633,7 @@ class SessionTrace:
         lines = [f"llmentary session {self.session_id}: {len(self.calls)} captured call(s)"]
         for call in self.calls:
             tool_names = ", ".join(tool.name for tool in call.tool_calls) or "-"
-            status = "error" if call.error or call.mid_stream_error else "ok"
+            status = _summary_status(call)
             latency = f", latency={call.latency_ms:.1f}ms" if call.latency_ms is not None else ""
             ttft = f", ttft={call.ttft_ms:.1f}ms" if call.ttft_ms is not None else ""
             finish_reason = call.finish_reason
@@ -634,9 +644,11 @@ class SessionTrace:
             )
             http_status = f", http={call.http_status}" if call.http_status is not None else ""
             streamed = ", streamed" if call.streamed else ""
-            aborted = ", client_aborted" if call.client_aborted else ""
-            if call.client_aborted and call.abort_phase:
-                aborted = f"{aborted}, phase={call.abort_phase}"
+            aborted = (
+                f", phase={call.abort_phase}"
+                if call.client_aborted and call.abort_phase
+                else ""
+            )
             truncated = ", stream_truncated" if call.stream_truncated else ""
             source = f", src={call.session_source}" if call.session_source else ""
             token_pair = call.usage_token_pair()
@@ -792,6 +804,21 @@ def find_call_list(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(session, Mapping):
         return find_call_list(session)
     return []
+
+
+def _summary_status(call: CapturedCall) -> str:
+    """Trace-summary ``status=`` token.
+
+    Client-aborted calls are ``aborted`` for both ``before_headers`` and
+    ``after_headers`` so a scan for ``status=error`` does not miss a cancel
+    that already received HTTP 200. Non-aborted calls stay ``ok`` / ``error``.
+    """
+
+    if call.client_aborted:
+        return "aborted"
+    if call.error or call.mid_stream_error:
+        return "error"
+    return "ok"
 
 
 def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
