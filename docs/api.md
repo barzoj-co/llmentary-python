@@ -63,10 +63,10 @@ Methods:
 - `llmentary.otlp()`: fetch OTLP bytes for the session
 - `llmentary.cleanup()`: delete the session
 - `llmentary.mark()`: current max call sequence number (`0` if none)
-- `llmentary.expect(soft=False, since=None, allow_empty=False)`: wait, then return
-  an expectation object scoped to calls after `since` when that mark is set.
-  `allow_empty=True` opts out of the empty-filter guard on `no_errors` /
-  `not_called`
+- `llmentary.expect(soft=False, since=None)`: wait, then return an expectation
+  object scoped to calls after `since` when that mark is set. Call
+  ``allow_empty()`` before ``no_errors`` / ``not_called`` to opt out of the
+  empty-filter guard (Go ``AllowEmpty()``)
 - `llmentary.query(api_type=None, model=None)`: scope assertions by API type/model
 - `llmentary.soft_expect()`: context manager that accumulates assertion failures
 
@@ -97,14 +97,14 @@ calls whose sequence number is greater than `mark`. The same filters exist on
 
 `Session.expect()` still fails when the **whole session** has zero calls. After a
 filter or `since=` cuts the trace to zero matching calls, `no_errors()` and
-`not_called()` also fail, with
-`no calls matched query (without_tools, since=3); session has 8 calls` plus the
-trace summary. That stops a missed turn or a bypassed proxy from looking green.
+`not_called()` also fail, with `no calls matched query (without_tools, since=3)`
+plus the trace summary. That stops a missed turn or a bypassed proxy from
+looking green.
 
 Opt out only when the test really expects zero matching calls:
 
 ```python
-llmentary.expect(since=mark, allow_empty=True).no_errors()
+llmentary.expect(since=mark).allow_empty().no_errors()
 ```
 
 Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the

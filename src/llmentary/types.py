@@ -556,13 +556,11 @@ class SessionTrace:
         )
 
     def empty_match_message(self) -> str:
-        """Describe a filter that matched no calls, including the session size."""
+        """Go-compatible empty-filter message: ``no calls matched query (<filters>)``."""
 
-        query = f" ({', '.join(self.filter_labels)})" if self.filter_labels else ""
-        return (
-            f"no calls matched query{query}; "
-            f"session has {len(find_call_list(self.raw))} calls"
-        )
+        if self.filter_labels:
+            return f"no calls matched query ({', '.join(self.filter_labels)})"
+        return "no calls matched query"
 
     def spec_violations(self) -> list[SpecViolation]:
         found: list[SpecViolation] = []

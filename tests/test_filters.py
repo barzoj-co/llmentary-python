@@ -152,17 +152,21 @@ def test_empty_filter_no_errors_and_not_called_fail() -> None:
             Expectation(empty).not_called("tool_0")
         for caught in (no_errors, not_called):
             message = str(caught.value)
-            assert "session has 3 calls" in message
+            assert "no calls matched query (" in message
+            assert "session has" not in message
             assert "llmentary session h1" in message
-        Expectation(empty, allow_empty=True).no_errors()
-        Expectation(empty, allow_empty=True).not_called("tool_0")
+        Expectation(empty).allow_empty().no_errors()
+        Expectation(empty).allow_empty().not_called("tool_0")
 
-    with pytest.raises(AssertionError, match="without_tools") as caught:
+    with pytest.raises(
+        AssertionError, match=r"no calls matched query \(without_tools, since=1\)"
+    ):
         Expectation(trace.without_tools().since(1)).no_errors()
-    assert "since=1" in str(caught.value)
-    with pytest.raises(AssertionError, match=r'offers_tool\("missing"\)'):
+    with pytest.raises(
+        AssertionError, match=r'no calls matched query \(offers_tool\("missing"\)\)'
+    ):
         Expectation(trace.offers_tool("missing")).not_called("x")
-    with pytest.raises(AssertionError, match="since=3"):
+    with pytest.raises(AssertionError, match=r"no calls matched query \(since=3\)"):
         Expectation(trace.since(3)).no_errors()
 
 

@@ -29,9 +29,19 @@ Regex = Union[str, Pattern[str]]
 class Expectation:
     """Fluent deterministic assertions over an llmentary session trace."""
 
-    def __init__(self, trace: SessionTrace, *, allow_empty: bool = False) -> None:
+    def __init__(self, trace: SessionTrace) -> None:
         self.trace = trace
-        self.allow_empty = allow_empty
+        self._allow_empty = False
+
+    def allow_empty(self) -> Expectation:
+        """Opt out of the empty-filter guard on ``no_errors`` / ``not_called``.
+
+        Same semantics as Go ``AllowEmpty()``: a filtered or ``since`` trace
+        with zero matching calls then passes those assertions.
+        """
+
+        self._allow_empty = True
+        return self
 
     def call_count(
         self,
@@ -514,7 +524,7 @@ class Expectation:
         return self
 
     def _require_matching_calls(self) -> bool:
-        if self.trace.calls or self.allow_empty:
+        if self.trace.calls or self._allow_empty:
             return True
         self._assert(False, self.trace.empty_match_message())
         return False
@@ -527,8 +537,8 @@ class Expectation:
 class SoftExpectation(Expectation):
     """Non-fatal variant that accumulates failures until ``assert_all``."""
 
-    def __init__(self, trace: SessionTrace, *, allow_empty: bool = False) -> None:
-        super().__init__(trace, allow_empty=allow_empty)
+    def __init__(self, trace: SessionTrace) -> None:
+        super().__init__(trace)
         self.failures: list[str] = []
 
     def assert_all(self) -> None:

@@ -114,11 +114,10 @@ def test_empty_since_mark_is_not_vacuous(llmentary: Session) -> None:
     with pytest.raises(AssertionError, match="no calls matched query") as caught:
         llmentary.expect(since=mark).no_errors()
     message = str(caught.value)
-    assert f"since={mark}" in message
-    assert "session has 1 calls" in message
+    assert f"no calls matched query (since={mark})" in message
     with pytest.raises(AssertionError, match="no calls matched query"):
         llmentary.expect(since=mark).not_called("get_weather")
-    llmentary.expect(since=mark, allow_empty=True).no_errors()
+    llmentary.expect(since=mark).allow_empty().no_errors()
     llmentary.expect().call_count(1).no_errors()
 
 

@@ -188,7 +188,7 @@ and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
 `response_json_valid`, `response_json_schema`), and spec observability
 (`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
 with the session trace summary. A filter or `since=` that matches zero calls
-fails `no_errors()` / `not_called()` unless `allow_empty=True`. Use
+fails `no_errors()` / `not_called()` unless you call `allow_empty()` first. Use
 `llmentary.list_sessions()` when a wait or expect fails with zero calls, so
 the message can name the known session ids.
 
