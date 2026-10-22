@@ -2,6 +2,13 @@
 
 ## Upgrade notes
 
+## [0.7.1](https://github.com/barzoj-co/llmentary-python/compare/v0.7.0...v0.7.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* ignored field side, response_text, committed counts ([#57](https://github.com/barzoj-co/llmentary-python/issues/57)) ([f807606](https://github.com/barzoj-co/llmentary-python/commit/f807606007a4b9973c21fb32ad548e5925d58377))
+
 ## [0.7.0](https://github.com/barzoj-co/llmentary-python/compare/v0.6.1...v0.7.0) (2026-10-22)
 
 
