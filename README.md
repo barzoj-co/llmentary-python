@@ -148,6 +148,9 @@ Prove isolation with `isolated_from`. The rule is the isolation spec: same
 canned user question in two sessions is not a leak; a foreign user turn
 replayed as history is. Later calls introduce each new user-role message.
 An empty or unknown other session fails unless you pass `allow_empty`.
+`isolated_from` waits on a `Session` or session id with the same wait
+semantics as `expect()`, so a leak introduced by a still-running call
+on the other side is included; a pre-fetched trace is used as given.
 Comparison is exact (normalized), never substring.
 
 ```python

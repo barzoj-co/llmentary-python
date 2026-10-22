@@ -171,8 +171,12 @@ developer instructions, and tool definitions are not compared. Use
 unless `allow_empty()` was called. An empty or missing other session,
 including `SessionNotFound`, fails with
 `no calls recorded for session Y (isolated_from needs calls on both sides)`
-unless `allow_empty()` was called. `require_path=True` also requires
-`session_source == "path"`.
+unless `allow_empty()` was called. A `Session` or session id is read
+with the same `wait` semantics as `expect()` (settled calls, `quiet`,
+wait while the other side is still active). A pre-fetched `SessionTrace`
+is used as given. If that wait times out with no settled calls, the
+failure names the in-flight / timed-out state instead of a bare empty
+other. `require_path=True` also requires `session_source == "path"`.
 
 A path prefix isolates the process that built the SDK client, not two
 conversations inside one env-configured client. See the proxy

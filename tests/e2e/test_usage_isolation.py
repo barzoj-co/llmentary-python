@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -8,6 +9,7 @@ from e2e_helpers import (
     CHEAP_MODEL,
     REASONING_MODEL,
     REASONING_PROMPT,
+    assemble_chat_text,
     call_openai,
     openai_client,
 )
@@ -298,3 +300,216 @@ def test_later_call_two_new_user_messages_is_not_a_leak(llmentary: Session) -> N
         peer.expect().isolated_from(llmentary)
     finally:
         peer.cleanup()
+
+
+def test_isolated_from_sees_leak_source_that_is_still_streaming(
+    llmentary: Session,
+) -> None:
+    other = Session(
+        session_id=new_session_id("iso-stream-y"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    nonce = other.session_id[-8:]
+    secret = f"Y follow-up that X must never see ({nonce}) LTL-PY-DOG-37"
+    started = threading.Event()
+    drain_error: list[BaseException] = []
+
+    def run_y() -> None:
+        try:
+            client = openai_client(other)
+            call_openai(
+                lambda: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[{"role": "user", "content": f"Y opening question ({nonce})"}],
+                    temperature=0,
+                    max_tokens=8,
+                )
+            )
+            stream = call_openai(
+                lambda: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[{"role": "user", "content": secret}],
+                    temperature=0,
+                    max_tokens=16,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+            )
+            first = False
+            chunks: list[object] = []
+            for event in stream:
+                chunks.append(event)
+                if not first:
+                    first = True
+                    started.set()
+            assert chunks, "expected Y stream to produce at least one chunk"
+        except BaseException as exc:
+            drain_error.append(exc)
+            started.set()
+
+    worker = threading.Thread(target=run_y, name="dog37-y")
+    worker.start()
+    try:
+        assert started.wait(30), "Y stream did not open"
+        if drain_error:
+            raise drain_error[0]
+        client = openai_client(llmentary)
+        call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "user", "content": secret},
+                    {"role": "assistant", "content": "ok"},
+                    {"role": "user", "content": "X asks its own question"},
+                ],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        with pytest.raises(AssertionError, match="also introduced by"):
+            llmentary.expect().isolated_from(other)
+    finally:
+        worker.join(timeout=30)
+        other.cleanup()
+
+
+def test_isolated_from_both_sides_streaming_still_sees_leak(
+    llmentary: Session,
+) -> None:
+    other = Session(
+        session_id=new_session_id("iso-stream-both-y"),
+        proxy=llmentary.proxy,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
+    )
+    nonce = other.session_id[-8:]
+    secret = f"Shared streaming leak text ({nonce}) LTL-PY-DOG-37"
+    y_started = threading.Event()
+    errors: list[BaseException] = []
+
+    def run_y() -> None:
+        try:
+            client = openai_client(other)
+            stream = call_openai(
+                lambda: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[{"role": "user", "content": secret}],
+                    temperature=0,
+                    max_tokens=16,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+            )
+            first = False
+            for event in stream:
+                if not first:
+                    first = True
+                    y_started.set()
+                _ = event
+        except BaseException as exc:
+            errors.append(exc)
+            y_started.set()
+
+    worker = threading.Thread(target=run_y, name="dog37-both-y")
+    worker.start()
+    try:
+        assert y_started.wait(30), "Y stream did not open"
+        if errors:
+            raise errors[0]
+        client = openai_client(llmentary)
+        stream = call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[
+                    {"role": "user", "content": secret},
+                    {"role": "assistant", "content": "ok"},
+                    {"role": "user", "content": "X streaming follow-up"},
+                ],
+                temperature=0,
+                max_tokens=8,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+        )
+        assemble_chat_text(stream)
+        with pytest.raises(AssertionError, match="also introduced by"):
+            llmentary.expect().isolated_from(other)
+    finally:
+        worker.join(timeout=30)
+        other.cleanup()
+
+
+def test_isolated_from_times_out_on_other_side_still_streaming(
+    llmentary: Session,
+) -> None:
+    other = Session(
+        session_id=new_session_id("iso-stream-timeout-y"),
+        proxy=llmentary.proxy,
+        wait_timeout=1.0,
+        quiet_for=0.1,
+    )
+    starter = Session(
+        session_id=new_session_id("iso-stream-timeout-x"),
+        proxy=llmentary.proxy,
+        wait_timeout=1.0,
+        quiet_for=0.1,
+    )
+    started = threading.Event()
+    release = threading.Event()
+    errors: list[BaseException] = []
+
+    def hold_y() -> None:
+        try:
+            client = openai_client(other)
+            stream = call_openai(
+                lambda: client.chat.completions.create(
+                    model=CHEAP_MODEL,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "Hold this stream open LTL-PY-DOG-37",
+                        }
+                    ],
+                    temperature=0,
+                    max_tokens=32,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+            )
+            iterator = iter(stream)
+            next(iterator, None)
+            started.set()
+            release.wait(30)
+            assemble_chat_text(iterator)
+        except BaseException as exc:
+            errors.append(exc)
+            started.set()
+
+    worker = threading.Thread(target=hold_y, name="dog37-hold-y")
+    worker.start()
+    try:
+        assert started.wait(30), "Y stream did not open"
+        if errors:
+            raise errors[0]
+        client = openai_client(starter)
+        call_openai(
+            lambda: client.chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": "X settled prompt LTL-PY-DOG-37"}],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        with pytest.raises(
+            AssertionError,
+            match=r"still in flight|wait timed out on session",
+        ):
+            starter.expect().isolated_from(other)
+        starter.expect().allow_empty().isolated_from(other)
+    finally:
+        release.set()
+        worker.join(timeout=30)
+        other.cleanup()
+        starter.cleanup()

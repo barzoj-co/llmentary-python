@@ -7,6 +7,7 @@ import pytest
 from llmentary.assertions import Expectation
 from llmentary.client import SessionNotFound
 from llmentary.types import SessionTrace
+from llmentary.wait import WaitTimeoutError
 
 CallPayload = dict[str, Any]
 
@@ -634,3 +635,262 @@ def test_userless_first_call_does_not_consume_first_call_status() -> None:
     )
     with pytest.raises(AssertionError, match="Amsterdam canal boats"):
         Expectation(own).isolated_from(peer)
+
+
+def _wait_timeout(session_id: str, *, calls: int = 0, active: int = 0) -> WaitTimeoutError:
+    return WaitTimeoutError(
+        "wait timed out",
+        session_id=session_id,
+        timeout=1.0,
+        calls=calls,
+        active=active,
+    )
+
+
+def test_isolated_from_waits_on_other_session_in_flight_leak() -> None:
+    secret = "Y secret follow-up text"
+    settled = _trace(
+        "y",
+        _call(session_id="y", ident="call_y1", seq=1, user="Y opening question"),
+    )
+    after_wait = _trace(
+        "y",
+        _call(session_id="y", ident="call_y1", seq=1, user="Y opening question"),
+        _call(session_id="y", ident="call_y2", seq=2, user=secret),
+    )
+    own = _trace(
+        "x",
+        _replay_call(
+            session_id="x",
+            ident="call_x1",
+            seq=1,
+            history=secret,
+            user="X asks its own question",
+        ),
+    )
+
+    class _Control:
+        def __init__(self) -> None:
+            self.waits = 0
+            self.gets = 0
+
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            self.waits += 1
+            assert session_id == "y"
+            return after_wait
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            self.gets += 1
+            return settled
+
+    control = _Control()
+
+    class _Proxy:
+        def __init__(self) -> None:
+            self.control = control
+
+    class _Session:
+        session_id = "x"
+        proxy = _Proxy()
+        wait_timeout = 5.0
+        quiet_for = 0.1
+
+    class _Other:
+        session_id = "y"
+
+        def wait(self, **_kwargs: object) -> SessionTrace:
+            return control.wait_session("y")
+
+        def trace(self) -> SessionTrace:
+            return control.get_session("y")
+
+    with pytest.raises(AssertionError, match="also introduced by session y"):
+        Expectation(own, session=_Session()).isolated_from(_Other())
+    assert control.waits == 1
+
+    control.waits = 0
+    control.gets = 0
+    with pytest.raises(AssertionError, match="also introduced by session y"):
+        Expectation(own, session=_Session()).isolated_from("y")
+    assert control.waits == 1
+    assert control.gets == 0
+
+
+def test_isolated_from_prefers_wait_kwargs_from_asserting_session() -> None:
+    seen: list[dict[str, float]] = []
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+    other = _trace(
+        "y",
+        _call(session_id="y", ident="call_y1", seq=1, user="Tell a short story."),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **kwargs: float) -> SessionTrace:
+            seen.append(dict(kwargs))
+            assert session_id == "y"
+            return other
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise AssertionError(f"must wait, not GET {session_id}")
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 7.0
+        quiet_for = 0.2
+
+    Expectation(own, session=_Session()).isolated_from("y")
+    assert seen == [{"timeout": 7.0, "quiet": 0.2}]
+
+
+def test_isolated_from_prefetched_trace_is_not_refetched() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+    other = _trace(
+        "y",
+        _call(session_id="y", ident="call_y1", seq=1, user="Tell a short story."),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise AssertionError(f"must not wait on {session_id}")
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise AssertionError(f"must not GET {session_id}")
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    Expectation(own, session=_Session()).isolated_from(other)
+
+
+def test_isolated_from_other_only_inflight_names_timeout() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise _wait_timeout(session_id, calls=0, active=1)
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise SessionNotFound(session_id)
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    class _Other:
+        session_id = "z"
+
+        def wait(self, **_kwargs: object) -> SessionTrace:
+            raise _wait_timeout(self.session_id, calls=0, active=1)
+
+        def trace(self) -> SessionTrace:
+            raise SessionNotFound(self.session_id)
+
+    with pytest.raises(AssertionError, match=r"session z has 1 call still in flight"):
+        Expectation(own, session=_Session()).isolated_from(_Other())
+    with pytest.raises(AssertionError, match=r"session z has 1 call still in flight"):
+        Expectation(own, session=_Session()).isolated_from("z")
+    Expectation(own, session=_Session()).allow_empty().isolated_from(_Other())
+    Expectation(own, session=_Session()).allow_empty().isolated_from("z")
+
+
+def test_isolated_from_other_timeout_unknown_active_is_not_no_calls() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise _wait_timeout(session_id, calls=0, active=0)
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            return _trace(session_id)
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    with pytest.raises(
+        AssertionError,
+        match=r"wait timed out on session ghost \(isolated_from needs calls on both sides\)",
+    ):
+        Expectation(own, session=_Session()).isolated_from("ghost")
+    Expectation(own, session=_Session()).allow_empty().isolated_from("ghost")
+
+
+def test_isolated_from_other_timeout_with_settled_calls_runs_assertion() -> None:
+    secret = "Y secret follow-up text"
+    own = _trace(
+        "x",
+        _replay_call(
+            session_id="x",
+            ident="call_x1",
+            seq=1,
+            history=secret,
+            user="X asks its own question",
+        ),
+    )
+    settled = _trace("y", _call(session_id="y", ident="call_y2", seq=2, user=secret))
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise _wait_timeout(session_id, calls=1, active=1)
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            return settled
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    with pytest.raises(AssertionError, match="also introduced by session y") as caught:
+        Expectation(own, session=_Session()).isolated_from("y")
+    message = str(caught.value)
+    assert "wait timed out on session y" in message
+    assert "session y has 1 call still in flight" in message
+
+
+def test_isolated_from_other_deleted_mid_wait_is_empty() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise SessionNotFound(session_id)
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise SessionNotFound(session_id)
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    with pytest.raises(
+        AssertionError,
+        match=r"no calls recorded for session gone \(isolated_from needs calls on both sides\)",
+    ):
+        Expectation(own, session=_Session()).isolated_from("gone")
+    Expectation(own, session=_Session()).allow_empty().isolated_from("gone")
