@@ -211,7 +211,8 @@ def test_error_normalized_timeout_categories() -> None:
     assert captured.error_type == "upstream_timeout"
     assert captured.error_code == "upstream_timeout"
     assert captured.error_normalized == "upstream_timeout"
-    assert captured.error_mapping["normalized"] == "upstream_timeout"
+    assert captured.error_source == "proxy"
+    assert captured.error_mapping["source"] == "proxy"
 
     idle = _ok_call()
     idle["http_status"] = 200
@@ -229,7 +230,41 @@ def test_error_normalized_timeout_categories() -> None:
     assert captured.http_status == 200
     assert captured.upstream_called is True
     assert captured.error_normalized == "upstream_idle_timeout"
+    assert captured.error_source == "proxy"
     assert captured.mid_stream_error is None
+
+
+def test_error_source_omitted_empty_and_invalid() -> None:
+    missing = _ok_call()
+    missing["error"] = {"normalized": "upstream_timeout"}
+    assert _captured(missing).error_source is None
+
+    empty = _ok_call()
+    empty["error"] = {"normalized": "upstream_timeout", "source": ""}
+    assert _captured(empty).error_source is None
+
+    none = _ok_call()
+    none["error"] = {"normalized": "upstream_timeout", "source": None}
+    assert _captured(none).error_source is None
+
+    bad = _ok_call()
+    bad["error"] = {"normalized": "upstream_timeout", "source": ["proxy"]}
+    assert _captured(bad).error_source is None
+
+    camel = _ok_call()
+    camel["error"] = {"normalized": "upstream_timeout", "Source": "proxy"}
+    assert _captured(camel).error_source is None
+
+    nested = _ok_call()
+    nested["error"] = None
+    nested["normalized"] = {
+        "error": {
+            "normalized": "upstream_timeout",
+            "source": "proxy",
+        }
+    }
+    assert _captured(nested).error_source == "proxy"
+    assert _captured(nested).error_normalized == "upstream_timeout"
 
 
 def test_error_normalized_only_field_and_invalid_corners() -> None:

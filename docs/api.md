@@ -331,7 +331,9 @@ the call is not aborted (the wire field is omitted).
 `CapturedCall.upstream_called` is the top-level Call field (`True` /
 `False`) or `None` when absent. `CapturedCall.error_normalized` is the
 cross-provider category (`upstream_timeout`, `upstream_idle_timeout`,
-`network`, …) or `None` when the call has no error. Closing after `[DONE]` or a terminal
+`network`, …) or `None` when the call has no error.
+`CapturedCall.error_source` is who recorded it (`proxy` for header/idle
+timeouts) or `None` when omitted. Closing after `[DONE]` or a terminal
 Responses event is not an abort. `expect().aborted()` asserts at least
 one call was client-aborted. Aborted calls print `status=aborted` for
 both phases; `http=` stays when an upstream status was recorded.

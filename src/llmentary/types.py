@@ -410,6 +410,13 @@ class CapturedCall:
         return value if isinstance(value, str) and value else None
 
     @property
+    def error_source(self) -> Optional[str]:
+        """Who recorded the error (``proxy`` for header/idle timeouts)."""
+
+        value = self.error_mapping.get("source")
+        return value if isinstance(value, str) and value else None
+
+    @property
     def mid_stream_error(self) -> Optional[Any]:
         return first_present(
             self.raw,
