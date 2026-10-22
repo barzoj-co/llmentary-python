@@ -235,6 +235,10 @@ def test_error_normalized_timeout_categories() -> None:
 
 
 def test_error_source_omitted_empty_and_invalid() -> None:
+    source_only = _ok_call()
+    source_only["error"] = {"source": "proxy"}
+    assert _captured(source_only).error_source == "proxy"
+
     missing = _ok_call()
     missing["error"] = {"normalized": "upstream_timeout"}
     assert _captured(missing).error_source is None

@@ -872,7 +872,7 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
 def looks_like_error_object(mapping: Mapping[str, Any]) -> bool:
     return any(
         mapping.get(key) not in (None, "")
-        for key in ("type", "code", "message", "normalized")
+        for key in ("type", "code", "message", "normalized", "source")
     )
 
 
