@@ -2,6 +2,19 @@
 
 ## Upgrade notes
 
+## [0.6.0](https://github.com/barzoj-co/llmentary-python/compare/v0.5.2...v0.6.0) (2026-10-22)
+
+
+### Features
+
+* add python -m llmentary --version ([#47](https://github.com/barzoj-co/llmentary-python/issues/47)) ([319d465](https://github.com/barzoj-co/llmentary-python/commit/319d465f06cca71ec79b6e7102fc6bea06be86bd))
+
+
+### Bug Fixes
+
+* stop inventing still active 0 on wait timeout ([#48](https://github.com/barzoj-co/llmentary-python/issues/48)) ([3f8624f](https://github.com/barzoj-co/llmentary-python/commit/3f8624ffe5e2f9e16977c9fc5ca7d63779f5fcc8))
+* wait on the other isolated_from session ([#46](https://github.com/barzoj-co/llmentary-python/issues/46)) ([b746196](https://github.com/barzoj-co/llmentary-python/commit/b746196d215e708de8d373f7a1833dfc610cd6c7))
+
 ### 0.5.1
 
 `proxy_version()` now returns a bare semver (`"0.4.1"`) instead of the full
