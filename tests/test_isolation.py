@@ -869,6 +869,29 @@ def test_isolated_from_other_timeout_with_settled_calls_runs_assertion() -> None
     assert "session y has 1 call still in flight" in message
 
 
+def test_isolated_from_other_get_after_timeout_propagates_errors() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+
+    class _Control:
+        def wait_session(self, session_id: str, **_kwargs: object) -> SessionTrace:
+            raise _wait_timeout(session_id, calls=0, active=1)
+
+        def get_session(self, session_id: str) -> SessionTrace:
+            raise RuntimeError(f"control plane down for {session_id}")
+
+    class _Session:
+        session_id = "x"
+        proxy = type("P", (), {"control": _Control()})()
+        wait_timeout = 1.0
+        quiet_for = 0.1
+
+    with pytest.raises(RuntimeError, match="control plane down"):
+        Expectation(own, session=_Session()).isolated_from("y")
+
+
 def test_isolated_from_other_deleted_mid_wait_is_empty() -> None:
     own = _trace(
         "x",

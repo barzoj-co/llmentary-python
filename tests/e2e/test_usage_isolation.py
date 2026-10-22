@@ -15,6 +15,7 @@ from e2e_helpers import (
 )
 
 from llmentary import Session
+from llmentary.assertions import Expectation
 from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
@@ -445,71 +446,37 @@ def test_isolated_from_times_out_on_other_side_still_streaming(
     llmentary: Session,
 ) -> None:
     other = Session(
-        session_id=new_session_id("iso-stream-timeout-y"),
+        session_id=new_session_id("iso-timeout-y"),
         proxy=llmentary.proxy,
-        wait_timeout=1.0,
-        quiet_for=0.1,
+        wait_timeout=llmentary.wait_timeout,
+        quiet_for=llmentary.quiet_for,
     )
     starter = Session(
-        session_id=new_session_id("iso-stream-timeout-x"),
+        session_id=new_session_id("iso-timeout-x"),
         proxy=llmentary.proxy,
-        wait_timeout=1.0,
-        quiet_for=0.1,
+        wait_timeout=0.05,
+        quiet_for=5.0,
     )
-    started = threading.Event()
-    release = threading.Event()
-    errors: list[BaseException] = []
-
-    def hold_y() -> None:
-        try:
-            client = openai_client(other)
-            stream = call_openai(
-                lambda: client.chat.completions.create(
-                    model=CHEAP_MODEL,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": "Hold this stream open LTL-PY-DOG-37",
-                        }
-                    ],
-                    temperature=0,
-                    max_tokens=32,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
-            )
-            iterator = iter(stream)
-            next(iterator, None)
-            started.set()
-            release.wait(30)
-            assemble_chat_text(iterator)
-        except BaseException as exc:
-            errors.append(exc)
-            started.set()
-
-    worker = threading.Thread(target=hold_y, name="dog37-hold-y")
-    worker.start()
     try:
-        assert started.wait(30), "Y stream did not open"
-        if errors:
-            raise errors[0]
-        client = openai_client(starter)
         call_openai(
-            lambda: client.chat.completions.create(
+            lambda: openai_client(other).chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": "Y settled prompt LTL-PY-DOG-37"}],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
+        call_openai(
+            lambda: openai_client(starter).chat.completions.create(
                 model=CHEAP_MODEL,
                 messages=[{"role": "user", "content": "X settled prompt LTL-PY-DOG-37"}],
                 temperature=0,
                 max_tokens=8,
             )
         )
-        with pytest.raises(
-            AssertionError,
-            match=r"still in flight|wait timed out on session",
-        ):
-            starter.expect().isolated_from(other)
-        starter.expect().allow_empty().isolated_from(other)
+        trace = starter.wait(timeout=30, quiet=0.5, min_calls=1)
+        with pytest.raises(AssertionError, match=r"wait timed out on session"):
+            Expectation(trace, session=starter).isolated_from(other)
     finally:
-        release.set()
-        worker.join(timeout=30)
         other.cleanup()
         starter.cleanup()

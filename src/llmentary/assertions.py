@@ -309,8 +309,6 @@ class Expectation:
             loaded = getter()
         except SessionNotFound:
             return _empty_other_trace(session_id)
-        except Exception:
-            return _empty_other_trace(session_id)
         if isinstance(loaded, SessionTrace):
             return loaded
         return _empty_other_trace(session_id)
