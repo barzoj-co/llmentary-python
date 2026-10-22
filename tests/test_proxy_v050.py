@@ -270,6 +270,16 @@ def test_error_source_omitted_empty_and_invalid() -> None:
     assert _captured(nested).error_source == "proxy"
     assert _captured(nested).error_normalized == "upstream_timeout"
 
+    response_source = _ok_call()
+    response_source["error"] = None
+    response_source["response"] = {
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "source": "body",
+    }
+    captured = _captured(response_source)
+    assert captured.error_mapping == {}
+    assert captured.error_source is None
+
 
 def test_error_normalized_only_field_and_invalid_corners() -> None:
     only = _ok_call()
