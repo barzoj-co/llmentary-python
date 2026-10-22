@@ -44,6 +44,41 @@ def test_list_sessions_parses_control_payload() -> None:
     assert sessions[0].id == "default"
     assert sessions[0].calls == 3
     assert sessions[0].sources == ("default",)
+    assert sessions[0].spec is None
+
+
+def test_list_sessions_parses_spec_summary() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "sessions": [
+                    {
+                        "id": "with-spec",
+                        "calls": 4,
+                        "active": 0,
+                        "sources": ["header"],
+                        "spec": {
+                            "checked": 2,
+                            "clean": 1,
+                            "findings": 1,
+                            "request_only": 1,
+                            "not_checked": 1,
+                        },
+                    }
+                ]
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        sessions = client.list_sessions()
+
+    assert sessions[0].spec is not None
+    assert sessions[0].spec.checked == 2
+    assert sessions[0].spec.findings == 1
+    assert sessions[0].spec.request_only == 1
+    assert sessions[0].spec.not_checked == 1
 
 
 def test_get_session_unknown_raises_session_not_found() -> None:

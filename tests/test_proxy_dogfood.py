@@ -56,6 +56,12 @@ def test_list_sessions_and_session_not_found_against_real_proxy(llmentary: Sessi
     listed = llmentary.list_sessions()
     ids = {item.id for item in listed}
     assert llmentary.session_id in ids, listed
+    mine = next(item for item in listed if item.id == llmentary.session_id)
+    if mine.spec is not None:
+        assert (
+            mine.spec.checked + mine.spec.request_only + mine.spec.not_checked
+            == mine.calls
+        )
 
     with pytest.raises(SessionNotFound, match="definitely-missing-dog2") as caught:
         llmentary.proxy.control.get_session("definitely-missing-dog2")

@@ -11,6 +11,7 @@ from llmentary import (
     Query,
     Session,
     SessionNotFound,
+    SessionSpecSummary,
     proxy_version,
     proxy_version_line,
     pytest_plugin,
@@ -53,6 +54,8 @@ def test_package_exports_session_not_lab_aliases() -> None:
     assert llmentary.InFlightCall is InFlightCall
     assert "ProxyConfig" in llmentary.__all__
     assert llmentary.ProxyConfig is ProxyConfig
+    assert "SessionSpecSummary" in llmentary.__all__
+    assert llmentary.SessionSpecSummary is SessionSpecSummary
     assert "contract_path" in llmentary.__all__
     for removed in ("LabSession", "LlmentarySession"):
         assert removed not in llmentary.__all__
@@ -145,6 +148,8 @@ def test_doc_python_snippets_compile_and_match_api() -> None:
                                 "with_tools",
                                 "without_tools",
                                 "since",
+                                "committed",
+                                "aborted",
                             }:
                                 raise AssertionError(
                                     f"{path} uses unknown chained attribute {node.attr}"

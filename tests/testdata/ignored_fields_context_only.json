@@ -1,0 +1,50 @@
+{
+  "description": "Shared call vector: proxy v0.5.0 ignored_fields with context only (no side).",
+  "call": {
+    "seq": 1,
+    "id": "call_1",
+    "api_family": "chat.completions",
+    "request": {
+      "model": "fake-model",
+      "messages": [{"role": "user", "content": "hello there"}],
+      "stream": true,
+      "provider": {"order": ["x"]}
+    },
+    "response": {
+      "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]
+    },
+    "normalized": {
+      "output_text": "ok",
+      "validation": {
+        "mode": "warn",
+        "profile": "relaxed",
+        "target": "openai-compatible",
+        "request_checked": true,
+        "response_checked": true
+      },
+      "spec_violations": [],
+      "ignored_fields": [
+        {
+          "path": "provider",
+          "pointer": "/provider",
+          "key": "provider",
+          "kind": "vendor_field",
+          "context": "request",
+          "severity": "info",
+          "action": "report_only",
+          "hint": "vendor extra is ignored on openai-compatible"
+        },
+        {
+          "path": "provider.order",
+          "pointer": "/provider/order",
+          "key": "order",
+          "kind": "vendor_field",
+          "context": "request",
+          "severity": "info",
+          "action": "report_only",
+          "hint": "vendor extra is ignored on openai-compatible"
+        }
+      ]
+    }
+  }
+}

@@ -464,3 +464,43 @@ def test_after_first_chunk_close_is_status_aborted(llmentary: Session) -> None:
     assert call.abort_phase == "after_headers", trace.trace_summary()
     assert "status=aborted" in trace.trace_summary()
     assert "http=200" in trace.trace_summary()
+
+
+def test_after_headers_abort_response_text_is_partial_not_json(llmentary: Session) -> None:
+    client = openai_client(llmentary)
+    assembled = []
+    stream = call_openai(
+        lambda: client.chat.completions.create(
+            model=CHEAP_MODEL,
+            messages=[{"role": "user", "content": "Count slowly from 1 to 80 in words."}],
+            temperature=0,
+            max_tokens=400,
+            stream=True,
+        )
+    )
+    try:
+        for event in stream:
+            delta = event.choices[0].delta if event.choices else None
+            if delta is not None and delta.content:
+                assembled.append(delta.content)
+                break
+    finally:
+        stream.close()
+    trace = llmentary.wait()
+    aborted = [call for call in trace.calls if call.client_aborted]
+    assert aborted, trace.trace_summary()
+    call = aborted[0]
+    text = call.response_text
+    assert text != "{}"
+    assert not text.lstrip().startswith("{")
+    assert '"choices"' not in text
+    assert '"delta"' not in text
+    assert text
+    if assembled:
+        assert text.startswith(assembled[0]) or assembled[0].startswith(text)
+    llmentary.expect().call_count(1, exclude_aborted=False)
+    llmentary.query().aborted().expect().call_count(1)
+    listed = llmentary.list_sessions()
+    mine = next(row for row in listed if row.id == llmentary.session_id)
+    if mine.spec is not None:
+        assert mine.spec.checked + mine.spec.request_only + mine.spec.not_checked == mine.calls
