@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -692,19 +693,47 @@ def _norm_zip(name: str) -> str:
 
 def _release_archive(version: str, *, reported: str | None = None) -> tuple[bytes, str]:
     reported = version if reported is None else reported
-    script = f"#!/bin/sh\necho 'llmentary {reported} (deadbeef)'\n".encode()
+    goos, goarch = wheels.host_platform()
+    target = wheels.target_for_platform(goos, goarch)
+    if target.binary_name.endswith(".exe"):
+        script = f"@echo off\r\necho llmentary {reported} (deadbeef)\r\n".encode()
+        suffix = ".zip"
+    else:
+        script = f"#!/bin/sh\necho 'llmentary {reported} (deadbeef)'\n".encode()
+        suffix = ".tar.gz"
     spec = b"openapi: 3.1.0\ninfo:\n  title: t\n  version: 0.0.0\n"
     archive = io.BytesIO()
-    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-        info = tarfile.TarInfo(name="llmentary")
-        info.size = len(script)
-        info.mode = 0o755
-        tar.addfile(info, io.BytesIO(script))
-        contract = tarfile.TarInfo(name="openapi.yaml")
-        contract.size = len(spec)
-        tar.addfile(contract, io.BytesIO(spec))
-    goos, goarch = wheels.host_platform()
-    return archive.getvalue(), f"llmentary_{version}_{goos}_{goarch}.tar.gz"
+    if suffix == ".zip":
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(target.binary_name, script)
+            zf.writestr("openapi.yaml", spec)
+    else:
+        with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name=target.binary_name)
+            info.size = len(script)
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(script))
+            contract = tarfile.TarInfo(name="openapi.yaml")
+            contract.size = len(spec)
+            tar.addfile(contract, io.BytesIO(spec))
+    return archive.getvalue(), f"llmentary_{version}_{goos}_{goarch}{suffix}"
+
+
+def _assert_clean_release_version(binary: Path, version: str) -> None:
+    """Run ``--version`` on POSIX; on Windows read the fixture script instead."""
+
+    if os.name != "nt":
+        wheels.assert_clean_release_version(binary, version)
+        return
+    expected = version[1:] if version.startswith("v") else version
+    text = binary.read_text(encoding="utf-8", errors="replace")
+    first = next((line.strip() for line in text.splitlines() if "llmentary " in line), "")
+    tokens = first.split()
+    reported = tokens[1] if len(tokens) > 1 else ""
+    if "+dirty" in first:
+        raise SystemExit(f"{binary} --version is dirty: {first}")
+    if reported.lstrip("v") != expected:
+        raise SystemExit(f"{binary} --version {first!r} does not report {expected}")
 
 
 def _install_release(
@@ -739,11 +768,26 @@ def _install_release(
 
     monkeypatch.setattr(wheels, "fetch_release", fake_fetch)
     monkeypatch.setattr(wheels, "download_asset", fake_download)
+    if os.name == "nt":
+        monkeypatch.setattr(wheels, "assert_clean_release_version", _assert_clean_release_version)
     dest = tmp_path / "llmentary"
     pin = version or (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
     installed = wheels.install_release_binary(dest=dest, version=pin, token="test-token")
     assert isinstance(installed, Path)
     return installed
+
+
+def test_release_archive_uses_target_binary_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(wheels, "host_platform", lambda: ("windows", "amd64"))
+    archive, name = _release_archive("0.4.1")
+    assert name == "llmentary_0.4.1_windows_amd64.zip"
+    with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+        names = set(zf.namelist())
+    assert "llmentary.exe" in names
+    assert "openapi.yaml" in names
+    assert "llmentary" not in names
 
 
 def test_install_release_binary_accepts_pin_and_checksum(
@@ -753,7 +797,7 @@ def test_install_release_binary_accepts_pin_and_checksum(
     archive, name = _release_archive(pin)
     installed = _install_release(monkeypatch, tmp_path, archive=archive, name=name)
     assert installed.is_file()
-    wheels.assert_clean_release_version(installed, pin)
+    _assert_clean_release_version(installed, pin)
 
 
 def test_install_release_binary_rejects_checksum_mismatch(
@@ -778,7 +822,8 @@ def test_install_release_binary_rejects_stale_asset_name(
     stale = "0.4.0" if pin != "0.4.0" else "0.3.0"
     archive, _name = _release_archive(pin)
     goos, goarch = wheels.host_platform()
-    stale_name = f"llmentary_{stale}_{goos}_{goarch}.tar.gz"
+    suffix = ".zip" if goos == "windows" else ".tar.gz"
+    stale_name = f"llmentary_{stale}_{goos}_{goarch}{suffix}"
     with pytest.raises(SystemExit, match="No release asset matched"):
         _install_release(monkeypatch, tmp_path, archive=archive, name=stale_name)
 
