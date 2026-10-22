@@ -251,7 +251,11 @@ class ControlClient:
         error_mapping: Mapping[str, Any] = (
             error_payload if isinstance(error_payload, Mapping) else {}
         )
-        if explicit_active_count(error_mapping, payload) is None:
+        nested_session = payload.get("session")
+        session_mapping: Mapping[str, Any] = (
+            nested_session if isinstance(nested_session, Mapping) else {}
+        )
+        if explicit_active_count(error_mapping, session_mapping, payload) is None:
             list_active = self._list_session_active(session_id)
         return wait_timeout_error(
             session_id, timeout, payload, list_active=list_active

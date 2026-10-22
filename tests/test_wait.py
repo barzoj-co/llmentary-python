@@ -236,6 +236,35 @@ def test_wait_session_timeout_uses_configured_timeout_in_message() -> None:
             client.wait_session(session_id, timeout=5, quiet=0.1)
 
 
+def test_wait_timeout_nested_session_active_skips_list_sessions() -> None:
+    session_id = "sess-nested"
+    listed: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        listed.append(request.url.path)
+        if request.url.path.endswith("/wait"):
+            return httpx.Response(
+                504,
+                json={
+                    "id": session_id,
+                    "calls": [],
+                    "session": {"id": session_id, "active": 1},
+                    "error": {"type": "wait_timeout", "calls_seen": 0},
+                },
+            )
+        raise AssertionError(f"unexpected request {request.url.path}")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(
+            WaitTimeoutError, match=_timeout_message(session_id, 1, 0, 1)
+        ) as caught:
+            client.wait_session(session_id, timeout=1, quiet=0.1)
+
+    assert caught.value.active == 1
+    assert listed == [f"/sessions/{session_id}/wait"]
+
+
 def test_wait_timeout_uses_error_active_when_present() -> None:
     payload = {
         "id": "stall",
