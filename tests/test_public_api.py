@@ -75,6 +75,7 @@ def test_readme_is_user_facing() -> None:
     headings = re.findall(r"^## .+$", readme, flags=re.MULTILINE)
     assert headings == [
         "## Install",
+        "## Versions",
         "## Quickstart",
         "## Waiting for calls",
         "## Assertions",

@@ -1,5 +1,13 @@
 # Changelog
 
+## Upgrade notes
+
+### 0.5.1
+
+`proxy_version()` now returns a bare semver (`"0.4.1"`) instead of the full
+`llmentary --version` line. Use `proxy_version_line()` for the full line.
+`proxy_version().split()[1]` raises `IndexError` after this change.
+
 ## [0.5.2](https://github.com/barzoj-co/llmentary-python/compare/v0.5.1...v0.5.2) (2026-10-22)
 
 

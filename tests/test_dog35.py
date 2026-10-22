@@ -130,6 +130,25 @@ def test_proxy_version_returns_semver_from_version_line(
     assert line.startswith("llmentary 0.4.0 (")
 
 
+def test_proxy_version_dirty_and_empty_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dirty = tmp_path / "dirty"
+    dirty.write_text("#!/bin/sh\necho 'llmentary 0.4.1+dirty'\n", encoding="utf-8")
+    dirty.chmod(0o755)
+    monkeypatch.setenv("LLMENTARY_BIN", str(dirty))
+    monkeypatch.setenv("PATH", "")
+    assert proxy_version() == "0.4.1+dirty"
+    assert proxy_version_line() == "llmentary 0.4.1+dirty"
+
+    empty = tmp_path / "empty"
+    empty.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    empty.chmod(0o755)
+    monkeypatch.setenv("LLMENTARY_BIN", str(empty))
+    assert proxy_version() is None
+    assert proxy_version_line() is None
+
+
 def test_proxy_version_none_when_binary_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LLMENTARY_BIN", raising=False)
     monkeypatch.setenv("PATH", "")

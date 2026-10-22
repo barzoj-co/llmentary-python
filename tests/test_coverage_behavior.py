@@ -58,7 +58,7 @@ def test_cli_doctor_and_usage(
     assert main([]) == 2
     assert main(["nope"]) == 2
     err = capsys.readouterr().err
-    assert "usage: python -m llmentary doctor" in err
+    assert "usage: python -m llmentary doctor | --version | version" in err
 
 
 def test_doctor_in_process_and_version_corners(
