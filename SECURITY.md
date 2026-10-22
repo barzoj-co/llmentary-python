@@ -12,8 +12,7 @@ Report vulnerabilities privately through GitHub Security Advisories:
 https://github.com/barzoj-co/llmentary-python/security/advisories/new
 
 Do **not** open a public issue, pull request, or discussion for a security
-report. Private vulnerability reporting becomes available once this repository
-is public.
+report.
 
 Please include:
 
@@ -42,8 +41,8 @@ vulnerability.
 ## Out of scope
 
 - The Go proxy implementation itself (report it upstream)
-- Issues that require leaking `OPENAI_API_KEY`, `LLMTESTLAB_REPO_TOKEN`, or
-  other secrets in public artifacts
+- Issues that require leaking `OPENAI_API_KEY` or other secrets in public
+  artifacts
 
 ## Verifying PyPI attestations
 
@@ -66,14 +65,13 @@ Live OpenAI tests run in the separate `openai-e2e` job (`OpenAI E2E`). That job
 is the only one that references `environment: openai-e2e` and the only one that
 receives `OPENAI_API_KEY`. Only the `Real OpenAI E2E tests` step gets the key.
 Unit and fake-upstream jobs do not use the environment, so they run without
-approval. `LLMTESTLAB_REPO_TOKEN` stays the private-proxy checkout crutch it is
-today: a boolean presence check plus the `actions/checkout` `token:` input (and
-the release wheel-build step). Install and tooling steps run with no secrets.
+approval. Install and tooling steps run with no secrets. Proxy release
+downloads are anonymous; `GITHUB_TOKEN` is optional for GitHub API rate limits.
 
-`openai-e2e` is skipped for fork PRs. GitHub treats a skipped required check as
-passing, so `e2e-gate` is the required check: it is green only when live e2e
-succeeded. For a fork PR a maintainer reviews the diff, pushes it to a
-same-repo branch, and live e2e runs there. Never use `pull_request_target`.
+`openai-e2e` is skipped for fork PRs (no secrets). `e2e-gate` is the required
+check: it passes with `skipped (fork, no secrets)` when live e2e is skipped
+for a fork PR, and fails on same-repo PRs if live e2e did not run. Never use
+`pull_request_target`.
 
 The `openai-e2e` environment requires maintainer approval on each run that
 needs `OPENAI_API_KEY`. If that approval is rejected or times out, `e2e-gate`

@@ -744,12 +744,14 @@ def _install_release(
     name: str,
     checksum_line: str | None = None,
     version: str | None = None,
+    token: str | None = "test-token",
 ) -> Path:
     digest = hashlib.sha256(archive).hexdigest()
     checksums = f"{digest}  {name}\n" if checksum_line is None else checksum_line
+    seen: dict[str, Any] = {}
 
-    def fake_fetch(requested: str, token: str) -> dict[str, Any]:
-        assert token == "test-token"
+    def fake_fetch(requested: str, secret: str | None = None) -> dict[str, Any]:
+        seen["fetch_token"] = secret
         return {
             "assets": [
                 {"name": "checksums.txt", "url": "https://example/checksums.txt"},
@@ -759,7 +761,8 @@ def _install_release(
             ]
         }
 
-    def fake_download(url: str, token: str) -> bytes:
+    def fake_download(url: str, secret: str | None = None) -> bytes:
+        seen["download_token"] = secret
         if url.endswith("checksums.txt"):
             return checksums.encode()
         if url.endswith(name):
@@ -772,8 +775,9 @@ def _install_release(
         monkeypatch.setattr(wheels, "assert_clean_release_version", _assert_clean_release_version)
     dest = tmp_path / "llmentary"
     pin = version or (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
-    installed = wheels.install_release_binary(dest=dest, version=pin, token="test-token")
+    installed = wheels.install_release_binary(dest=dest, version=pin, token=token)
     assert isinstance(installed, Path)
+    assert seen["fetch_token"] == token
     return installed
 
 
@@ -860,3 +864,114 @@ def test_install_proxy_release_defaults_to_pin(
     monkeypatch.setattr(sys, "argv", ["install_proxy_release.py", "--output", str(dest)])
     installer.main()
     assert seen["version"] == pin
+
+
+def test_optional_github_token_is_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("LLMENTARY_REPO_TOKEN", raising=False)
+    assert wheels.optional_github_token() is None
+    assert wheels.optional_github_token("  ") is None
+
+
+def test_optional_github_token_uses_github_token_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", " rate-limit ")
+    monkeypatch.setenv("LLMENTARY_REPO_TOKEN", "old-crutch")
+    assert wheels.optional_github_token() == "rate-limit"
+    assert wheels.optional_github_token("explicit") == "explicit"
+
+
+def test_install_release_binary_works_without_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("LLMENTARY_REPO_TOKEN", raising=False)
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    archive, name = _release_archive(pin)
+    installed = _install_release(monkeypatch, tmp_path, archive=archive, name=name, token=None)
+    assert installed.is_file()
+
+
+def test_main_fetches_anonymously_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("LLMENTARY_REPO_TOKEN", raising=False)
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.4.1")
+    seen: dict[str, Any] = {}
+
+    def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
+        seen["token"] = token
+        raise SystemExit("stop-after-fetch")
+
+    monkeypatch.setattr(wheels, "fetch_release", fake_fetch)
+    with pytest.raises(SystemExit, match="stop-after-fetch"):
+        wheels.main()
+    assert seen["token"] is None
+
+
+def test_main_passes_optional_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "rate-limit")
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.4.1")
+    seen: dict[str, Any] = {}
+
+    def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
+        seen["token"] = token
+        raise SystemExit("stop-after-fetch")
+
+    monkeypatch.setattr(wheels, "fetch_release", fake_fetch)
+    with pytest.raises(SystemExit, match="stop-after-fetch"):
+        wheels.main()
+    assert seen["token"] == "rate-limit"
+
+
+def test_download_bytes_omits_authorization_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str | None] = []
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"public"
+
+    def fake_urlopen(request: object, timeout: int = 0) -> FakeResponse:
+        headers = getattr(request, "headers", {})
+        seen.append(headers.get("Authorization"))
+        return FakeResponse()
+
+    monkeypatch.setattr(wheels, "urlopen", fake_urlopen)
+    data = wheels.download_bytes(
+        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.4.1",
+        token=None,
+        accept="application/vnd.github+json",
+        follow_redirects=True,
+    )
+    assert data == b"public"
+    assert seen == [None]
+
+
+def test_download_bytes_failure_without_token_still_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request: object, timeout: int = 0) -> object:
+        raise HTTPError(
+            getattr(request, "full_url", ""),
+            404,
+            "Not Found",
+            Message(),
+            None,
+        )
+
+    monkeypatch.setattr(wheels, "urlopen", fake_urlopen)
+    with pytest.raises(SystemExit, match=r"Download failed .* HTTP 404"):
+        wheels.download_bytes(
+            "https://api.github.com/missing",
+            token=None,
+            accept="application/vnd.github+json",
+            follow_redirects=True,
+        )

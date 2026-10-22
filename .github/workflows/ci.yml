@@ -32,15 +32,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Fail clearly if llmentary repo token is missing
-        env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
-        run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
-            exit 1
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -49,7 +40,7 @@ jobs:
 
       - name: Install pinned proxy release
         env:
-          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python scripts/install_proxy_release.py --output "$LLMENTARY_BIN"
           python scripts/fetch_isolation_vectors.py --output /tmp/llmentary-isolation-vectors
@@ -82,15 +73,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Fail clearly if llmentary repo token is missing
-        env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
-        run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
-            exit 1
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -99,7 +81,7 @@ jobs:
 
       - name: Install pinned proxy release
         env:
-          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python scripts/install_proxy_release.py --output "$LLMENTARY_BIN"
           python scripts/fetch_isolation_vectors.py --output /tmp/llmentary-isolation-vectors
@@ -147,13 +129,8 @@ jobs:
 
       - name: Fail clearly if required secrets are missing
         env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
           HAS_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
         run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
-            exit 1
-          fi
           if [ "$HAS_OPENAI_KEY" != "true" ]; then
             echo "::error title=Missing secret::Add secrets.OPENAI_API_KEY for real OpenAI E2E tests."
             exit 1
@@ -167,7 +144,7 @@ jobs:
 
       - name: Install pinned proxy release
         env:
-          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/install_proxy_release.py --output "$LLMENTARY_BIN"
 
       - name: Install package and dev tools
