@@ -14,6 +14,7 @@ trace = control.wait_session("session-id", timeout=30, quiet=0.5, min_calls=2)
 control.delete_session("session-id")
 otlp_bytes = control.otlp("session-id")
 version = control.version()
+config = control.proxy_config()
 contract = control.openapi()
 ```
 
@@ -22,7 +23,8 @@ on a separate `-control` address (default `127.0.0.1:7778`). The control client
 uses:
 
 - `GET /healthz`
-- `GET /config` (includes `version` and the effective upstreams)
+- `GET /config` (includes `version`, upstreams, per-upstream `spec_targets`,
+  and optional `upstream_header_timeout` / `upstream_idle_timeout`)
 - `GET /sessions` and `GET /sessions?source=…`
 - `GET /sessions/{id}`
 - `GET /sessions/{id}/wait?timeout=30s&quiet=500ms&min_calls=2`
@@ -279,7 +281,7 @@ means validation was not run.
 
 | Field | Meaning |
 | --- | --- |
-| `call.validation` | Frozen `Validation` metadata, or `None` |
+| `call.validation` | Frozen `Validation` metadata, or `None`. `target` is `openai` or `openai-compatible` when the proxy recorded a spec target |
 | `call.spec_violations` | `list[SpecViolation]` or `None` if not checked |
 | `call.ignored_fields` | `list[IgnoredField]` or `None` if not checked |
 | `trace.spec_violations()` | Flattened findings from checked calls |
@@ -327,7 +329,9 @@ back to `normalized.client_aborted`. `CapturedCall.abort_phase` is
 `before_headers` or `after_headers` on an aborted call, and `None` when
 the call is not aborted (the wire field is omitted).
 `CapturedCall.upstream_called` is the top-level Call field (`True` /
-`False`) or `None` when absent. Closing after `[DONE]` or a terminal
+`False`) or `None` when absent. `CapturedCall.error_normalized` is the
+cross-provider category (`upstream_timeout`, `upstream_idle_timeout`,
+`network`, …) or `None` when the call has no error. Closing after `[DONE]` or a terminal
 Responses event is not an abort. `expect().aborted()` asserts at least
 one call was client-aborted. Aborted calls print `status=aborted` for
 both phases; `http=` stays when an upstream status was recorded.
@@ -352,7 +356,7 @@ Passing pytest tests that used the `llmentary` fixture also print that summary.
 ```python
 from llmentary import proxy_version, proxy_version_line
 
-print(proxy_version())  # "0.4.1", or None when the binary is missing
+print(proxy_version())  # "0.5.0", or None when the binary is missing
 print(proxy_version_line())  # full `llmentary --version` line, or None
 ```
 

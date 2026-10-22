@@ -96,6 +96,7 @@ def test_chat_service_run1_payload_is_clean_not_a_violation() -> None:
     assert call.validation.response_checked is True
     assert call.validation.spec_sha is not None
     assert call.validation.schema_subset_retrieved == "2026-10-18"
+    assert call.validation.target is None
     assert call.spec_violations == []
     assert call.spec_status_label() == "clean"
     Expectation(trace).no_spec_violations()

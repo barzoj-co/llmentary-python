@@ -7,6 +7,7 @@ from pathlib import Path
 import llmentary
 from llmentary import (
     InFlightCall,
+    ProxyConfig,
     Query,
     Session,
     SessionNotFound,
@@ -50,6 +51,8 @@ def test_package_exports_session_not_lab_aliases() -> None:
     assert llmentary.SessionNotFound is SessionNotFound
     assert "InFlightCall" in llmentary.__all__
     assert llmentary.InFlightCall is InFlightCall
+    assert "ProxyConfig" in llmentary.__all__
+    assert llmentary.ProxyConfig is ProxyConfig
     assert "contract_path" in llmentary.__all__
     for removed in ("LabSession", "LlmentarySession"):
         assert removed not in llmentary.__all__

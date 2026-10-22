@@ -200,16 +200,16 @@ def test_select_asset_rejects_stale_pin_names() -> None:
 @pytest.mark.parametrize(
     ("name", "version", "matches"),
     [
-        ("llmentary_0.4.1_linux_amd64.tar.gz", "0.4.1", True),
-        ("llmentary_0.4.1_linux_amd64.tar.gz", "v0.4.1", True),
-        ("llmentary_v0.4.1_darwin_arm64.tar.gz", "0.4.1", True),
-        ("llmentary_0.4.1_windows_amd64.zip", "0.4.1", True),
-        ("llmentary_0.4.0_linux_amd64.tar.gz", "0.4.1", False),
-        ("llmentary_0.4.10_linux_amd64.tar.gz", "0.4.1", False),
-        ("llmentary_10.4.1_linux_amd64.tar.gz", "0.4.1", False),
-        ("checksums.txt", "0.4.1", False),
-        ("llmentary_0.4.1_linux_amd64.tar.gz", "", False),
-        ("llmentary_0.4.1_linux_amd64.tar.gz", "v", False),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "0.5.0", True),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "v0.5.0", True),
+        ("llmentary_v0.5.0_darwin_arm64.tar.gz", "0.5.0", True),
+        ("llmentary_0.5.0_windows_amd64.zip", "0.5.0", True),
+        ("llmentary_0.4.1_linux_amd64.tar.gz", "0.5.0", False),
+        ("llmentary_0.5.10_linux_amd64.tar.gz", "0.5.0", False),
+        ("llmentary_10.5.0_linux_amd64.tar.gz", "0.5.0", False),
+        ("checksums.txt", "0.5.0", False),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "", False),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "v", False),
     ],
 )
 def test_asset_name_matches_pin_corners(name: str, version: str, matches: bool) -> None:
@@ -785,8 +785,8 @@ def test_release_archive_uses_target_binary_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(wheels, "host_platform", lambda: ("windows", "amd64"))
-    archive, name = _release_archive("0.4.1")
-    assert name == "llmentary_0.4.1_windows_amd64.zip"
+    archive, name = _release_archive("0.5.0")
+    assert name == "llmentary_0.5.0_windows_amd64.zip"
     with zipfile.ZipFile(io.BytesIO(archive)) as zf:
         names = set(zf.namelist())
     assert "llmentary.exe" in names
@@ -896,7 +896,7 @@ def test_install_release_binary_works_without_token(
 def test_main_fetches_anonymously_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("LLMENTARY_REPO_TOKEN", raising=False)
-    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.4.1")
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.5.0")
     seen: dict[str, Any] = {}
 
     def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
@@ -911,7 +911,7 @@ def test_main_fetches_anonymously_without_token(monkeypatch: pytest.MonkeyPatch)
 
 def test_main_passes_optional_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "rate-limit")
-    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.4.1")
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.5.0")
     seen: dict[str, Any] = {}
 
     def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
@@ -946,7 +946,7 @@ def test_download_bytes_omits_authorization_without_token(
 
     monkeypatch.setattr(wheels, "urlopen", fake_urlopen)
     data = wheels.download_bytes(
-        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.4.1",
+        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.5.0",
         token=None,
         accept="application/vnd.github+json",
         follow_redirects=True,

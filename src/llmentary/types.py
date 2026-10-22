@@ -60,6 +60,7 @@ class Validation:
 
     mode: Optional[str] = None
     profile: Optional[str] = None
+    target: Optional[str] = None
     spec_sha: Optional[str] = None
     schema_subset_retrieved: Optional[str] = None
     request_checked: Optional[bool] = None
@@ -113,6 +114,26 @@ class SessionInfo:
     sources: tuple[str, ...] = ()
     first_started_at: Optional[str] = None
     last_ended_at: Optional[str] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ProxyConfig:
+    """Typed ``GET /config`` payload.
+
+    Timeouts are Go duration strings (``0s`` disables). ``spec_targets`` is
+    ``None`` when the key is omitted (proxies before 0.5.0).
+    """
+
+    version: Optional[str] = None
+    upstreams: Mapping[str, str] = field(default_factory=dict)
+    spec_validation: Optional[str] = None
+    spec_profile: Optional[str] = None
+    spec_sha: Optional[str] = None
+    schema_subset_retrieved: Optional[str] = None
+    spec_targets: Optional[Mapping[str, str]] = None
+    upstream_header_timeout: Optional[str] = None
+    upstream_idle_timeout: Optional[str] = None
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -380,6 +401,13 @@ class CapturedCall:
         if value is None or isinstance(value, Mapping):
             return None
         return str(value)
+
+    @property
+    def error_normalized(self) -> Optional[str]:
+        """Cross-provider category (`upstream_timeout`, `network`, …)."""
+
+        value = self.error_mapping.get("normalized")
+        return value if isinstance(value, str) and value else None
 
     @property
     def mid_stream_error(self) -> Optional[Any]:
@@ -835,7 +863,10 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
 
 
 def looks_like_error_object(mapping: Mapping[str, Any]) -> bool:
-    return any(mapping.get(key) not in (None, "") for key in ("type", "code", "message"))
+    return any(
+        mapping.get(key) not in (None, "")
+        for key in ("type", "code", "message", "normalized")
+    )
 
 
 def unwrap_error(value: Any) -> Mapping[str, Any]:
@@ -1361,6 +1392,7 @@ def validation_from_mapping(raw: Mapping[str, Any]) -> Validation:
     return Validation(
         mode=optional_str(mapping, "mode"),
         profile=optional_str(mapping, "profile"),
+        target=optional_str(mapping, "target"),
         spec_sha=optional_str(mapping, "spec_sha", "specSHA", "specSha"),
         schema_subset_retrieved=optional_str(
             mapping, "schema_subset_retrieved", "schemaSubsetRetrieved"
@@ -1403,6 +1435,77 @@ def ignored_field_from_mapping(raw: Any) -> IgnoredField:
         hint=optional_str(mapping, "hint"),
         key=optional_str(mapping, "key"),
         action=optional_str(mapping, "action"),
+        raw=mapping,
+    )
+
+
+def parse_config_upstreams(raw: Any) -> dict[str, str]:
+    """Parse ``GET /config`` ``upstreams`` the same way the Go client does."""
+
+    if isinstance(raw, Mapping):
+        out: dict[str, str] = {}
+        for name, value in raw.items():
+            if not isinstance(name, str) or not name:
+                continue
+            if isinstance(value, str) and value:
+                out[name] = value
+                continue
+            nested = coerce_mapping(value)
+            url = optional_str(nested, "url", "base_url", "baseUrl")
+            if url:
+                out[name] = url
+        return out
+    if isinstance(raw, list):
+        out = {}
+        for item in raw:
+            mapping = coerce_mapping(item)
+            name = optional_str(mapping, "name")
+            url = optional_str(mapping, "url", "base_url", "baseUrl")
+            if name and url:
+                out[name] = url
+        return out
+    return {}
+
+
+def parse_config_spec_targets(raw: Any) -> dict[str, str]:
+    """Parse ``GET /config`` ``spec_targets`` (name → ``openai`` / ``openai-compatible``)."""
+
+    if not isinstance(raw, Mapping):
+        return {}
+    out: dict[str, str] = {}
+    for name, value in raw.items():
+        if isinstance(name, str) and name and isinstance(value, str) and value:
+            out[name] = value
+    return out
+
+
+def proxy_config_from_mapping(raw: Mapping[str, Any]) -> ProxyConfig:
+    mapping = coerce_mapping(raw)
+    spec_targets: Optional[Mapping[str, str]]
+    if "spec_targets" in mapping or "specTargets" in mapping:
+        spec_targets = parse_config_spec_targets(
+            first_present(mapping, "spec_targets", "specTargets")
+        )
+    else:
+        spec_targets = None
+    return ProxyConfig(
+        version=optional_str(mapping, "version"),
+        upstreams=parse_config_upstreams(first_present(mapping, "upstreams")),
+        spec_validation=optional_str(
+            mapping, "spec_validation", "specValidation"
+        ),
+        spec_profile=optional_str(mapping, "spec_profile", "specProfile"),
+        spec_sha=optional_str(mapping, "spec_sha", "specSHA", "specSha"),
+        schema_subset_retrieved=optional_str(
+            mapping, "schema_subset_retrieved", "schemaSubsetRetrieved"
+        ),
+        spec_targets=spec_targets,
+        upstream_header_timeout=optional_str(
+            mapping, "upstream_header_timeout", "upstreamHeaderTimeout"
+        ),
+        upstream_idle_timeout=optional_str(
+            mapping, "upstream_idle_timeout", "upstreamIdleTimeout"
+        ),
         raw=mapping,
     )
 
