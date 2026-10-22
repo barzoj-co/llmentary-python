@@ -497,7 +497,7 @@ def test_after_headers_abort_response_text_is_partial_not_json(llmentary: Sessio
     assert '"delta"' not in text
     assert text
     if assembled:
-        assert assembled[0] in text or text in "".join(assembled)
+        assert text.startswith(assembled[0]) or assembled[0].startswith(text)
     llmentary.expect().call_count(1, exclude_aborted=False)
     llmentary.query().aborted().expect().call_count(1)
     listed = llmentary.list_sessions()
