@@ -253,6 +253,8 @@ llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
 llmentary.query().without_tools().expect().call_count(1).request_param(
     "response_format.type", "json_schema"
 )
+llmentary.query().committed().expect().call_count(2)
+llmentary.expect().call_count(2, exclude_aborted=True)
 mark = llmentary.mark()
 llmentary.expect(since=mark).final_response_mentions_any("20", "sunny")
 

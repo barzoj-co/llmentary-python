@@ -277,7 +277,10 @@ def test_unknown_request_field_fails_no_spec_violations() -> None:
     assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
     Expectation(trace).no_spec_violations(ignore_keywords=("unknown_request_field",))
     Expectation(trace).no_spec_violations(ignore_paths=("/messages/0/content/0/ltl_unknown_nested",))
-    Expectation(trace).no_spec_violations(side="response")
+    # context=chat.message is not a request/response label, so a side
+    # filter fail-closes and still reports the finding.
+    with pytest.raises(AssertionError, match="ltl_unknown"):
+        Expectation(trace).no_spec_violations(side="response")
     with pytest.raises(AssertionError, match="ltl_unknown"):
         Expectation(trace).no_spec_violations(side="request")
 

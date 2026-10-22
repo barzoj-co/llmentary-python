@@ -117,6 +117,8 @@ llmentary.query().offers_tool("get_weather").expect().tool_called("get_weather")
 llmentary.query().without_tools().expect().request_param("response_format.type", "json_schema")
 mark = llmentary.mark()
 llmentary.query().since(mark).expect().prompt_contains("turn 2")
+llmentary.query().committed().expect().call_count(2)
+llmentary.expect().call_count(2, exclude_aborted=True)
 llmentary.expect().isolated_from(other)
 llmentary.expect().call_count(1)
 router = llmentary.query().without_tools().expect()
@@ -128,8 +130,12 @@ Accepted API type spellings include `chat`, `chat_completions`, `chat.completion
 
 `offers_tool(name)` keeps calls that offered that tool. `without_tools()` keeps
 calls that offered none (router-style structured output). `since(mark)` keeps
-calls whose sequence number is greater than `mark`. The same filters exist on
-`SessionTrace.filtered(...)` and as chainable `SessionTrace` methods.
+calls whose sequence number is greater than `mark`. `committed()` / `aborted()`
+keep calls that were not / were client-aborted (an after-headers abort is
+still HTTP 200, so a status filter is not a substitute). `call_count(...,
+exclude_aborted=True)` counts the committed subset on an unfiltered trace.
+The same filters exist on `SessionTrace.filtered(...)` and as chainable
+`SessionTrace` methods.
 `trace_summary()` prints those sequence numbers as `#seq (id)`. Call `id`
 values are unique within one proxy process and are not session order; use
 `CapturedCall.seq` (`sequence_number()` is the same value).
@@ -153,7 +159,9 @@ active.expect().allow_empty().isolated_from(unused)
 ```
 
 Use `call_count(n)` or `call_count(min=1, max=4)` to state how many calls the
-(filtered) trace should have.
+(filtered) trace should have. `GET /sessions` rows expose `SessionInfo.spec`
+(`checked` / `clean` / `findings` / `request_only` / `not_checked`) when the
+proxy sent the summary; older proxies omit it (`None`).
 
 ## Assertions
 
@@ -271,7 +279,10 @@ answer_mentions_any(app_text, "20", "sunny")
 
 JSON assertions inspect model output text only (`output_text`, Chat
 `choices[].message.content`, Responses `output[].content`), not the HTTP
-response envelope.
+response envelope. `CapturedCall.response_text` prefers
+`normalized.output_text` when that key is present (including `""`): a
+truncated stream is the assembled partial text, and a header-timeout 504
+with no model output is empty, never raw chunk JSON or `{}`.
 
 ### Spec validation
 
@@ -290,7 +301,12 @@ means validation was not run.
 expect.no_spec_violations()
 expect.no_spec_violations(side="request", ignore_paths=("/foo",), allow_unvalidated=False)
 expect.no_ignored_fields()
+expect.no_ignored_fields(side="request")
 ```
+
+`IgnoredField.side` reads `context` (`request` / `response`) and falls back
+to `side`. A side filter that cannot label an entry fail-closes: the
+finding is counted, not skipped.
 
 `no_spec_violations` and `no_ignored_fields` are never vacuous: they fail with
 `validation was not run` when nothing was checked, unless

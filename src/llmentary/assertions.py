@@ -74,12 +74,14 @@ class Expectation:
         *,
         min: Optional[int] = None,
         max: Optional[int] = None,
+        exclude_aborted: bool = False,
     ) -> Expectation:
         """Assert how many captured calls the (possibly filtered) trace has.
 
         ``call_count(2)`` requires an exact count. ``call_count(min=1, max=4)``
-        is the range form. The failure message includes the actual count and
-        the trace summary.
+        is the range form. ``exclude_aborted=True`` counts committed calls
+        only (DOG-50; after-headers abort is still HTTP 200). The failure
+        message includes the actual count and the trace summary.
         """
 
         if expected is not None and (min is not None or max is not None):
@@ -95,22 +97,26 @@ class Expectation:
         if min is not None and max is not None and min > max:
             raise TypeError(f"call_count() min={min} is greater than max={max}")
 
-        actual = len(self.trace.calls)
+        calls = self.trace.calls
+        if exclude_aborted:
+            calls = [call for call in calls if not call.client_aborted]
+        actual = len(calls)
+        noun = "committed call(s)" if exclude_aborted else "captured call(s)"
         if expected is not None:
             self._assert(
                 actual == expected,
-                f"expected {expected} captured call(s), got {actual}",
+                f"expected {expected} {noun}, got {actual}",
             )
             return self
         if min is not None:
             self._assert(
                 actual >= min,
-                f"expected at least {min} captured call(s), got {actual}",
+                f"expected at least {min} {noun}, got {actual}",
             )
         if max is not None:
             self._assert(
                 actual <= max,
-                f"expected at most {max} captured call(s), got {actual}",
+                f"expected at most {max} {noun}, got {actual}",
             )
         return self
 
@@ -699,8 +705,7 @@ class Expectation:
                     continue
                 findings.append(format_spec_finding(call, item))
             for ignored in unknown:
-                item_side = ignored.side or "request"
-                if side and item_side.lower() != side.lower():
+                if not ignored_field_matches_side(ignored, side):
                     continue
                 if path_is_ignored(ignored.path, ignored.pointer, ignore_paths):
                     continue
@@ -736,7 +741,7 @@ class Expectation:
                 items = []
             checked += 1
             for item in items:
-                if side and (item.side or "").lower() != side.lower():
+                if not ignored_field_matches_side(item, side):
                     continue
                 if path_is_ignored(item.path, item.pointer, ignore_paths):
                     continue
@@ -1034,17 +1039,27 @@ def nested_get(mapping: Mapping[str, Any], dotted_key: str) -> Any:
 
 
 def model_output_text_candidates(call: CapturedCall) -> list[str]:
+    normalized = call.normalized_payload
+    if "output_text" in normalized:
+        value = normalized.get("output_text")
+        return [value] if isinstance(value, str) and value else []
+
     response = call.response
     candidates: list[str] = []
-    output_text = response.get("output_text")
-    if isinstance(output_text, str):
-        candidates.append(output_text)
+    if "output_text" in response:
+        output_text = response.get("output_text")
+        return [output_text] if isinstance(output_text, str) and output_text else []
 
     for choice in sequence_at(response, "choices"):
-        message = as_mapping(as_mapping(choice).get("message"))
+        choice_map = as_mapping(choice)
+        message = as_mapping(choice_map.get("message"))
         content = message.get("content")
         if content is not None:
             candidates.append(stringify_value(content))
+        delta = as_mapping(choice_map.get("delta"))
+        delta_content = delta.get("content")
+        if delta_content is not None:
+            candidates.append(stringify_value(delta_content))
 
     for item in sequence_at(response, "output"):
         item_map = as_mapping(item)
@@ -1052,6 +1067,21 @@ def model_output_text_candidates(call: CapturedCall) -> list[str]:
             candidates.append(stringify_value(item_map.get("content")))
 
     return [candidate for candidate in candidates if candidate]
+
+
+def ignored_field_matches_side(item: IgnoredField, side: Optional[str]) -> bool:
+    """Whether ``item`` is included when filtering by ``side``.
+
+    Missing request/response labels fail closed: the entry matches any
+    side filter so ``no_ignored_fields(side=...)`` cannot skip it.
+    """
+
+    if not side:
+        return True
+    label = item.side
+    if not label:
+        return True
+    return label.lower() == side.lower()
 
 
 def call_was_validated(call: CapturedCall) -> bool:

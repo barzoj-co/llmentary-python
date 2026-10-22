@@ -105,6 +105,18 @@ class IgnoredField:
 
 
 @dataclass(frozen=True)
+class SessionSpecSummary:
+    """Per-session spec counters from ``GET /sessions[].spec`` (proxy 0.5.0)."""
+
+    checked: int = 0
+    clean: int = 0
+    findings: int = 0
+    request_only: int = 0
+    not_checked: int = 0
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class SessionInfo:
     """Cheap session list row from ``GET /sessions`` (no call bodies)."""
 
@@ -114,6 +126,7 @@ class SessionInfo:
     sources: tuple[str, ...] = ()
     first_started_at: Optional[str] = None
     last_ended_at: Optional[str] = None
+    spec: Optional[SessionSpecSummary] = None
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -432,6 +445,16 @@ class CapturedCall:
 
     @property
     def response_text(self) -> str:
+        """Assembled model text. Prefers ``normalized.output_text`` when present.
+
+        Truncated streams and header-timeout 504s return that assembled
+        text (possibly empty), never raw chunk JSON or ``{}``.
+        """
+
+        normalized = self.normalized_payload
+        if "output_text" in normalized:
+            value = normalized.get("output_text")
+            return value if isinstance(value, str) else ""
         return stringify_response(self.response)
 
     @property
@@ -712,6 +735,7 @@ class SessionTrace:
         offers_tool: Optional[str] = None,
         with_tools: Optional[bool] = None,
         since: Optional[int] = None,
+        aborted: Optional[bool] = None,
     ) -> SessionTrace:
         calls = list(self.calls)
         if api_type:
@@ -727,6 +751,10 @@ class SessionTrace:
             calls = [call for call in calls if call.offered_tool_names()]
         elif with_tools is False:
             calls = [call for call in calls if not call.offered_tool_names()]
+        if aborted is True:
+            calls = [call for call in calls if call.client_aborted]
+        elif aborted is False:
+            calls = [call for call in calls if not call.client_aborted]
         labels = list(self.filter_labels)
         if offers_tool:
             labels.append(f'offers_tool("{offers_tool}")')
@@ -740,6 +768,10 @@ class SessionTrace:
             labels.append(f"api_type={api_type}")
         if model:
             labels.append(f"model={model}")
+        if aborted is True:
+            labels.append("aborted")
+        elif aborted is False:
+            labels.append("committed")
         return SessionTrace(
             session_id=self.session_id,
             raw=self.raw,
@@ -781,6 +813,16 @@ class SessionTrace:
 
     def since(self, mark: int) -> SessionTrace:
         return self.filtered(since=mark)
+
+    def committed(self) -> SessionTrace:
+        """Calls that were not client-aborted (DOG-50)."""
+
+        return self.filtered(aborted=False)
+
+    def aborted(self) -> SessionTrace:
+        """Client-aborted calls only (DOG-50)."""
+
+        return self.filtered(aborted=True)
 
 
 def model_matches(actual: Optional[str], expected: str) -> bool:
@@ -1308,17 +1350,24 @@ def stringify_messages(mapping: Mapping[str, Any]) -> str:
 
 
 def stringify_response(mapping: Mapping[str, Any]) -> str:
-    parts: list[str] = []
-    output_text = mapping.get("output_text")
-    if isinstance(output_text, str):
-        parts.append(output_text)
+    """Assemble model text. Never dump a raw chunk or empty-object envelope."""
 
+    if "output_text" in mapping:
+        value = mapping.get("output_text")
+        return value if isinstance(value, str) else ""
+
+    parts: list[str] = []
     choices = sequence_at(mapping, "choices")
     for choice in choices:
-        message = mapping_at(as_mapping(choice), "message")
+        choice_map = as_mapping(choice)
+        message = mapping_at(choice_map, "message")
         content = message.get("content")
         if content is not None:
             parts.append(stringify_value(content))
+        delta = mapping_at(choice_map, "delta")
+        delta_content = delta.get("content")
+        if delta_content is not None:
+            parts.append(stringify_value(delta_content))
 
     output = sequence_at(mapping, "output")
     for item in output:
@@ -1328,8 +1377,6 @@ def stringify_response(mapping: Mapping[str, Any]) -> str:
         elif "content" in item_map:
             parts.append(stringify_value(item_map.get("content")))
 
-    if not parts:
-        parts.append(stringify_value(mapping))
     return "\n".join(part for part in parts if part)
 
 
@@ -1432,10 +1479,24 @@ def spec_violation_from_mapping(raw: Any) -> SpecViolation:
     )
 
 
+def ignored_field_side(mapping: Mapping[str, Any]) -> Optional[str]:
+    """Request/response label. Prefer ``context``, then ``side``.
+
+    Proxy v0.5.0 writes ``context: "request"`` / ``"response"`` and does
+    not emit ``side``. Only those two values count as a filterable side.
+    """
+
+    for key in ("context", "side"):
+        value = mapping.get(key)
+        if isinstance(value, str) and value.lower() in {"request", "response"}:
+            return value.lower()
+    return None
+
+
 def ignored_field_from_mapping(raw: Any) -> IgnoredField:
     mapping = coerce_mapping(raw)
     return IgnoredField(
-        side=optional_str(mapping, "side"),
+        side=ignored_field_side(mapping),
         path=optional_str(mapping, "path"),
         pointer=optional_str(mapping, "pointer"),
         kind=optional_str(mapping, "kind", "keyword"),
@@ -1519,6 +1580,28 @@ def proxy_config_from_mapping(raw: Mapping[str, Any]) -> ProxyConfig:
     )
 
 
+def session_spec_from_mapping(raw: Any) -> Optional[SessionSpecSummary]:
+    """Parse ``GET /sessions[].spec`` counters. ``None`` when the key is absent."""
+
+    if not isinstance(raw, Mapping):
+        return None
+    mapping = coerce_mapping(raw)
+    return SessionSpecSummary(
+        checked=optional_int(mapping, "checked", "Checked") or 0,
+        clean=optional_int(mapping, "clean", "Clean") or 0,
+        findings=optional_int(mapping, "findings", "Findings") or 0,
+        request_only=optional_int(
+            mapping, "request_only", "requestOnly", "RequestOnly"
+        )
+        or 0,
+        not_checked=optional_int(
+            mapping, "not_checked", "notChecked", "NotChecked"
+        )
+        or 0,
+        raw=mapping,
+    )
+
+
 def session_info_from_mapping(raw: Mapping[str, Any]) -> SessionInfo:
     mapping = coerce_mapping(raw)
     session_id = optional_str(mapping, "id", "session_id", "sessionId") or ""
@@ -1533,6 +1616,7 @@ def session_info_from_mapping(raw: Mapping[str, Any]) -> SessionInfo:
         if isinstance(sources_value, list)
         else ()
     )
+    spec_raw = first_present(mapping, "spec")
     return SessionInfo(
         id=session_id,
         calls=call_count,
@@ -1542,6 +1626,7 @@ def session_info_from_mapping(raw: Mapping[str, Any]) -> SessionInfo:
             mapping, "first_started_at", "firstStartedAt"
         ),
         last_ended_at=optional_str(mapping, "last_ended_at", "lastEndedAt"),
+        spec=session_spec_from_mapping(spec_raw) if spec_raw is not None else None,
         raw=mapping,
     )
 

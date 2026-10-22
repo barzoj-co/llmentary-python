@@ -1,0 +1,157 @@
+{
+  "description": "response_text prefers normalized.output_text; never raw chunk JSON or '{}'.",
+  "cases": [
+    {
+      "name": "complete_stream",
+      "response_text": "Hello",
+      "call": {
+        "seq": 1,
+        "stream": true,
+        "http_status": 200,
+        "response": {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {"content": "Hello"},
+              "finish_reason": "stop"
+            }
+          ],
+          "object": "chat.completion.chunk"
+        },
+        "normalized": {"output_text": "Hello", "finish_reason": "stop"}
+      }
+    },
+    {
+      "name": "truncated_stream_idle_timeout",
+      "response_text": "Hello",
+      "call": {
+        "seq": 1,
+        "stream": true,
+        "http_status": 200,
+        "stream_truncated": true,
+        "error": {
+          "normalized": "upstream_idle_timeout",
+          "source": "proxy",
+          "message": "upstream idle timeout"
+        },
+        "response": {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {"content": "Hello"},
+              "finish_reason": null
+            }
+          ],
+          "object": "chat.completion.chunk",
+          "created": 1
+        },
+        "normalized": {"output_text": "Hello", "finish_reason": "unknown"}
+      }
+    },
+    {
+      "name": "upstream_drop",
+      "response_text": "Hello",
+      "call": {
+        "seq": 1,
+        "stream": true,
+        "http_status": 200,
+        "stream_truncated": true,
+        "error": {"normalized": "network", "message": "upstream closed"},
+        "response": {
+          "choices": [
+            {
+              "delta": {"content": "Hello"},
+              "finish_reason": null
+            }
+          ]
+        },
+        "normalized": {"output_text": "Hello"}
+      }
+    },
+    {
+      "name": "after_headers_client_abort",
+      "response_text": "Hello",
+      "call": {
+        "seq": 1,
+        "stream": true,
+        "http_status": 200,
+        "client_aborted": true,
+        "abort_phase": "after_headers",
+        "response": {
+          "choices": [
+            {
+              "delta": {"content": "Hello"},
+              "finish_reason": null
+            }
+          ]
+        },
+        "normalized": {
+          "output_text": "Hello",
+          "client_aborted": true,
+          "finish_reason": "cancelled"
+        }
+      }
+    },
+    {
+      "name": "before_headers_abort",
+      "response_text": "",
+      "call": {
+        "seq": 1,
+        "stream": true,
+        "http_status": 0,
+        "client_aborted": true,
+        "abort_phase": "before_headers",
+        "upstream_called": true,
+        "response": {},
+        "normalized": {"output_text": "", "client_aborted": true}
+      }
+    },
+    {
+      "name": "header_timeout_504",
+      "response_text": "",
+      "call": {
+        "seq": 1,
+        "http_status": 504,
+        "error": {
+          "normalized": "upstream_timeout",
+          "source": "proxy",
+          "message": "upstream header timeout"
+        },
+        "response": {},
+        "normalized": {"output_text": ""}
+      }
+    },
+    {
+      "name": "upstream_4xx_error_body",
+      "response_text": "",
+      "call": {
+        "seq": 1,
+        "http_status": 400,
+        "error": {
+          "type": "invalid_request_error",
+          "message": "bad request"
+        },
+        "response": {
+          "error": {"type": "invalid_request_error", "message": "bad request"}
+        },
+        "normalized": {"output_text": ""}
+      }
+    },
+    {
+      "name": "responses_truncated_stream",
+      "response_text": "Hello",
+      "call": {
+        "seq": 1,
+        "api_family": "responses",
+        "stream": true,
+        "http_status": 200,
+        "stream_truncated": true,
+        "response": {
+          "object": "response",
+          "output": []
+        },
+        "normalized": {"output_text": "Hello"}
+      }
+    }
+  ]
+}

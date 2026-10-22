@@ -568,6 +568,7 @@ class Query:
     offers_tool_name: Optional[str] = None
     include_tools: Optional[bool] = None
     since_seq: Optional[int] = None
+    aborted_only: Optional[bool] = None
 
     def offers_tool(self, name: str) -> Query:
         return replace(self, offers_tool_name=name)
@@ -580,6 +581,16 @@ class Query:
 
     def since(self, mark: int) -> Query:
         return replace(self, since_seq=mark)
+
+    def committed(self) -> Query:
+        """Keep calls that were not client-aborted (DOG-50)."""
+
+        return replace(self, aborted_only=False)
+
+    def aborted(self) -> Query:
+        """Keep client-aborted calls only (DOG-50)."""
+
+        return replace(self, aborted_only=True)
 
     def expect(
         self,
@@ -595,6 +606,7 @@ class Query:
             offers_tool=self.offers_tool_name,
             with_tools=self.include_tools,
             since=mark,
+            aborted=self.aborted_only,
         )
         expectation: Expectation = (
             SoftExpectation(trace, session=self.session)
