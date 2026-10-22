@@ -2,6 +2,13 @@
 
 ## Upgrade notes
 
+## [0.6.1](https://github.com/barzoj-co/llmentary-python/compare/v0.6.0...v0.6.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* list in-flight calls on wait timeout ([#51](https://github.com/barzoj-co/llmentary-python/issues/51)) ([115767a](https://github.com/barzoj-co/llmentary-python/commit/115767afb9c08298565d07f9d9afddb6821070d3))
+
 ## [0.6.0](https://github.com/barzoj-co/llmentary-python/compare/v0.5.2...v0.6.0) (2026-10-22)
 
 
