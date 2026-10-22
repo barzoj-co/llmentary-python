@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -30,6 +31,42 @@ _UNIT_SECONDS = {
 }
 
 
+@dataclass(frozen=True)
+class InFlightCall:
+    """Settled-safe snapshot of a call that has not finished (504 ``in_flight``)."""
+
+    call_id: str = ""
+    seq: Optional[int] = None
+    method: str = ""
+    path: str = ""
+    phase: Optional[str] = None
+    elapsed_ms: Optional[int] = None
+    bytes_received: Optional[int] = None
+    http_status: Optional[int] = None
+    api_family: Optional[str] = None
+    upstream: Optional[str] = None
+    started_at: Optional[str] = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+    def describe(self) -> str:
+        parts: list[str] = []
+        if self.seq is not None:
+            parts.append(f"#{self.seq}")
+        elif self.call_id:
+            parts.append(self.call_id)
+        if self.method:
+            parts.append(self.method)
+        if self.path:
+            parts.append(self.path)
+        if self.phase:
+            parts.append(self.phase)
+        if self.http_status is not None:
+            parts.append(f"http {self.http_status}")
+        if self.elapsed_ms is not None:
+            parts.append(f"{self.elapsed_ms}ms")
+        return " ".join(parts) if parts else "in-flight call"
+
+
 class WaitTimeoutError(TimeoutError):
     """Raised when the proxy wait endpoint times out before the session is quiet."""
 
@@ -42,6 +79,7 @@ class WaitTimeoutError(TimeoutError):
         calls: int,
         active: Optional[int] = None,
         min_calls: Optional[int] = None,
+        in_flight: Optional[Sequence[InFlightCall]] = None,
     ) -> None:
         super().__init__(message)
         self.session_id = session_id
@@ -49,6 +87,7 @@ class WaitTimeoutError(TimeoutError):
         self.calls = calls
         self.active = active
         self.min_calls = min_calls
+        self.in_flight = None if in_flight is None else tuple(in_flight)
 
 
 def format_go_duration(seconds: float) -> str:
@@ -160,6 +199,71 @@ def explicit_active_count(*payloads: Mapping[str, Any]) -> Optional[int]:
     return None
 
 
+def _optional_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _optional_str(value: Any) -> Optional[str]:
+    return value if isinstance(value, str) and value != "" else None
+
+
+def in_flight_call_from_raw(value: Any) -> Optional[InFlightCall]:
+    if not isinstance(value, Mapping):
+        return None
+    return InFlightCall(
+        call_id=_optional_str(value.get("call_id")) or "",
+        seq=_optional_int(value.get("seq")),
+        method=_optional_str(value.get("method")) or "",
+        path=_optional_str(value.get("path")) or "",
+        phase=_optional_str(value.get("phase")),
+        elapsed_ms=_optional_int(value.get("elapsed_ms")),
+        bytes_received=_optional_int(value.get("bytes_received")),
+        http_status=_optional_int(value.get("http_status")),
+        api_family=_optional_str(value.get("api_family")),
+        upstream=_optional_str(value.get("upstream")),
+        started_at=_optional_str(value.get("started_at")),
+        raw=value,
+    )
+
+
+def parse_in_flight_calls(*payloads: Mapping[str, Any]) -> Optional[tuple[InFlightCall, ...]]:
+    """Return ``in_flight`` when the field is present; ``None`` for older proxies.
+
+    An empty array is a present field (no running calls), not a missing one.
+    Non-object items are skipped.
+    """
+
+    for payload in payloads:
+        if "in_flight" not in payload:
+            continue
+        raw = payload.get("in_flight")
+        if raw is None:
+            return ()
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+            return ()
+        items: list[InFlightCall] = []
+        for item in raw:
+            parsed = in_flight_call_from_raw(item)
+            if parsed is not None:
+                items.append(parsed)
+        return tuple(items)
+    return None
+
+
+def _payload_layers(
+    payload: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
+    error = payload.get("error")
+    error_mapping = error if isinstance(error, Mapping) else {}
+    nested_session = payload.get("session")
+    session_payload = nested_session if isinstance(nested_session, Mapping) else payload
+    return error_mapping, session_payload, payload
+
+
 def count_active_calls(
     payload: Mapping[str, Any],
     trace: SessionTrace,
@@ -167,13 +271,13 @@ def count_active_calls(
     fallback: Optional[int] = None,
 ) -> Optional[int]:
     _ = trace
-    error = payload.get("error")
-    error_mapping = error if isinstance(error, Mapping) else {}
-    nested_session = payload.get("session")
-    session_payload = nested_session if isinstance(nested_session, Mapping) else payload
-    active = explicit_active_count(error_mapping, session_payload, payload)
+    error_mapping, session_payload, top = _payload_layers(payload)
+    active = explicit_active_count(error_mapping, session_payload, top)
     if active is not None:
         return active
+    in_flight = parse_in_flight_calls(error_mapping, session_payload, top)
+    if in_flight is not None:
+        return len(in_flight)
     return fallback
 
 
@@ -185,10 +289,7 @@ def wait_timeout_error(
     list_active: Optional[int] = None,
 ) -> WaitTimeoutError:
     raw = payload or {}
-    error = raw.get("error") if isinstance(raw.get("error"), Mapping) else {}
-    error_mapping = error if isinstance(error, Mapping) else {}
-    nested_session = raw.get("session")
-    session_payload = nested_session if isinstance(nested_session, Mapping) else raw
+    error_mapping, session_payload, _top = _payload_layers(raw)
     trace = SessionTrace.from_payload(session_id, session_payload)
     calls_seen = error_mapping.get("calls_seen")
     calls = (
@@ -202,12 +303,17 @@ def wait_timeout_error(
         if isinstance(min_calls_value, int) and not isinstance(min_calls_value, bool)
         else None
     )
+    in_flight = parse_in_flight_calls(error_mapping, session_payload, raw)
     active = count_active_calls(raw, trace, fallback=list_active)
     so_far = f"{calls} calls so far"
-    if active is None:
-        detail = so_far
-    else:
+    if in_flight:
+        listed = "; ".join(item.describe() for item in in_flight)
+        count = active if active is not None else len(in_flight)
+        detail = f"{so_far}, still active: {count}: {listed}"
+    elif active is not None:
         detail = f"{so_far}, still active: {active}"
+    else:
+        detail = so_far
     message = (
         f"wait timed out after {format_go_duration(timeout)} on session {session_id} "
         f"({detail}). "
@@ -220,4 +326,5 @@ def wait_timeout_error(
         calls=calls,
         active=active,
         min_calls=min_calls,
+        in_flight=in_flight,
     )

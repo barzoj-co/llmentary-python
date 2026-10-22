@@ -210,6 +210,10 @@ Override the defaults with environment variables. Each accepts a Go duration
 The client HTTP deadline is `timeout + quiet + 5s`, so the client cannot abort
 before the proxy answers. A timeout is an error: `wait timed out after 30s on
 session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
+When the 504 includes `error.in_flight`, the message also lists those still-
+running calls (`#seq METHOD path phase`). Older proxies omit that array; the
+client then keeps the count-only form, or omits `still active` when the count
+is unknown.
 
 `wait` on a session that was never created (or was `DELETE`d):
 

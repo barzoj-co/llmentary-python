@@ -26,7 +26,7 @@ from .types import (
     SpecViolation,
     Validation,
 )
-from .wait import WaitTimeoutError
+from .wait import InFlightCall, WaitTimeoutError
 
 try:
     __version__ = version("llmentary")
@@ -39,6 +39,7 @@ __all__ = [
     "ControlClient",
     "Expectation",
     "IgnoredField",
+    "InFlightCall",
     "ProxyHandle",
     "Query",
     "Session",
