@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from collections.abc import Collection, Mapping, Sequence
 from re import Pattern
-from typing import Any, Callable, Optional, Union, cast
+from typing import Any, Callable, Optional, Union
 
 from jsonschema import ValidationError
 from jsonschema.validators import Draft202012Validator
@@ -24,6 +25,21 @@ from .types import (
 
 ArgsMatcher = Union[Mapping[str, Any], Callable[[Mapping[str, Any]], bool]]
 Regex = Union[str, Pattern[str]]
+
+
+class _ResolvedOther:
+    """Trace loaded for ``isolated_from``, plus wait-timeout metadata."""
+
+    def __init__(
+        self,
+        trace: SessionTrace,
+        *,
+        timed_out: bool = False,
+        active: Optional[int] = None,
+    ) -> None:
+        self.trace = trace
+        self.timed_out = timed_out
+        self.active = active
 
 
 def require_non_negative_count(name: str, value: object) -> int:
@@ -129,10 +145,17 @@ class Expectation:
         ``allow_empty()`` was called. Empty or unknown other (404 / no
         calls) fails with ``no calls recorded for session Y (isolated_from
         needs calls on both sides)`` unless ``allow_empty()`` was called.
-        ``require_path=True`` also requires ``session_source == "path"``.
+        A ``Session`` or session id is loaded with the same ``wait``
+        semantics as ``expect()`` so an in-flight call on the other side
+        is included once it settles. A pre-fetched ``SessionTrace`` is
+        used as given. If that wait times out with zero settled calls,
+        the failure names the in-flight / timed-out state instead of a
+        bare empty other. ``require_path=True`` also requires
+        ``session_source == "path"``.
         """
 
-        other_trace = self._resolve_isolated_other(other)
+        resolved = self._resolve_isolated_other(other)
+        other_trace = resolved.trace
         findings: list[str] = []
         if not self.trace.calls:
             if not self._allow_empty:
@@ -155,10 +178,7 @@ class Expectation:
 
         if not other_trace.calls:
             if not self._allow_empty:
-                findings.append(
-                    f"no calls recorded for session {other_trace.session_id} "
-                    "(isolated_from needs calls on both sides)"
-                )
+                findings.append(_other_empty_message(resolved))
             if findings:
                 self._assert(False, "\n".join(findings))
             return self
@@ -196,35 +216,114 @@ class Expectation:
                     f"{_call_label(call)}"
                 )
 
+        if resolved.timed_out:
+            findings.append(f"wait timed out on session {other_trace.session_id}")
+            if resolved.active and resolved.active > 0:
+                findings.append(_inflight_message(other_trace.session_id, resolved.active))
+
         if findings:
             self._assert(False, "\n".join(findings))
         return self
 
-    def _resolve_isolated_other(self, other: object) -> SessionTrace:
+    def _resolve_isolated_other(self, other: object) -> _ResolvedOther:
         if isinstance(other, SessionTrace):
-            return other
+            return _ResolvedOther(other)
         if isinstance(other, str):
             session = self._session
-            getter = getattr(getattr(session, "proxy", None), "control", None)
-            get_session = getattr(getter, "get_session", None)
-            if not callable(get_session):
+            control = getattr(getattr(session, "proxy", None), "control", None)
+            wait_session = getattr(control, "wait_session", None)
+            get_session = getattr(control, "get_session", None)
+            if not callable(wait_session) and not callable(get_session):
                 raise TypeError("isolated_from(session_id) requires Session.expect()")
-            return self._trace_or_empty(lambda: get_session(other), other)
+            kwargs = self._other_wait_kwargs()
+            if callable(wait_session):
+                getter: Callable[[], object] = (
+                    (lambda: get_session(other)) if callable(get_session) else (lambda: None)
+                )
+                return self._wait_other_trace(
+                    lambda: wait_session(other, **kwargs),
+                    getter,
+                    other,
+                )
+            if callable(get_session):
+                return self._trace_or_empty(lambda: get_session(other), other)
+            raise TypeError("isolated_from(session_id) requires Session.expect()")
         session_id = getattr(other, "session_id", None)
+        wait_fn = getattr(other, "wait", None)
         trace_fn = getattr(other, "trace", None)
+        if callable(wait_fn) and isinstance(session_id, str):
+            kwargs = self._other_wait_kwargs()
+            return self._wait_other_trace(
+                lambda: _call_with_wait_kwargs(wait_fn, kwargs),
+                lambda: trace_fn() if callable(trace_fn) else None,
+                session_id,
+            )
         if callable(trace_fn) and isinstance(session_id, str):
             return self._trace_or_empty(trace_fn, session_id)
         raise TypeError(
             "isolated_from() expects a Session, session id, or SessionTrace"
         )
 
-    def _trace_or_empty(self, loader: Callable[[], object], session_id: str) -> SessionTrace:
+    def _other_wait_kwargs(self) -> dict[str, float]:
+        session = self._session
+        kwargs: dict[str, float] = {}
+        timeout = getattr(session, "wait_timeout", None)
+        quiet = getattr(session, "quiet_for", None)
+        if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+            kwargs["timeout"] = float(timeout)
+        if isinstance(quiet, (int, float)) and not isinstance(quiet, bool):
+            kwargs["quiet"] = float(quiet)
+        return kwargs
+
+    def _wait_other_trace(
+        self,
+        waiter: Callable[[], object],
+        getter: Callable[[], object],
+        session_id: str,
+    ) -> _ResolvedOther:
+        from .client import SessionNotFound
+        from .wait import WaitTimeoutError
+
+        try:
+            loaded = waiter()
+        except SessionNotFound:
+            return _ResolvedOther(_empty_other_trace(session_id))
+        except WaitTimeoutError as exc:
+            trace = self._other_trace_after_timeout(getter, session_id)
+            raw_active = exc.active
+            active = (
+                raw_active
+                if isinstance(raw_active, int) and not isinstance(raw_active, bool)
+                else None
+            )
+            return _ResolvedOther(trace, timed_out=True, active=active)
+        if isinstance(loaded, SessionTrace):
+            return _ResolvedOther(loaded)
+        return _ResolvedOther(_empty_other_trace(session_id))
+
+    def _other_trace_after_timeout(
+        self, getter: Callable[[], object], session_id: str
+    ) -> SessionTrace:
         from .client import SessionNotFound
 
         try:
-            return cast(SessionTrace, loader())
+            loaded = getter()
         except SessionNotFound:
-            return SessionTrace.from_payload(session_id, {"id": session_id, "calls": []})
+            return _empty_other_trace(session_id)
+        if isinstance(loaded, SessionTrace):
+            return loaded
+        return _empty_other_trace(session_id)
+
+    def _trace_or_empty(self, loader: Callable[[], object], session_id: str) -> _ResolvedOther:
+        from .client import SessionNotFound
+
+        try:
+            loaded = loader()
+        except SessionNotFound:
+            return _ResolvedOther(_empty_other_trace(session_id))
+        if isinstance(loaded, SessionTrace):
+            return _ResolvedOther(loaded)
+        return _ResolvedOther(_empty_other_trace(session_id))
 
     def tool_called(self, name: str) -> Expectation:
         self._assert(
@@ -718,6 +817,43 @@ def normalize_user_text(text: str) -> str:
     """Trim, collapse whitespace, casefold. Exact-match key for isolation."""
 
     return re.sub(r"\s+", " ", text.strip()).casefold()
+
+
+def _empty_other_trace(session_id: str) -> SessionTrace:
+    return SessionTrace.from_payload(session_id, {"id": session_id, "calls": []})
+
+
+def _inflight_message(session_id: str, active: int) -> str:
+    noun = "call" if active == 1 else "calls"
+    return f"session {session_id} has {active} {noun} still in flight"
+
+
+def _other_empty_message(resolved: _ResolvedOther) -> str:
+    session_id = resolved.trace.session_id
+    if resolved.timed_out:
+        if resolved.active and resolved.active > 0:
+            return _inflight_message(session_id, resolved.active)
+        return (
+            f"wait timed out on session {session_id} "
+            "(isolated_from needs calls on both sides)"
+        )
+    return (
+        f"no calls recorded for session {session_id} "
+        "(isolated_from needs calls on both sides)"
+    )
+
+
+def _call_with_wait_kwargs(wait_fn: Callable[..., object], kwargs: Mapping[str, float]) -> object:
+    if not kwargs:
+        return wait_fn()
+    bound = dict(kwargs)
+    try:
+        inspect.signature(wait_fn).bind(**bound)
+    except TypeError:
+        return wait_fn()
+    except ValueError:
+        return wait_fn(**bound)
+    return wait_fn(**bound)
 
 
 def _calls_in_seq(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
