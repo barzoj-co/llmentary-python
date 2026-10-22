@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+from urllib.parse import urlparse
 
 import pytest
 from test_go_session_schema import go_call
@@ -10,6 +11,14 @@ from llmentary.types import (
     proxy_config_from_mapping,
     validation_from_mapping,
 )
+
+
+def hostname_of(url: str) -> Optional[str]:
+    """Return the URL hostname, or ``None`` when the value is not a URL."""
+
+    if not isinstance(url, str) or not url.strip():
+        return None
+    return urlparse(url).hostname
 
 
 def _ok_call() -> dict[str, Any]:
@@ -240,6 +249,38 @@ def test_error_normalized_only_field_and_invalid_corners() -> None:
     assert _captured(bad).error_normalized is None
 
 
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://api.openai.com/v1", "api.openai.com"),
+        ("https://api.openai.com/v1/chat/completions", "api.openai.com"),
+        ("http://api.openai.com", "api.openai.com"),
+        ("https://API.OPENAI.COM/v1", "api.openai.com"),
+        ("https://user:pass@api.openai.com/v1", "api.openai.com"),
+        ("https://api.openai.com:443/v1", "api.openai.com"),
+        ("https://evil.example/?q=api.openai.com", "evil.example"),
+        ("https://evil.example/api.openai.com/v1", "evil.example"),
+        ("https://api.openai.com.evil.example/v1", "api.openai.com.evil.example"),
+        ("https://not-api.openai.com/v1", "not-api.openai.com"),
+        ("https://prefix-api.openai.com", "prefix-api.openai.com"),
+        ("api.openai.com/v1", None),
+        ("not-a-url", None),
+        ("", None),
+        ("   ", None),
+        ("/v1", None),
+    ],
+)
+def test_hostname_of_uses_exact_host_not_substring(url: str, expected: Optional[str]) -> None:
+    assert hostname_of(url) == expected
+    assert (hostname_of(url) == "api.openai.com") is (expected == "api.openai.com")
+
+
+def test_hostname_of_rejects_non_strings() -> None:
+    assert hostname_of(None) is None  # type: ignore[arg-type]
+    assert hostname_of(123) is None  # type: ignore[arg-type]
+    assert hostname_of(["https://api.openai.com"]) is None  # type: ignore[arg-type]
+
+
 @pytest.mark.integration
 def test_proxy_config_typed_defaults_against_real_proxy() -> None:
     from test_proxy_dogfood import isolated_proxy
@@ -249,7 +290,7 @@ def test_proxy_config_typed_defaults_against_real_proxy() -> None:
         cfg = handle.control.proxy_config()
         assert cfg.version
         assert "openai" in cfg.upstreams
-        assert "api.openai.com" in cfg.upstreams["openai"]
+        assert hostname_of(cfg.upstreams["openai"]) == "api.openai.com"
         assert cfg.upstream_header_timeout == "0s", raw
         assert cfg.upstream_idle_timeout == "0s", raw
         assert cfg.spec_targets is not None, raw
