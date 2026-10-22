@@ -538,6 +538,14 @@ def test_in_flight_describe_falls_back_to_call_id() -> None:
     assert item.describe() == "call_x streaming"
 
 
+def test_in_flight_call_is_hashable_and_ignores_raw() -> None:
+    left = InFlightCall(call_id="call_x", seq=1, raw={"n": 1})
+    right = InFlightCall(call_id="call_x", seq=1, raw={"n": 2})
+    assert left == right
+    assert hash(left) == hash(right)
+    assert {left, right} == {left}
+
+
 def test_wait_session_504_json_lists_in_flight() -> None:
     session_id = "stall-example"
     payload = _pin_payloads()["awaiting_headers"]

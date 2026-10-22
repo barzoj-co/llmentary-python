@@ -46,7 +46,9 @@ class InFlightCall:
     api_family: Optional[str] = None
     upstream: Optional[str] = None
     started_at: Optional[str] = None
-    raw: Mapping[str, Any] = field(default_factory=dict)
+    raw: Mapping[str, Any] = field(
+        default_factory=dict, compare=False, hash=False, repr=False
+    )
 
     def describe(self) -> str:
         parts: list[str] = []
