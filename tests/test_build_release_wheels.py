@@ -176,6 +176,89 @@ def test_select_asset_matches_platform() -> None:
         )
 
 
+def test_select_asset_rejects_stale_pin_names() -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    linux = next(target for target in wheels.TARGETS if target.wheel_tag == "manylinux2014_x86_64")
+    stale = "0.4.0" if pin != "0.4.0" else "0.3.0"
+    assets = [
+        wheels.Asset(f"llmentary_{stale}_linux_amd64.tar.gz", "https://example/stale"),
+        wheels.Asset(f"llmentary_{pin}_linux_amd64.tar.gz", "https://example/current"),
+        wheels.Asset(f"llmentary_{pin}0_linux_amd64.tar.gz", "https://example/suffix"),
+        wheels.Asset(f"llmentary_1{pin}_linux_amd64.tar.gz", "https://example/prefix"),
+    ]
+    assert wheels.select_asset(assets, linux, version=pin).name == (
+        f"llmentary_{pin}_linux_amd64.tar.gz"
+    )
+    assert wheels.select_asset(assets, linux, version=f"v{pin}").name == (
+        f"llmentary_{pin}_linux_amd64.tar.gz"
+    )
+    with pytest.raises(SystemExit, match="No release asset matched"):
+        wheels.select_asset(assets[:1], linux, version=pin)
+
+
+@pytest.mark.parametrize(
+    ("name", "version", "matches"),
+    [
+        ("llmentary_0.4.1_linux_amd64.tar.gz", "0.4.1", True),
+        ("llmentary_0.4.1_linux_amd64.tar.gz", "v0.4.1", True),
+        ("llmentary_v0.4.1_darwin_arm64.tar.gz", "0.4.1", True),
+        ("llmentary_0.4.1_windows_amd64.zip", "0.4.1", True),
+        ("llmentary_0.4.0_linux_amd64.tar.gz", "0.4.1", False),
+        ("llmentary_0.4.10_linux_amd64.tar.gz", "0.4.1", False),
+        ("llmentary_10.4.1_linux_amd64.tar.gz", "0.4.1", False),
+        ("checksums.txt", "0.4.1", False),
+        ("llmentary_0.4.1_linux_amd64.tar.gz", "", False),
+        ("llmentary_0.4.1_linux_amd64.tar.gz", "v", False),
+    ],
+)
+def test_asset_name_matches_pin_corners(name: str, version: str, matches: bool) -> None:
+    assert wheels.asset_name_matches_pin(name, version) is matches
+    if matches:
+        wheels.assert_asset_matches_pin(name, version)
+        return
+    with pytest.raises(SystemExit, match="empty" if not version.lstrip("v") else "does not match"):
+        wheels.assert_asset_matches_pin(name, version)
+
+
+def test_parse_checksums_ignores_sbom_and_signature_names() -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    archive = f"llmentary_{pin}_linux_amd64.tar.gz"
+    checksums = wheels.parse_checksums(
+        (
+            f"aaa111  {archive}\n"
+            f"bbb222  {archive}.sbom.json\n"
+            "ccc333  checksums.txt.sigstore.json\n"
+            "ddd444 *llmentary.sbom.cdx.json\n"
+        ).encode()
+    )
+    assert checksums[archive] == "aaa111"
+    assert checksums[f"{archive}.sbom.json"] == "bbb222"
+    assert "checksums.txt" not in checksums
+    linux = next(target for target in wheels.TARGETS if target.wheel_tag == "manylinux2014_x86_64")
+    selected = wheels.select_asset(
+        [
+            wheels.Asset("checksums.txt", "https://example/checksums.txt"),
+            wheels.Asset(f"{archive}.sbom.json", "https://example/sbom"),
+            wheels.Asset(archive, "https://example/archive"),
+        ],
+        linux,
+        version=pin,
+    )
+    assert selected.name == archive
+    digest = hashlib.sha256(b"proxy-bytes").hexdigest()
+    wheels.verify_asset_checksum(archive, b"proxy-bytes", {archive: digest})
+
+
+def test_read_proxy_version_rejects_empty(tmp_path: Path) -> None:
+    empty = tmp_path / "PROXY_VERSION"
+    empty.write_text("\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="PROXY_VERSION is empty"):
+        wheels.read_proxy_version(empty)
+    assert wheels.read_proxy_version(ROOT / "PROXY_VERSION") == (
+        (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    )
+
+
 def test_install_binary_extracts_and_records_version(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -605,3 +688,130 @@ def test_top_level_pkg_info_ignores_nested_members() -> None:
 
 def _norm_zip(name: str) -> str:
     return name.replace("\\", "/")
+
+
+def _release_archive(version: str, *, reported: str | None = None) -> tuple[bytes, str]:
+    reported = version if reported is None else reported
+    script = f"#!/bin/sh\necho 'llmentary {reported} (deadbeef)'\n".encode()
+    spec = b"openapi: 3.1.0\ninfo:\n  title: t\n  version: 0.0.0\n"
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo(name="llmentary")
+        info.size = len(script)
+        info.mode = 0o755
+        tar.addfile(info, io.BytesIO(script))
+        contract = tarfile.TarInfo(name="openapi.yaml")
+        contract.size = len(spec)
+        tar.addfile(contract, io.BytesIO(spec))
+    goos, goarch = wheels.host_platform()
+    return archive.getvalue(), f"llmentary_{version}_{goos}_{goarch}.tar.gz"
+
+
+def _install_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    archive: bytes,
+    name: str,
+    checksum_line: str | None = None,
+    version: str | None = None,
+) -> Path:
+    digest = hashlib.sha256(archive).hexdigest()
+    checksums = f"{digest}  {name}\n" if checksum_line is None else checksum_line
+
+    def fake_fetch(requested: str, token: str) -> dict[str, Any]:
+        assert token == "test-token"
+        return {
+            "assets": [
+                {"name": "checksums.txt", "url": "https://example/checksums.txt"},
+                {"name": "checksums.txt.sigstore.json", "url": "https://example/sig"},
+                {"name": f"{name}.sbom.json", "url": "https://example/sbom"},
+                {"name": name, "url": f"https://example/{name}"},
+            ]
+        }
+
+    def fake_download(url: str, token: str) -> bytes:
+        if url.endswith("checksums.txt"):
+            return checksums.encode()
+        if url.endswith(name):
+            return archive
+        raise AssertionError(f"unexpected download {url}")
+
+    monkeypatch.setattr(wheels, "fetch_release", fake_fetch)
+    monkeypatch.setattr(wheels, "download_asset", fake_download)
+    dest = tmp_path / "llmentary"
+    pin = version or (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    installed = wheels.install_release_binary(dest=dest, version=pin, token="test-token")
+    assert isinstance(installed, Path)
+    return installed
+
+
+def test_install_release_binary_accepts_pin_and_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    archive, name = _release_archive(pin)
+    installed = _install_release(monkeypatch, tmp_path, archive=archive, name=name)
+    assert installed.is_file()
+    wheels.assert_clean_release_version(installed, pin)
+
+
+def test_install_release_binary_rejects_checksum_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    archive, name = _release_archive(pin)
+    with pytest.raises(SystemExit, match="Checksum mismatch"):
+        _install_release(
+            monkeypatch,
+            tmp_path,
+            archive=archive,
+            name=name,
+            checksum_line=f"{'0' * 64}  {name}\n",
+        )
+
+
+def test_install_release_binary_rejects_stale_asset_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    stale = "0.4.0" if pin != "0.4.0" else "0.3.0"
+    archive, _name = _release_archive(pin)
+    goos, goarch = wheels.host_platform()
+    stale_name = f"llmentary_{stale}_{goos}_{goarch}.tar.gz"
+    with pytest.raises(SystemExit, match="No release asset matched"):
+        _install_release(monkeypatch, tmp_path, archive=archive, name=stale_name)
+
+
+def test_install_release_binary_rejects_version_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    stale = "0.4.0" if pin != "0.4.0" else "0.3.0"
+    archive, name = _release_archive(pin, reported=stale)
+    with pytest.raises(SystemExit, match="does not report"):
+        _install_release(monkeypatch, tmp_path, archive=archive, name=name)
+
+
+def test_install_proxy_release_defaults_to_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    dest = tmp_path / "llmentary"
+    seen: dict[str, str] = {}
+
+    def fake_install(*, dest: Path, version: str) -> Path:
+        seen["version"] = version
+        dest.write_text("ok", encoding="utf-8")
+        return dest
+
+    spec = importlib.util.spec_from_file_location(
+        "install_proxy_release", ROOT / "scripts" / "install_proxy_release.py"
+    )
+    assert spec is not None and spec.loader is not None
+    installer: Any = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    monkeypatch.setattr(installer, "install_release_binary", fake_install)
+    monkeypatch.setattr(sys, "argv", ["install_proxy_release.py", "--output", str(dest)])
+    installer.main()
+    assert seen["version"] == pin
