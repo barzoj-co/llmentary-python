@@ -279,18 +279,17 @@ _SCAN_SKIP_DIRS = {
 
 def test_repo_has_no_private_project_names() -> None:
     hits: list[str] = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in _SCAN_SKIP_DIRS for part in path.parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        lowered = text.lower()
-        rel = path.relative_to(ROOT).as_posix()
-        for needle in _PRIVATE_PROJECT_NEEDLES:
-            if needle in lowered:
-                hits.append(f"{rel}: {needle}")
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [name for name in dirnames if name not in _SCAN_SKIP_DIRS]
+        for name in filenames:
+            path = Path(dirpath) / name
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            lowered = text.lower()
+            rel = path.relative_to(ROOT).as_posix()
+            for needle in _PRIVATE_PROJECT_NEEDLES:
+                if needle in lowered:
+                    hits.append(f"{rel}: {needle}")
     assert hits == []
