@@ -257,3 +257,40 @@ def test_docs_drop_token_crutch_and_once_public() -> None:
     assert "LLMTESTLAB_REPO_TOKEN" not in security
     assert "once this repository is public" not in security
     assert "skipped (fork, no secrets)" in security
+
+
+# Split so this file itself is not a hit for the public-tree scan.
+_PRIVATE_PROJECT_NEEDLES = ("heal" + "sens", "live" + "kit", "chat" + "service")
+_SCAN_SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "htmlcov",
+    "dist",
+    "build",
+    ".tox",
+}
+
+
+def test_repo_has_no_private_project_names() -> None:
+    hits: list[str] = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in _SCAN_SKIP_DIRS for part in path.parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        lowered = text.lower()
+        rel = path.relative_to(ROOT).as_posix()
+        for needle in _PRIVATE_PROJECT_NEEDLES:
+            if needle in lowered:
+                hits.append(f"{rel}: {needle}")
+    assert hits == []
