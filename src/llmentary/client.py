@@ -30,6 +30,7 @@ from .wait import (
     WaitTimeoutError,
     default_wait_quiet,
     default_wait_timeout,
+    explicit_active_count,
     resolve_wait_quiet,
     resolve_wait_timeout,
     wait_query_string,
@@ -245,7 +246,16 @@ class ControlClient:
                 payload = {}
             except (httpx.HTTPError, OSError, TypeError):
                 payload = {}
-        return wait_timeout_error(session_id, timeout, payload)
+        list_active = None
+        error_payload = payload.get("error")
+        error_mapping: Mapping[str, Any] = (
+            error_payload if isinstance(error_payload, Mapping) else {}
+        )
+        if explicit_active_count(error_mapping, payload) is None:
+            list_active = self._list_session_active(session_id)
+        return wait_timeout_error(
+            session_id, timeout, payload, list_active=list_active
+        )
 
     def _session_not_found(
         self,
@@ -270,6 +280,18 @@ class ControlClient:
             return [item.id for item in self.list_sessions() if item.id]
         except (httpx.HTTPError, OSError, TypeError, ValueError):
             return []
+
+    def _list_session_active(self, session_id: str) -> Optional[int]:
+        try:
+            for item in self.list_sessions():
+                if item.id != session_id:
+                    continue
+                value = item.raw.get("active")
+                if isinstance(value, int) and not isinstance(value, bool):
+                    return value
+        except (httpx.HTTPError, OSError, TypeError, ValueError):
+            return None
+        return None
 
     def delete_session(self, session_id: str) -> None:
         response = self._client.delete(

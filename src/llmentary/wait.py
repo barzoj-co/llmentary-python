@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any, Optional
 from urllib.parse import urlencode
 
-from .types import SessionTrace, first_present
+from .types import SessionTrace
 
 DEFAULT_WAIT_TIMEOUT = 30.0
 DEFAULT_WAIT_QUIET = 0.5
@@ -40,7 +40,7 @@ class WaitTimeoutError(TimeoutError):
         session_id: str,
         timeout: float,
         calls: int,
-        active: int,
+        active: Optional[int] = None,
         min_calls: Optional[int] = None,
     ) -> None:
         super().__init__(message)
@@ -145,23 +145,44 @@ def wait_query_string(
     return urlencode(params)
 
 
-def count_active_calls(payload: Mapping[str, Any], trace: SessionTrace) -> int:
-    for key in ("active", "in_flight", "inflight", "active_calls", "still_active"):
-        value = payload.get(key)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
-    active = 0
-    for call in trace.calls:
-        ended = first_present(call.raw, "ended_at", "endedAt")
-        if ended in (None, ""):
-            active += 1
-    return active
+def explicit_active_count(*payloads: Mapping[str, Any]) -> Optional[int]:
+    """Return an explicit ``active`` integer, or ``None`` when the body omits it.
+
+    After proxy 0.4.1 (DOG-36) in-flight calls are not in ``calls``, so counting
+    missing ``ended_at`` is always 0 and must not be used.
+    """
+
+    for payload in payloads:
+        for key in ("active", "active_calls", "still_active"):
+            value = payload.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+    return None
+
+
+def count_active_calls(
+    payload: Mapping[str, Any],
+    trace: SessionTrace,
+    *,
+    fallback: Optional[int] = None,
+) -> Optional[int]:
+    _ = trace
+    error = payload.get("error")
+    error_mapping = error if isinstance(error, Mapping) else {}
+    nested_session = payload.get("session")
+    session_payload = nested_session if isinstance(nested_session, Mapping) else payload
+    active = explicit_active_count(error_mapping, session_payload, payload)
+    if active is not None:
+        return active
+    return fallback
 
 
 def wait_timeout_error(
     session_id: str,
     timeout: float,
     payload: Optional[Mapping[str, Any]] = None,
+    *,
+    list_active: Optional[int] = None,
 ) -> WaitTimeoutError:
     raw = payload or {}
     error = raw.get("error") if isinstance(raw.get("error"), Mapping) else {}
@@ -181,10 +202,15 @@ def wait_timeout_error(
         if isinstance(min_calls_value, int) and not isinstance(min_calls_value, bool)
         else None
     )
-    active = count_active_calls(session_payload, trace)
+    active = count_active_calls(raw, trace, fallback=list_active)
+    so_far = f"{calls} calls so far"
+    if active is None:
+        detail = so_far
+    else:
+        detail = f"{so_far}, still active: {active}"
     message = (
         f"wait timed out after {format_go_duration(timeout)} on session {session_id} "
-        f"({calls} calls so far, still active: {active}). "
+        f"({detail}). "
         f"Raise {TIMEOUT_ENV} if the graph needs more time."
     )
     return WaitTimeoutError(

@@ -10,15 +10,18 @@ from test_go_session_schema import chat_tool_request, chat_tool_response, go_cal
 from llmentary import WaitTimeoutError
 from llmentary.client import ControlClient
 from llmentary.pytest_plugin import _cli_duration
+from llmentary.types import SessionTrace
 from llmentary.wait import (
     DEFAULT_WAIT_QUIET,
     DEFAULT_WAIT_TIMEOUT,
     TIMEOUT_ENV,
+    count_active_calls,
     default_wait_quiet,
     default_wait_timeout,
     format_go_duration,
     parse_duration,
     wait_query_string,
+    wait_timeout_error,
 )
 
 
@@ -159,18 +162,23 @@ def test_wait_session_timeout_error_message() -> None:
         request_body=chat_tool_request(),
         response_body=chat_tool_response(),
     )
-    active = go_call(
+    hanging = go_call(
         seq=2,
         api_family="chat.completions",
         request_body=chat_tool_request(),
         response_body=chat_tool_response(),
     )
-    active["ended_at"] = ""
-    payload = {"id": session_id, "calls": [finished, active]}
+    hanging["ended_at"] = ""
+    payload = {"id": session_id, "calls": [finished, hanging]}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/wait"):
             return httpx.Response(504, text="gateway timeout")
+        if request.url.path == "/sessions":
+            return httpx.Response(
+                200,
+                json={"sessions": [{"id": session_id, "calls": 2, "active": 1}]},
+            )
         if request.url.path.endswith(f"/sessions/{session_id}"):
             return httpx.Response(200, json=payload)
         return httpx.Response(404)
@@ -187,6 +195,31 @@ def test_wait_session_timeout_error_message() -> None:
     assert caught.value.active == 1
 
 
+def test_wait_session_timeout_does_not_invent_active_zero() -> None:
+    session_id = "sess-stale"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/wait"):
+            return httpx.Response(504, text="gateway timeout")
+        if request.url.path == "/sessions":
+            return httpx.Response(200, json={"sessions": [{"id": session_id, "calls": 0}]})
+        if request.url.path.endswith(f"/sessions/{session_id}"):
+            hanging = go_call(
+                seq=1,
+                api_family="chat.completions",
+                request_body=chat_tool_request(),
+                response_body=chat_tool_response(),
+            )
+            hanging["ended_at"] = ""
+            return httpx.Response(200, json={"id": session_id, "calls": [hanging]})
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(WaitTimeoutError, match=_timeout_message(session_id, 5, 1, None)):
+            client.wait_session(session_id, timeout=5, quiet=0.1)
+
+
 def test_wait_session_timeout_uses_configured_timeout_in_message() -> None:
     session_id = "sess-short"
 
@@ -199,8 +232,45 @@ def test_wait_session_timeout_uses_configured_timeout_in_message() -> None:
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         client = ControlClient("http://127.0.0.1:7778", client=http)
-        with pytest.raises(WaitTimeoutError, match=_timeout_message(session_id, 5, 0, 0)):
+        with pytest.raises(WaitTimeoutError, match=_timeout_message(session_id, 5, 0, None)):
             client.wait_session(session_id, timeout=5, quiet=0.1)
+
+
+def test_wait_timeout_uses_error_active_when_present() -> None:
+    payload = {
+        "id": "stall",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0, "min_calls": 1, "active": 1},
+    }
+    error = wait_timeout_error("stall", 1.0, payload)
+    assert error.active == 1
+    assert "still active: 1" in str(error)
+    assert error.calls == 0
+
+
+def test_wait_timeout_explicit_zero_is_kept() -> None:
+    payload = {
+        "id": "quiet",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0, "active": 0},
+    }
+    error = wait_timeout_error("quiet", 1.0, payload)
+    assert error.active == 0
+    assert "still active: 0" in str(error)
+
+
+def test_count_active_calls_ignores_missing_ended_at() -> None:
+    hanging = go_call(
+        seq=1,
+        api_family="chat.completions",
+        request_body=chat_tool_request(),
+        response_body=chat_tool_response(),
+    )
+    hanging["ended_at"] = ""
+    payload = {"id": "s", "calls": [hanging]}
+    trace = SessionTrace.from_payload("s", payload)
+    assert count_active_calls(payload, trace) is None
+    assert count_active_calls(payload, trace, fallback=2) == 2
 
 
 def _query_string(request: httpx.Request) -> str:
@@ -210,10 +280,17 @@ def _query_string(request: httpx.Request) -> str:
     return str(query)
 
 
-def _timeout_message(session_id: str, timeout: int, calls: int, active: int) -> str:
+def _timeout_message(
+    session_id: str, timeout: int, calls: int, active: Optional[int]
+) -> str:
+    so_far = rf"{calls} calls so far"
+    if active is None:
+        detail = so_far
+    else:
+        detail = rf"{so_far}, still active: {active}"
     return (
         rf"wait timed out after {timeout}s on session {session_id} "
-        rf"\({calls} calls so far, still active: {active}\)\. "
+        rf"\({detail}\)\. "
         rf"Raise {TIMEOUT_ENV}"
     )
 
