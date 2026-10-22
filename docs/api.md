@@ -348,3 +348,7 @@ from llmentary import proxy_version, proxy_version_line
 print(proxy_version())  # "0.4.1", or None when the binary is missing
 print(proxy_version_line())  # full `llmentary --version` line, or None
 ```
+
+Changed in 0.5.1: `proxy_version()` returns the bare semver. The full
+`--version` line is `proxy_version_line()`. `python -m llmentary --version`
+prints both the package version and the resolved proxy semver.

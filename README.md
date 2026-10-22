@@ -11,10 +11,8 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 
 `llmentary` is the Python/pytest client for the
 [`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) recording proxy.
-`llmentary.__version__` is the Python package; `llmentary.proxy_version()` is
-the semver of the resolved proxy binary (for example `0.4.1`, or `None` when
-no binary resolves); `proxy_version_line()` is the full `llmentary --version`
-line.
+See [Versions](#versions) for `__version__`, `proxy_version()`, and
+`python -m llmentary --version`.
 It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
 Completions and Responses calls. There is no LLM judge: assertions inspect the
 requests, responses, tool calls, usage, timings, retries, and errors the proxy
@@ -36,8 +34,10 @@ Platform wheels bundle the version-pinned proxy binary (`PROXY_VERSION`,
 currently 0.4.1). The sdist is client-only
 and does not include a binary. Install a wheel with
 `pip install --only-binary=:all: llmentary`, or set `LLMENTARY_BIN`, or put
-`llmentary` on `PATH`. Run `python -m llmentary doctor` to see what this
-install resolved.
+`llmentary` on `PATH`. There is no `llmentary` console script (that name
+is the proxy binary). Run `python -m llmentary doctor` to see what this
+install resolved, or `python -m llmentary --version` for the client and
+proxy versions.
 
 Supported wheel tags: `manylinux2014_x86_64`, `manylinux2014_aarch64`,
 `macosx_11_0_x86_64`, `macosx_11_0_arm64`, `win_amd64`.
@@ -52,6 +52,24 @@ For the quickstart using `openai-python`:
 
 ```bash
 pip install "llmentary[pytest,openai]"
+```
+
+## Versions
+
+`llmentary.__version__` is the Python package. `llmentary.proxy_version()`
+returns the proxy semver (for example `"0.4.1"`), or `None` when no binary
+resolves. `proxy_version_line()` is the full `llmentary --version` line.
+
+Changed in 0.5.1: `proxy_version()` used to return that full line. Code
+that did `proxy_version().split()[1]` should call `proxy_version()` for the
+semver, or `proxy_version_line()` for the line.
+
+```python
+from llmentary import __version__, proxy_version, proxy_version_line
+
+print(__version__)
+print(proxy_version())
+print(proxy_version_line())
 ```
 
 ## Quickstart
