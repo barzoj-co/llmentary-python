@@ -68,7 +68,8 @@ Same-repo CI runs those tests in the `openai-e2e` job, which uses the
 `openai-e2e` GitHub Environment. Maintainers approve that deployment on each
 PR (and on push to `main`) before `OPENAI_API_KEY` is available to the job.
 Python unit and fake-upstream integration jobs do not use the environment and
-do not wait. `e2e-gate` fails unless live e2e succeeded.
+do not wait. `e2e-gate` fails on same-repo runs unless live e2e succeeded.
+Fork PRs skip live e2e; `e2e-gate` then reports `skipped (fork, no secrets)`.
 
 ## Pull requests
 
@@ -129,11 +130,6 @@ upload is not a coverage-threshold failure.
 
 ## CI configuration required
 
-- `secrets.LLMTESTLAB_REPO_TOKEN`: read-only Contents token for private
-  repository `barzoj-co/llmentary`. Used to download the `PROXY_VERSION`
-  GoReleaser archive (and `checksums.txt`) in CI, and to fetch those assets
-  when building release wheels. TODO: remove once llmentary is public. Keep
-  this secret name; it is an existing org secret.
 - `secrets.OPENAI_API_KEY`: used by OpenAI E2E tests on push and non-fork PRs.
   Those tests actually run (they do not skip) when this secret is present.
 - PyPI Trusted Publishing: configure PyPI project `llmentary` to trust this

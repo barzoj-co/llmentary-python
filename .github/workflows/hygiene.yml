@@ -211,7 +211,6 @@ jobs:
             --token="${RELEASE_PLEASE_TOKEN}"
 
   # Same pinned tools and scripts/build_release_wheels.py invocation as release.yml.
-  # Forks and Dependabot do not receive LLMTESTLAB_REPO_TOKEN.
   publish-dry-run:
     name: publish (dry run)
     if: >-
@@ -227,15 +226,6 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-
-      - name: Fail clearly if llmentary repo token is missing
-        env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
-        run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error title=Missing secret::Add secrets.LLMTESTLAB_REPO_TOKEN with read access to barzoj-co/llmentary."
-            exit 1
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -264,7 +254,7 @@ jobs:
 
       - name: Build verified platform wheels
         env:
-          LLMENTARY_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/build_release_wheels.py
 
       - name: Twine check

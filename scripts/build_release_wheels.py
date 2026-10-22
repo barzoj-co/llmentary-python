@@ -77,10 +77,7 @@ def main() -> None:
     version = os.environ.get("LLMENTARY_RELEASE_VERSION")
     if not version:
         raise SystemExit("LLMENTARY_RELEASE_VERSION is required")
-    token = os.environ.get("LLMENTARY_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise SystemExit("LLMENTARY_REPO_TOKEN or GITHUB_TOKEN is required")
-
+    token = optional_github_token()
     release = fetch_release(version, token)
     assets = release_assets(release)
     checksum_asset = select_checksum_asset(assets)
@@ -116,7 +113,16 @@ def main() -> None:
     print_built_artifacts(dist)
 
 
-def fetch_release(version: str, token: str) -> dict[str, Any]:
+def optional_github_token(explicit: Optional[str] = None) -> Optional[str]:
+    """Return a GitHub token for API rate limits, or None for anonymous access."""
+
+    for candidate in (explicit, os.environ.get("GITHUB_TOKEN")):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def fetch_release(version: str, token: Optional[str] = None) -> dict[str, Any]:
     tag = version if version.startswith("v") else f"v{version}"
     data = download_bytes(
         f"https://api.github.com/repos/{REPO}/releases/tags/{tag}",
@@ -192,7 +198,7 @@ def assert_asset_matches_pin(asset_name: str, version: str) -> None:
         raise SystemExit(f"Asset {asset_name} does not match pin {pin}")
 
 
-def download_asset(url: str, token: str) -> bytes:
+def download_asset(url: str, token: Optional[str] = None) -> bytes:
     return download_bytes(
         url,
         token=token,
@@ -355,9 +361,7 @@ def install_release_binary(
     goarch: Optional[str] = None,
 ) -> Path:
     pin = version or read_proxy_version()
-    secret = token or os.environ.get("LLMENTARY_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not secret:
-        raise SystemExit("LLMENTARY_REPO_TOKEN or GITHUB_TOKEN is required")
+    secret = optional_github_token(token)
     if goos is None or goarch is None:
         host_goos, host_goarch = host_platform()
         goos = goos or host_goos

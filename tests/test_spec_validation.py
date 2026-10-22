@@ -8,9 +8,9 @@ import pytest
 from llmentary.assertions import Expectation
 from llmentary.types import SessionTrace
 
-# Chatservice live run 1 (2026-10-20, head 76c8ace): the hand-written scraper
-# treated ``normalized.validation`` as a finding. That payload is clean.
-CHATSERVICE_RUN1_NORMALIZED: dict[str, Any] = {
+# Chat-service live-validation fixture: a hand-written scraper treated
+# ``normalized.validation`` as a finding. That payload is clean.
+CHAT_SERVICE_RUN1_NORMALIZED: dict[str, Any] = {
     "validation": {
         "mode": "warn",
         "profile": "relaxed",
@@ -86,8 +86,8 @@ def _trace(*calls: Mapping[str, Any], session_id: str = "sess") -> SessionTrace:
     return SessionTrace.from_payload(session_id, {"id": session_id, "calls": list(calls)})
 
 
-def test_chatservice_run1_payload_is_clean_not_a_violation() -> None:
-    trace = _trace(_call(normalized=CHATSERVICE_RUN1_NORMALIZED), session_id="chatservice-run1")
+def test_chat_service_run1_payload_is_clean_not_a_violation() -> None:
+    trace = _trace(_call(normalized=CHAT_SERVICE_RUN1_NORMALIZED), session_id="chat-service-run1")
     call = trace.calls[0]
     assert call.validation is not None
     assert call.validation.mode == "warn"

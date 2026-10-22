@@ -18,12 +18,10 @@ PROXY_VECTOR_BRANCH = "main"
 
 
 def _token() -> str:
-    return (
-        os.environ.get("LLMENTARY_REPO_TOKEN")
-        or os.environ.get("LLMTESTLAB_REPO_TOKEN")
-        or os.environ.get("GITHUB_TOKEN")
-        or ""
-    )
+    """Optional GITHUB_TOKEN for API rate limits. Never required."""
+
+    value = os.environ.get("GITHUB_TOKEN") or ""
+    return value.strip()
 
 
 def _proxy_version(root: Path) -> str:
@@ -35,8 +33,9 @@ def _proxy_version(root: Path) -> str:
 
 def _get(url: str, token: str) -> tuple[object | None, int | None]:
     request = urllib.request.Request(url)
-    request.add_header("Authorization", f"Bearer {token}")
     request.add_header("Accept", "application/vnd.github+json")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             return json.loads(response.read().decode("utf-8")), 200
@@ -83,9 +82,6 @@ def main() -> int:
     )
     args = parser.parse_args()
     token = _token()
-    if not token:
-        print("fetch_isolation_vectors: skipped: no repo token")
-        return 0
     refs = [PROXY_VECTOR_BRANCH]
     version = _proxy_version(Path(args.root))
     if version:

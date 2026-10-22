@@ -7,6 +7,7 @@ import os
 import urllib.error
 import urllib.request
 import warnings
+from email.message import Message
 from pathlib import Path
 from typing import Any
 
@@ -142,13 +143,7 @@ def test_isolation_vectors_match_proxy_pin() -> None:
         _log_compared(len(official), source)
         return
 
-    token = os.environ.get("LLMTESTLAB_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
-    if not token:
-        pytest.skip(
-            "skipped: no token to fetch isolation vectors from private "
-            f"{PROXY_VECTOR_REPO} {PROXY_VECTOR_PATH}"
-        )
-
+    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
     listing, ref, error = _fetch_proxy_listing(token)
     if error is not None:
         raise AssertionError(error)
@@ -229,8 +224,9 @@ def _fetch_proxy_listing(token: str) -> tuple[list[Any] | None, str | None, str 
             f"{PROXY_VECTOR_PATH}?ref={ref}"
         )
         request = urllib.request.Request(url)
-        request.add_header("Authorization", f"Bearer {token}")
         request.add_header("Accept", "application/vnd.github+json")
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
                 listing = json.loads(response.read().decode("utf-8"))
@@ -273,8 +269,9 @@ def _download_file(token: str, ref: str, name: str) -> bytes:
         f"{PROXY_VECTOR_PATH}/{name}?ref={ref}"
     )
     request = urllib.request.Request(url)
-    request.add_header("Authorization", f"Bearer {token}")
     request.add_header("Accept", "application/vnd.github+json")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(request, timeout=20) as response:
         payload = json.loads(response.read().decode("utf-8"))
     encoded = payload.get("content")
@@ -290,3 +287,102 @@ def _git_blob_sha(path: Path) -> str:
 
 def test_vector_dir_is_not_empty() -> None:
     assert _vector_files(), "expected testdata/isolation/*.json"
+
+
+def test_fetch_proxy_listing_omits_authorization_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, str]] = []
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'[{"name":"empty-other.json"}]'
+
+    def fake_urlopen(request: object, timeout: int = 0) -> FakeResponse:
+        captured.append(dict(getattr(request, "headers", {})))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    listing, ref, error = _fetch_proxy_listing("")
+    assert error is None
+    assert ref == "main"
+    assert listing == [{"name": "empty-other.json"}]
+    assert "Authorization" not in captured[0]
+
+
+def test_fetch_proxy_listing_sends_optional_github_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str | None] = []
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"[]"
+
+    def fake_urlopen(request: object, timeout: int = 0) -> FakeResponse:
+        headers = getattr(request, "headers", {})
+        captured.append(headers.get("Authorization"))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    listing, _ref, error = _fetch_proxy_listing("rate-limit")
+    assert error is None
+    assert listing == []
+    assert captured[0] == "Bearer rate-limit"
+
+
+def test_fetch_proxy_listing_http_failure_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request: object, timeout: int = 0) -> object:
+        raise urllib.error.HTTPError(
+            getattr(request, "full_url", ""),
+            404,
+            "Not Found",
+            Message(),
+            None,
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    listing, ref, error = _fetch_proxy_listing("")
+    assert listing is None
+    assert ref is None
+    assert error is not None
+    assert "HTTP 404" in error
+
+
+def test_download_file_omits_authorization_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, str]] = []
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            encoded = base64.b64encode(b'{"id":"x"}').decode("ascii")
+            return json.dumps({"content": encoded}).encode()
+
+    def fake_urlopen(request: object, timeout: int = 0) -> FakeResponse:
+        captured.append(dict(getattr(request, "headers", {})))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert _download_file("", "main", "empty-other.json") == b'{"id":"x"}'
+    assert "Authorization" not in captured[0]
