@@ -126,8 +126,8 @@ class SessionInfo:
     sources: tuple[str, ...] = ()
     first_started_at: Optional[str] = None
     last_ended_at: Optional[str] = None
-    spec: Optional[SessionSpecSummary] = None
     raw: Mapping[str, Any] = field(default_factory=dict)
+    spec: Optional[SessionSpecSummary] = None
 
 
 @dataclass(frozen=True)

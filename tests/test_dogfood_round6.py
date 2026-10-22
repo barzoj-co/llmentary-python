@@ -249,6 +249,17 @@ def test_session_info_exposes_spec_summary() -> None:
             },
         }
     )
+    positional = SessionInfo(
+        "legacy",
+        1,
+        0,
+        (),
+        None,
+        None,
+        {"id": "legacy"},
+    )
+    assert positional.raw == {"id": "legacy"}
+    assert positional.spec is None
     assert isinstance(row, SessionInfo)
     assert row.spec is not None
     assert row.spec.checked == 2

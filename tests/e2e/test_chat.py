@@ -495,7 +495,8 @@ def test_after_headers_abort_response_text_is_partial_not_json(llmentary: Sessio
     assert not text.lstrip().startswith("{")
     assert '"choices"' not in text
     assert '"delta"' not in text
-    if assembled and text:
+    assert text
+    if assembled:
         assert assembled[0] in text or text in "".join(assembled)
     llmentary.expect().call_count(1, exclude_aborted=False)
     llmentary.query().aborted().expect().call_count(1)
