@@ -278,7 +278,7 @@ def test_proxy_config_timeouts_and_spec_target_override() -> None:
 @pytest.mark.integration
 def test_named_upstream_skips_path_allow_list() -> None:
     from fake_upstream import FakeOpenAIServer
-    from test_proxy_dogfood import isolated_proxy, _post_chat
+    from test_proxy_dogfood import _post_chat, isolated_proxy
 
     server = FakeOpenAIServer().start()
     try:
