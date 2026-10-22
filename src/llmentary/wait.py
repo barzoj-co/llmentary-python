@@ -234,7 +234,8 @@ def parse_in_flight_calls(*payloads: Mapping[str, Any]) -> Optional[tuple[InFlig
     """Return ``in_flight`` when the field is present; ``None`` for older proxies.
 
     An empty array is a present field (no running calls), not a missing one.
-    Non-object items are skipped.
+    JSON ``null`` is treated as empty. A non-sequence value is unknown
+    (``None``) so the count is not invented as 0. Non-object items are skipped.
     """
 
     for payload in payloads:
@@ -244,7 +245,7 @@ def parse_in_flight_calls(*payloads: Mapping[str, Any]) -> Optional[tuple[InFlig
         if raw is None:
             return ()
         if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
-            return ()
+            return None
         items: list[InFlightCall] = []
         for item in raw:
             parsed = in_flight_call_from_raw(item)

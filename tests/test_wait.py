@@ -508,16 +508,29 @@ def test_wait_timeout_explicit_active_wins_over_in_flight_len() -> None:
     assert "still active: 4: #1 POST /v1/responses awaiting_headers 1ms" in str(error)
 
 
-def test_wait_timeout_invalid_in_flight_type_is_empty_present() -> None:
+def test_wait_timeout_invalid_in_flight_type_leaves_count_unknown() -> None:
     payload = {
         "id": "bad",
         "calls": [],
         "error": {"type": "wait_timeout", "calls_seen": 0, "in_flight": "nope"},
     }
     error = wait_timeout_error("bad", 1.0, payload)
-    assert error.in_flight == ()
-    assert error.active == 0
-    assert "still active: 0" in str(error)
+    assert error.in_flight is None
+    assert error.active is None
+    assert "still active" not in str(error)
+
+
+def test_wait_timeout_invalid_in_flight_uses_list_active_fallback() -> None:
+    payload = {
+        "id": "bad-fallback",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0, "in_flight": "nope"},
+    }
+    error = wait_timeout_error("bad-fallback", 1.0, payload, list_active=2)
+    assert error.in_flight is None
+    assert error.active == 2
+    assert "still active: 2" in str(error)
+    assert "awaiting_headers" not in str(error)
 
 
 def test_in_flight_describe_falls_back_to_call_id() -> None:
