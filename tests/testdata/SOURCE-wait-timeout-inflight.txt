@@ -1,0 +1,4 @@
+Canonical pin: api/control/testdata/wait_timeout_inflight.json on
+barzoj-co/llmentary (https://github.com/barzoj-co/llmentary/pull/50).
+Shape and enums are stable; id, call_id, seq, started_at, elapsed_ms, and
+upstream host:port are dynamic.

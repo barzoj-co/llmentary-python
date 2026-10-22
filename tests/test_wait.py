@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from typing import Optional, cast
+import json
+from pathlib import Path
+from typing import Any, Optional, cast
 
 import httpx
 import pytest
 from test_go_session_schema import chat_tool_request, chat_tool_response, go_call
 
-from llmentary import WaitTimeoutError
+from llmentary import InFlightCall, WaitTimeoutError
 from llmentary.client import ControlClient
 from llmentary.pytest_plugin import _cli_duration
 from llmentary.types import SessionTrace
@@ -20,9 +22,12 @@ from llmentary.wait import (
     default_wait_timeout,
     format_go_duration,
     parse_duration,
+    parse_in_flight_calls,
     wait_query_string,
     wait_timeout_error,
 )
+
+PIN = Path(__file__).resolve().parent / "testdata" / "wait_timeout_inflight.json"
 
 
 @pytest.fixture(autouse=True)
@@ -193,6 +198,7 @@ def test_wait_session_timeout_error_message() -> None:
     assert caught.value.session_id == session_id
     assert caught.value.calls == 2
     assert caught.value.active == 1
+    assert caught.value.in_flight is None
 
 
 def test_wait_session_timeout_does_not_invent_active_zero() -> None:
@@ -273,7 +279,9 @@ def test_wait_timeout_uses_error_active_when_present() -> None:
     }
     error = wait_timeout_error("stall", 1.0, payload)
     assert error.active == 1
+    assert error.in_flight is None
     assert "still active: 1" in str(error)
+    assert "awaiting_headers" not in str(error)
     assert error.calls == 0
 
 
@@ -285,7 +293,277 @@ def test_wait_timeout_explicit_zero_is_kept() -> None:
     }
     error = wait_timeout_error("quiet", 1.0, payload)
     assert error.active == 0
+    assert error.in_flight is None
     assert "still active: 0" in str(error)
+
+
+def _pin_payloads() -> dict[str, Any]:
+    parsed = json.loads(PIN.read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict)
+    return cast(dict[str, Any], parsed)
+
+
+def test_wait_timeout_old_proxy_omits_in_flight_listing() -> None:
+    payload: dict[str, Any] = {
+        "id": "legacy",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0},
+    }
+    error = wait_timeout_error("legacy", 1.0, payload)
+    assert error.in_flight is None
+    assert error.active is None
+    assert "still active" not in str(error)
+    error_mapping = payload["error"]
+    assert isinstance(error_mapping, dict)
+    assert parse_in_flight_calls(error_mapping, payload) is None
+
+
+def test_wait_timeout_empty_in_flight() -> None:
+    payload = {
+        "id": "quiet",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "min_calls": 1,
+            "active": 0,
+            "in_flight": [],
+        },
+    }
+    error = wait_timeout_error("quiet", 1.0, payload)
+    assert error.active == 0
+    assert error.in_flight == ()
+    assert "still active: 0" in str(error)
+    assert "#" not in str(error).split("still active: 0", 1)[1]
+
+
+def test_wait_timeout_pin_awaiting_headers() -> None:
+    payload = _pin_payloads()["awaiting_headers"]
+    error = wait_timeout_error("stall-example", 1.0, payload)
+    assert error.active == 1
+    assert error.min_calls == 1
+    assert error.calls == 0
+    assert error.in_flight is not None
+    assert len(error.in_flight) == 1
+    item = error.in_flight[0]
+    assert isinstance(item, InFlightCall)
+    assert item.call_id == "call_1"
+    assert item.seq == 1
+    assert item.method == "POST"
+    assert item.path == "/v1/responses"
+    assert item.phase == "awaiting_headers"
+    assert item.elapsed_ms == 1000
+    assert item.bytes_received == 0
+    assert item.http_status is None
+    assert "still active: 1: #1 POST /v1/responses awaiting_headers 1000ms" in str(error)
+
+
+def test_wait_timeout_pin_streaming() -> None:
+    payload = _pin_payloads()["streaming"]
+    error = wait_timeout_error("stall-stream-example", 1.0, payload)
+    assert error.active == 1
+    assert error.in_flight is not None
+    item = error.in_flight[0]
+    assert item.phase == "streaming"
+    assert item.http_status == 200
+    assert item.bytes_received == 42
+    assert item.path == "/v1/chat/completions"
+    assert (
+        "still active: 1: #1 POST /v1/chat/completions streaming http 200 1000ms"
+        in str(error)
+    )
+
+
+def test_wait_timeout_many_in_flight() -> None:
+    payload = {
+        "id": "busy",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 1,
+            "min_calls": 2,
+            "active": 3,
+            "in_flight": [
+                {
+                    "call_id": "a",
+                    "seq": 2,
+                    "method": "POST",
+                    "path": "/v1/responses",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 50,
+                    "bytes_received": 0,
+                },
+                {
+                    "call_id": "b",
+                    "seq": 3,
+                    "method": "POST",
+                    "path": "/v1/chat/completions",
+                    "phase": "streaming",
+                    "http_status": 200,
+                    "elapsed_ms": 80,
+                    "bytes_received": 12,
+                },
+                {
+                    "call_id": "c",
+                    "seq": 4,
+                    "method": "POST",
+                    "path": "/v1/embeddings",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 10,
+                    "bytes_received": 0,
+                },
+            ],
+        },
+    }
+    error = wait_timeout_error("busy", 2.0, payload)
+    assert error.active == 3
+    assert error.in_flight is not None
+    assert [item.seq for item in error.in_flight] == [2, 3, 4]
+    message = str(error)
+    assert "still active: 3:" in message
+    assert "#2 POST /v1/responses awaiting_headers 50ms" in message
+    assert "#3 POST /v1/chat/completions streaming http 200 80ms" in message
+    assert "#4 POST /v1/embeddings awaiting_headers 10ms" in message
+
+
+def test_wait_timeout_skips_non_object_in_flight_items() -> None:
+    payload = {
+        "id": "mixed",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "in_flight": [
+                1,
+                "nope",
+                None,
+                {
+                    "call_id": "ok",
+                    "seq": 7,
+                    "method": "GET",
+                    "path": "/v1/models",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 5,
+                },
+            ],
+        },
+    }
+    error = wait_timeout_error("mixed", 1.0, payload)
+    assert error.in_flight is not None
+    assert len(error.in_flight) == 1
+    assert error.active == 1
+    assert error.in_flight[0].seq == 7
+    assert "#7 GET /v1/models awaiting_headers 5ms" in str(error)
+
+
+def test_wait_timeout_in_flight_len_used_when_active_omitted() -> None:
+    payload = {
+        "id": "no-count",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "in_flight": [
+                {
+                    "call_id": "only",
+                    "seq": 1,
+                    "method": "POST",
+                    "path": "/v1/responses",
+                    "phase": "streaming",
+                    "http_status": 200,
+                    "elapsed_ms": 3,
+                }
+            ],
+        },
+    }
+    error = wait_timeout_error("no-count", 1.0, payload)
+    assert error.active == 1
+    assert "still active: 1:" in str(error)
+
+
+def test_wait_timeout_explicit_active_wins_over_in_flight_len() -> None:
+    payload = {
+        "id": "mismatch",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "active": 4,
+            "in_flight": [
+                {
+                    "call_id": "one",
+                    "seq": 1,
+                    "method": "POST",
+                    "path": "/v1/responses",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 1,
+                }
+            ],
+        },
+    }
+    error = wait_timeout_error("mismatch", 1.0, payload)
+    assert error.active == 4
+    assert error.in_flight is not None
+    assert len(error.in_flight) == 1
+    assert "still active: 4: #1 POST /v1/responses awaiting_headers 1ms" in str(error)
+
+
+def test_wait_timeout_invalid_in_flight_type_leaves_count_unknown() -> None:
+    payload = {
+        "id": "bad",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0, "in_flight": "nope"},
+    }
+    error = wait_timeout_error("bad", 1.0, payload)
+    assert error.in_flight is None
+    assert error.active is None
+    assert "still active" not in str(error)
+
+
+def test_wait_timeout_invalid_in_flight_uses_list_active_fallback() -> None:
+    payload = {
+        "id": "bad-fallback",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 0, "in_flight": "nope"},
+    }
+    error = wait_timeout_error("bad-fallback", 1.0, payload, list_active=2)
+    assert error.in_flight is None
+    assert error.active == 2
+    assert "still active: 2" in str(error)
+    assert "awaiting_headers" not in str(error)
+
+
+def test_in_flight_describe_falls_back_to_call_id() -> None:
+    item = InFlightCall(call_id="call_x", phase="streaming")
+    assert item.describe() == "call_x streaming"
+
+
+def test_in_flight_call_is_hashable_and_ignores_raw() -> None:
+    left = InFlightCall(call_id="call_x", seq=1, raw={"n": 1})
+    right = InFlightCall(call_id="call_x", seq=1, raw={"n": 2})
+    assert left == right
+    assert hash(left) == hash(right)
+    assert {left, right} == {left}
+
+
+def test_wait_session_504_json_lists_in_flight() -> None:
+    session_id = "stall-example"
+    payload = _pin_payloads()["awaiting_headers"]
+    listed: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        listed.append(request.url.path)
+        return httpx.Response(504, json=payload)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(WaitTimeoutError, match="awaiting_headers") as caught:
+            client.wait_session(session_id, timeout=1, quiet=0.1)
+
+    assert caught.value.active == 1
+    assert caught.value.in_flight is not None
+    assert caught.value.in_flight[0].phase == "awaiting_headers"
+    assert listed == [f"/sessions/{session_id}/wait"]
 
 
 def test_count_active_calls_ignores_missing_ended_at() -> None:

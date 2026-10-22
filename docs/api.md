@@ -86,7 +86,10 @@ Methods:
   (`LLMENTARY_WAIT_TIMEOUT` / `LLMENTARY_WAIT_QUIET`). `min_calls` waits until
   that many finished calls exist. A 404 raises `SessionNotFound` (never
   created, `min_calls=0`). A 504 raises `WaitTimeoutError` (`min_calls>=1`
-  and no call before `timeout`).
+  and no call before `timeout`). When the proxy sends `error.in_flight`,
+  the exception lists those still-running calls and `error.active`. Older
+  proxies omit that array; the client keeps the count-only form, or omits
+  `still active` when the count is unknown.
 - `llmentary.trace()`: fetch the current trace without waiting
 - `llmentary.list_sessions()`: cheap session list from `GET /sessions`
 - `llmentary.otlp()`: fetch OTLP bytes for the session
