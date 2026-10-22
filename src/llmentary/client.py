@@ -20,9 +20,11 @@ import httpx
 from .assertions import Expectation, SoftExpectation
 from .binary import find_binary
 from .types import (
+    ProxyConfig,
     SessionInfo,
     SessionTrace,
     normalize_api_type,
+    proxy_config_from_mapping,
     session_info_from_mapping,
     zero_calls_message,
 )
@@ -121,6 +123,11 @@ class ControlClient:
         if not isinstance(payload, Mapping):
             raise TypeError(f"Unexpected config payload: {payload!r}")
         return payload
+
+    def proxy_config(self) -> ProxyConfig:
+        """Typed ``GET /config`` (version, upstreams, spec targets, timeouts)."""
+
+        return proxy_config_from_mapping(self.config())
 
     def version(self) -> str:
         payload = self.config()

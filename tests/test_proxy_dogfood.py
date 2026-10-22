@@ -125,12 +125,15 @@ def test_wait_min_calls_against_real_proxy(llmentary: Session) -> None:
 def test_proxy_config_includes_version() -> None:
     with isolated_proxy() as handle:
         config = handle.control.config()
+        typed = handle.control.proxy_config()
         version = handle.control.version()
         assert version
         blob = str(config)
         assert "version" in config or "openai" in blob
         assert "api.openai.com" in blob
         assert "/v1" in blob
+        assert typed.version == version
+        assert typed.raw == config
 
 
 # Shared table used by the Go and JS clients as well (DOG-5 C1).

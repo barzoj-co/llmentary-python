@@ -23,7 +23,7 @@ body:
     attributes:
       label: Bundled proxy version
       description: The `VERSION` file next to the wheel binary, or the `LLMENTARY_BIN` path if you did not use a bundled binary.
-      placeholder: "0.4.1 or /path/to/llmentary"
+      placeholder: "0.5.0 or /path/to/llmentary"
     validations:
       required: true
   - type: input

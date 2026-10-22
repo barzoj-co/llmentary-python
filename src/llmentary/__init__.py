@@ -21,6 +21,7 @@ from .doctor import (
 from .types import (
     APIType,
     IgnoredField,
+    ProxyConfig,
     SessionInfo,
     SessionTrace,
     SpecViolation,
@@ -40,6 +41,7 @@ __all__ = [
     "Expectation",
     "IgnoredField",
     "InFlightCall",
+    "ProxyConfig",
     "ProxyHandle",
     "Query",
     "Session",

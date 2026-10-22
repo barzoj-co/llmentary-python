@@ -2,7 +2,7 @@
 
 There is no download-on-first-run. Platform wheels bundle a version-pinned Go
 proxy binary taken from the `barzoj-co/llmentary` GoReleaser release named in
-`PROXY_VERSION` (currently `0.4.1`). That pin is independent of this
+`PROXY_VERSION` (currently `0.5.0`). That pin is independent of this
 Python package version. The bundled version is also written to the wheel
 `VERSION` file. Release packaging and CI verify each downloaded archive against
 `checksums.txt` (sha256) before the binary is used. The release also publishes
@@ -35,7 +35,10 @@ OpenAI-compatible proxy, `-control` for the control API, and
 `-upstream name=https://host/base` (default name `openai`). A trailing `/v1`
 on the upstream URL is passed through; the proxy owns the overlap-join rule
 that prevents `/v1/v1`. With no upstream setting the proxy defaults to
-`openai=https://api.openai.com/v1`. Override the whole command with
+`openai=https://api.openai.com/v1`. Per-upstream spec targets and optional
+upstream header/idle timeouts are inherited from `LLMENTARY_SPEC_TARGETS`,
+`LLMENTARY_UPSTREAM_HEADER_TIMEOUT`, and `LLMENTARY_UPSTREAM_IDLE_TIMEOUT`.
+Override the whole command with
 `LLMENTARY_START_COMMAND` if needed:
 
 ```bash

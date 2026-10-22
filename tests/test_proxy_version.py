@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_PIN = "0.4.1"
+CURRENT_PIN = "0.5.0"
 PIN_DOC_PATHS = (
     ROOT / "README.md",
     ROOT / "CONTRIBUTING.md",
@@ -33,7 +33,7 @@ def read_proxy_pin() -> str:
     return (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_proxy_version_pin_is_0_4_1() -> None:
+def test_proxy_version_pin_is_0_5_0() -> None:
     pin = read_proxy_pin()
     assert pin == CURRENT_PIN
     assert not pin.startswith("v")
@@ -52,7 +52,7 @@ def test_current_pin_docs_match_proxy_version() -> None:
         phrase = template.format(pin=pin)
         assert phrase in joined, f"missing current-pin phrase: {phrase}"
 
-    stale = "0.4.0"
+    stale = "0.4.1"
     if pin != stale:
         stale_current = (
             f"bundle proxy v{stale}",
@@ -70,7 +70,7 @@ def test_current_pin_docs_match_proxy_version() -> None:
 
 
 @pytest.mark.integration
-def test_installed_proxy_version_is_clean_0_4_1() -> None:
+def test_installed_proxy_version_is_clean_0_5_0() -> None:
     pin = read_proxy_pin()
     binary = os.environ.get("LLMENTARY_BIN")
     assert binary, "LLMENTARY_BIN is required for this integration test"
