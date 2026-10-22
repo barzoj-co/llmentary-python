@@ -410,6 +410,13 @@ class CapturedCall:
         return value if isinstance(value, str) and value else None
 
     @property
+    def error_source(self) -> Optional[str]:
+        """Who recorded the error (``proxy`` for header/idle timeouts)."""
+
+        value = self.error_mapping.get("source")
+        return value if isinstance(value, str) and value else None
+
+    @property
     def mid_stream_error(self) -> Optional[Any]:
         return first_present(
             self.raw,
@@ -862,11 +869,13 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Optional[Any]:
     return None
 
 
-def looks_like_error_object(mapping: Mapping[str, Any]) -> bool:
-    return any(
-        mapping.get(key) not in (None, "")
-        for key in ("type", "code", "message", "normalized")
-    )
+def looks_like_error_object(
+    mapping: Mapping[str, Any], *, allow_source: bool = False
+) -> bool:
+    keys: tuple[str, ...] = ("type", "code", "message", "normalized")
+    if allow_source:
+        keys = (*keys, "source")
+    return any(mapping.get(key) not in (None, "") for key in keys)
 
 
 def unwrap_error(value: Any) -> Mapping[str, Any]:
@@ -874,7 +883,7 @@ def unwrap_error(value: Any) -> Mapping[str, Any]:
         nested = value.get("error")
         if isinstance(nested, Mapping):
             return nested
-        if looks_like_error_object(value):
+        if looks_like_error_object(value, allow_source=True):
             return value
         return {}
     if isinstance(value, str) and value.strip():
@@ -883,7 +892,7 @@ def unwrap_error(value: Any) -> Mapping[str, Any]:
             nested = extracted.get("error")
             if isinstance(nested, Mapping):
                 return nested
-            if looks_like_error_object(extracted):
+            if looks_like_error_object(extracted, allow_source=True):
                 return extracted
     return {}
 
