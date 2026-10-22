@@ -2,6 +2,18 @@
 
 ## Upgrade notes
 
+## [0.7.0](https://github.com/barzoj-co/llmentary-python/compare/v0.6.1...v0.7.0) (2026-10-22)
+
+
+### Features
+
+* bundle proxy v0.5.0 ([#53](https://github.com/barzoj-co/llmentary-python/issues/53)) ([f577145](https://github.com/barzoj-co/llmentary-python/commit/f57714520b0c8dbb985ffd319ee302b130b4fd62))
+
+
+### Bug Fixes
+
+* expose error.source ([#55](https://github.com/barzoj-co/llmentary-python/issues/55)) ([89c10a6](https://github.com/barzoj-co/llmentary-python/commit/89c10a6cbf525ebc495b859b3fd7be2c073b849f))
+
 ## [0.6.1](https://github.com/barzoj-co/llmentary-python/compare/v0.6.0...v0.6.1) (2026-10-22)
 
 
