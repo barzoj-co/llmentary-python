@@ -459,14 +459,6 @@ def test_isolated_from_times_out_on_other_side_still_streaming(
     )
     try:
         call_openai(
-            lambda: openai_client(other).chat.completions.create(
-                model=CHEAP_MODEL,
-                messages=[{"role": "user", "content": "Y settled prompt LTL-PY-DOG-37"}],
-                temperature=0,
-                max_tokens=8,
-            )
-        )
-        call_openai(
             lambda: openai_client(starter).chat.completions.create(
                 model=CHEAP_MODEL,
                 messages=[{"role": "user", "content": "X settled prompt LTL-PY-DOG-37"}],
@@ -475,6 +467,16 @@ def test_isolated_from_times_out_on_other_side_still_streaming(
             )
         )
         trace = starter.wait(timeout=30, quiet=0.5, min_calls=1)
+        # Other must settle just before isolated_from so starter.quiet_for
+        # has not already elapsed on Y (wait timeout 0.05 vs quiet 5.0).
+        call_openai(
+            lambda: openai_client(other).chat.completions.create(
+                model=CHEAP_MODEL,
+                messages=[{"role": "user", "content": "Y settled prompt LTL-PY-DOG-37"}],
+                temperature=0,
+                max_tokens=8,
+            )
+        )
         with pytest.raises(AssertionError, match=r"wait timed out on session"):
             Expectation(trace, session=starter).isolated_from(other)
     finally:

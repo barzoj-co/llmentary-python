@@ -746,6 +746,65 @@ def test_isolated_from_prefers_wait_kwargs_from_asserting_session() -> None:
     assert seen == [{"timeout": 7.0, "quiet": 0.2}]
 
 
+def test_isolated_from_wait_typeerror_does_not_retry_without_kwargs() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+    seen: list[dict[str, float]] = []
+
+    class _Session:
+        session_id = "x"
+        proxy = None
+        wait_timeout = 7.0
+        quiet_for = 0.2
+
+    class _Other:
+        session_id = "y"
+
+        def wait(self, timeout: float = 30.0, quiet: float = 0.5) -> SessionTrace:
+            seen.append({"timeout": timeout, "quiet": quiet})
+            raise TypeError("internal wait boom")
+
+        def trace(self) -> SessionTrace:
+            raise AssertionError("must not fall back to GET after wait TypeError")
+
+    with pytest.raises(TypeError, match="internal wait boom"):
+        Expectation(own, session=_Session()).isolated_from(_Other())
+    assert seen == [{"timeout": 7.0, "quiet": 0.2}]
+
+
+def test_isolated_from_wait_without_kwargs_still_runs() -> None:
+    own = _trace(
+        "x",
+        _call(session_id="x", ident="call_x1", seq=1, user="Weather in Paris?"),
+    )
+    other = _trace(
+        "y",
+        _call(session_id="y", ident="call_y1", seq=1, user="Tell a short story."),
+    )
+    waits = {"n": 0}
+
+    class _Session:
+        session_id = "x"
+        proxy = None
+        wait_timeout = 7.0
+        quiet_for = 0.2
+
+    class _Other:
+        session_id = "y"
+
+        def wait(self) -> SessionTrace:
+            waits["n"] += 1
+            return other
+
+        def trace(self) -> SessionTrace:
+            raise AssertionError("must wait, not GET")
+
+    Expectation(own, session=_Session()).isolated_from(_Other())
+    assert waits["n"] == 1
+
+
 def test_isolated_from_prefetched_trace_is_not_refetched() -> None:
     own = _trace(
         "x",

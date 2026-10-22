@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from collections.abc import Collection, Mapping, Sequence
@@ -845,10 +846,14 @@ def _other_empty_message(resolved: _ResolvedOther) -> str:
 def _call_with_wait_kwargs(wait_fn: Callable[..., object], kwargs: Mapping[str, float]) -> object:
     if not kwargs:
         return wait_fn()
+    bound = dict(kwargs)
     try:
-        return wait_fn(**dict(kwargs))
+        inspect.signature(wait_fn).bind(**bound)
     except TypeError:
         return wait_fn()
+    except ValueError:
+        return wait_fn(**bound)
+    return wait_fn(**bound)
 
 
 def _calls_in_seq(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
