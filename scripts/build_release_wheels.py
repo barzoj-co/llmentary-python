@@ -95,7 +95,7 @@ def main() -> None:
     subprocess.run([sys.executable, "-m", "build", "--sdist", "--outdir", str(dist)], check=True)
 
     for target in TARGETS:
-        asset = select_asset(assets, target)
+        asset = select_asset(assets, target, version=version)
         archive = download_asset(asset.url, token)
         verify_asset_checksum(asset.name, archive, checksums)
 
@@ -152,7 +152,7 @@ def select_checksum_asset(assets: list[Asset]) -> Asset:
     return matches[0]
 
 
-def select_asset(assets: list[Asset], target: Target) -> Asset:
+def select_asset(assets: list[Asset], target: Target, version: Optional[str] = None) -> Asset:
     candidates = [
         asset
         for asset in assets
@@ -162,10 +162,34 @@ def select_asset(assets: list[Asset], target: Target) -> Asset:
         name = Path(asset.name).name.lower()
         if not name.startswith("llmentary_"):
             continue
+        if version is not None and not asset_name_matches_pin(asset.name, version):
+            continue
         if target.goos in name and any(alias in name for alias in target.arch_aliases):
             return asset
     names = ", ".join(asset.name for asset in candidates)
     raise SystemExit(f"No release asset matched {target.goos}/{target.arch_aliases}: {names}")
+
+
+def _pin_token(version: str) -> str:
+    return version[1:] if version.startswith("v") else version
+
+
+def asset_name_matches_pin(asset_name: str, version: str) -> bool:
+    pin = _pin_token(version)
+    if not pin:
+        return False
+    name = Path(asset_name).name
+    return re.search(rf"(?:^|[_-])v?{re.escape(pin)}(?:[_-]|\.|$)", name) is not None
+
+
+def assert_asset_matches_pin(asset_name: str, version: str) -> None:
+    """Fail unless the GoReleaser archive name contains the exact pin token."""
+
+    pin = _pin_token(version)
+    if not pin:
+        raise SystemExit("Release pin is empty")
+    if not asset_name_matches_pin(asset_name, version):
+        raise SystemExit(f"Asset {asset_name} does not match pin {pin}")
 
 
 def download_asset(url: str, token: str) -> bytes:
@@ -342,7 +366,7 @@ def install_release_binary(
     release = fetch_release(pin, secret)
     assets = release_assets(release)
     checksums = parse_checksums(download_asset(select_checksum_asset(assets).url, secret))
-    asset = select_asset(assets, target)
+    asset = select_asset(assets, target, version=pin)
     archive = download_asset(asset.url, secret)
     verify_asset_checksum(asset.name, archive, checksums)
     extract_binary(archive, asset.name, dest, target.binary_name)

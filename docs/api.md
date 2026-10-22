@@ -345,6 +345,6 @@ Passing pytest tests that used the `llmentary` fixture also print that summary.
 ```python
 from llmentary import proxy_version, proxy_version_line
 
-print(proxy_version())  # "0.4.0", or None when the binary is missing
+print(proxy_version())  # "0.4.1", or None when the binary is missing
 print(proxy_version_line())  # full `llmentary --version` line, or None
 ```
