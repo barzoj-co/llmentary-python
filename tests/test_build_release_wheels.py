@@ -200,16 +200,16 @@ def test_select_asset_rejects_stale_pin_names() -> None:
 @pytest.mark.parametrize(
     ("name", "version", "matches"),
     [
-        ("llmentary_0.5.0_linux_amd64.tar.gz", "0.5.0", True),
-        ("llmentary_0.5.0_linux_amd64.tar.gz", "v0.5.0", True),
-        ("llmentary_v0.5.0_darwin_arm64.tar.gz", "0.5.0", True),
-        ("llmentary_0.5.0_windows_amd64.zip", "0.5.0", True),
-        ("llmentary_0.4.1_linux_amd64.tar.gz", "0.5.0", False),
-        ("llmentary_0.5.10_linux_amd64.tar.gz", "0.5.0", False),
-        ("llmentary_10.5.0_linux_amd64.tar.gz", "0.5.0", False),
-        ("checksums.txt", "0.5.0", False),
-        ("llmentary_0.5.0_linux_amd64.tar.gz", "", False),
-        ("llmentary_0.5.0_linux_amd64.tar.gz", "v", False),
+        ("llmentary_0.5.1_linux_amd64.tar.gz", "0.5.1", True),
+        ("llmentary_0.5.1_linux_amd64.tar.gz", "v0.5.1", True),
+        ("llmentary_v0.5.1_darwin_arm64.tar.gz", "0.5.1", True),
+        ("llmentary_0.5.1_windows_amd64.zip", "0.5.1", True),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "0.5.1", False),
+        ("llmentary_0.5.10_linux_amd64.tar.gz", "0.5.1", False),
+        ("llmentary_10.5.1_linux_amd64.tar.gz", "0.5.1", False),
+        ("checksums.txt", "0.5.1", False),
+        ("llmentary_0.5.1_linux_amd64.tar.gz", "", False),
+        ("llmentary_0.5.1_linux_amd64.tar.gz", "v", False),
     ],
 )
 def test_asset_name_matches_pin_corners(name: str, version: str, matches: bool) -> None:
@@ -363,6 +363,80 @@ def test_verify_asset_checksum_matches_and_rejects() -> None:
         )
     with pytest.raises(SystemExit, match="no entry"):
         wheels.verify_asset_checksum("missing.tar.gz", payload, {})
+
+
+PINNED_RELEASE_CHECKSUMS = ROOT / "tests" / "testdata" / "proxy-v0.5.1-checksums.txt"
+PINNED_RELEASE_CHECKSUMS_SHA256 = (
+    "6f32fbbbb0d50107af465ee703dab3a41af507c815f4f2bccd37b79ca056ca9f"
+)
+PINNED_WHEEL_ARCHIVE_SHA256 = {
+    "llmentary_0.5.1_darwin_amd64.tar.gz": (
+        "9062d20bc12596c460a56a4677564ade948e6cc2159ca6a81c1921b5f6829cb9"
+    ),
+    "llmentary_0.5.1_darwin_arm64.tar.gz": (
+        "558f81178543f8e0dea4a29f1fa80199409d83f91232e6a15211b2d357b6c779"
+    ),
+    "llmentary_0.5.1_linux_amd64.tar.gz": (
+        "c4baadac534d2a895d0fdd485cc733cbf646af0b7dfbda16767295b13dcbc8df"
+    ),
+    "llmentary_0.5.1_linux_arm64.tar.gz": (
+        "0dbca8bad41616c0bca689020e81b16957e61884da4cdb1a29d3386a989230cb"
+    ),
+    "llmentary_0.5.1_windows_amd64.zip": (
+        "5b56a8e2a2ef0c7731987ce352b532d38ed0b7c273a78e49a766b9981ea73f1a"
+    ),
+}
+PINNED_WINDOWS_ARM64_ARCHIVE = "llmentary_0.5.1_windows_arm64.zip"
+PINNED_WINDOWS_ARM64_SHA256 = (
+    "262bf20f5a57bee3dd226270c9219eb4652fe4be75db9009edc0f1da8bbe21c8"
+)
+
+
+def _archive_name_for_target(target: wheels.Target, pin: str) -> str:
+    goarch = target.arch_aliases[0]
+    suffix = ".zip" if target.binary_name.endswith(".exe") else ".tar.gz"
+    return f"llmentary_{pin}_{target.goos}_{goarch}{suffix}"
+
+
+def test_target_for_platform_rejects_unknown() -> None:
+    with pytest.raises(SystemExit, match=r"No bundled wheel target for plan9/amd64"):
+        wheels.target_for_platform("plan9", "amd64")
+    with pytest.raises(SystemExit, match=r"No bundled wheel target for linux/riscv64"):
+        wheels.target_for_platform("linux", "riscv64")
+    with pytest.raises(SystemExit, match=r"No bundled wheel target for windows/arm64"):
+        wheels.target_for_platform("windows", "arm64")
+
+
+def test_pinned_v0_5_1_checksums_match_release_assets() -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    assert pin == "0.5.1"
+    raw = PINNED_RELEASE_CHECKSUMS.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == PINNED_RELEASE_CHECKSUMS_SHA256
+    checksums = wheels.parse_checksums(raw)
+    assets = [
+        wheels.Asset(name, f"https://example/{name}")
+        for name in checksums
+        if name.endswith((".tar.gz", ".zip"))
+    ]
+    for target in wheels.TARGETS:
+        name = _archive_name_for_target(target, pin)
+        assert name in PINNED_WHEEL_ARCHIVE_SHA256
+        assert checksums[name] == PINNED_WHEEL_ARCHIVE_SHA256[name]
+        assert wheels.asset_name_matches_pin(name, pin)
+        assert wheels.asset_name_matches_pin(name, f"v{pin}")
+        wheels.assert_asset_matches_pin(name, pin)
+        assert wheels.select_asset(assets, target, version=pin).name == name
+        with pytest.raises(SystemExit, match="Checksum mismatch"):
+            wheels.verify_asset_checksum(name, b"not-the-v0.5.1-archive", checksums)
+        with pytest.raises(SystemExit, match="Checksum mismatch"):
+            wheels.verify_asset_checksum(name, b"not-the-v0.5.1-archive", {name: "0" * 64})
+    assert PINNED_WINDOWS_ARM64_ARCHIVE in checksums
+    assert checksums[PINNED_WINDOWS_ARM64_ARCHIVE] == PINNED_WINDOWS_ARM64_SHA256
+    assert PINNED_WINDOWS_ARM64_ARCHIVE not in PINNED_WHEEL_ARCHIVE_SHA256
+    with pytest.raises(SystemExit, match="does not match"):
+        wheels.assert_asset_matches_pin("llmentary_0.5.0_linux_amd64.tar.gz", pin)
+    with pytest.raises(SystemExit, match="no entry"):
+        wheels.verify_asset_checksum("missing-v0.5.1.tar.gz", b"bytes", checksums)
 
 
 def test_asset_download_strips_authorization_on_redirect() -> None:
@@ -785,8 +859,9 @@ def test_release_archive_uses_target_binary_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(wheels, "host_platform", lambda: ("windows", "amd64"))
-    archive, name = _release_archive("0.5.0")
-    assert name == "llmentary_0.5.0_windows_amd64.zip"
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    archive, name = _release_archive(pin)
+    assert name == f"llmentary_{pin}_windows_amd64.zip"
     with zipfile.ZipFile(io.BytesIO(archive)) as zf:
         names = set(zf.namelist())
     assert "llmentary.exe" in names
@@ -896,22 +971,26 @@ def test_install_release_binary_works_without_token(
 def test_main_fetches_anonymously_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("LLMENTARY_REPO_TOKEN", raising=False)
-    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.5.0")
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", pin)
     seen: dict[str, Any] = {}
 
     def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
         seen["token"] = token
+        seen["version"] = version
         raise SystemExit("stop-after-fetch")
 
     monkeypatch.setattr(wheels, "fetch_release", fake_fetch)
     with pytest.raises(SystemExit, match="stop-after-fetch"):
         wheels.main()
     assert seen["token"] is None
+    assert seen["version"] == pin
 
 
 def test_main_passes_optional_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
     monkeypatch.setenv("GITHUB_TOKEN", "rate-limit")
-    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", "0.5.0")
+    monkeypatch.setenv("LLMENTARY_RELEASE_VERSION", pin)
     seen: dict[str, Any] = {}
 
     def fake_fetch(version: str, token: str | None = None) -> dict[str, Any]:
@@ -946,7 +1025,7 @@ def test_download_bytes_omits_authorization_without_token(
 
     monkeypatch.setattr(wheels, "urlopen", fake_urlopen)
     data = wheels.download_bytes(
-        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.5.0",
+        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.5.1",
         token=None,
         accept="application/vnd.github+json",
         follow_redirects=True,
