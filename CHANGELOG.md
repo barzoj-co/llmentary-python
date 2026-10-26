@@ -2,6 +2,16 @@
 
 ## Upgrade notes
 
+## [0.7.3](https://github.com/barzoj-co/llmentary-python/compare/v0.7.2...v0.7.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* add min_severity and ignore_kinds filters to no_ignored_fields (DOG-55) ([#65](https://github.com/barzoj-co/llmentary-python/issues/65)) ([82111bc](https://github.com/barzoj-co/llmentary-python/commit/82111bce881c065f0824d04ef34891fad91feedd))
+* add wait(exclude_cancelled=True), pin proxy v0.5.3, live cancel e2e (DOG-58 Y5-Y6) ([#66](https://github.com/barzoj-co/llmentary-python/issues/66)) ([f684976](https://github.com/barzoj-co/llmentary-python/commit/f684976d4db008a64fccacde6151f7dc0bc6fc83))
+* classify call outcomes; no_errors checks failed calls only; call_count excludes cancelled (DOG-58 Y1-Y4) ([#62](https://github.com/barzoj-co/llmentary-python/issues/62)) ([3975396](https://github.com/barzoj-co/llmentary-python/commit/397539675079add3ad17c3a251ce5c9f70c02b55))
+* wait-timeout hint names the right timeout; one version string format (DOG-49b, DOG-49d) ([#64](https://github.com/barzoj-co/llmentary-python/issues/64)) ([961a06c](https://github.com/barzoj-co/llmentary-python/commit/961a06ce2ec3e45bb76e1d7d1dac7d1fe1fd64d4))
+
 ## [0.7.2](https://github.com/barzoj-co/llmentary-python/compare/v0.7.1...v0.7.2) (2026-10-23)
 
 
