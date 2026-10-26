@@ -101,17 +101,36 @@ def parse_proxy_semver(line: Optional[str]) -> Optional[str]:
     return token
 
 
-def proxy_report_header(*, env: Optional[dict[str, str]] = None) -> str:
-    """Single-line pytest header: client version, proxy version, binary path."""
-
+def _version_report(env: Optional[dict[str, str]]) -> tuple[str, Optional[str]]:
     from . import __version__
 
     path = proxy_binary_path(env=env)
     if path is None:
-        return f"llmentary {__version__}; proxy: not found; binary: not found"
-    return (
-        f"llmentary {__version__}; proxy: {binary_version_output(path)}; binary: {path}"
-    )
+        return f"llmentary {__version__}; proxy not found", None
+    line = binary_version_output(path)
+    semver = parse_proxy_semver(line) or "unknown"
+    prefix = f"llmentary {__version__}; proxy {semver} ({path})"
+    if line in {"", "unknown", "not found", semver}:
+        return prefix, None
+    return prefix, line
+
+
+def version_report_line(*, env: Optional[dict[str, str]] = None) -> str:
+    """Shared version line used by ``--version`` and the pytest header.
+
+    Found: ``llmentary <ver>; proxy <semver> (<path>)``
+    Missing: ``llmentary <ver>; proxy not found``
+    """
+
+    prefix, _ = _version_report(env)
+    return prefix
+
+
+def proxy_report_header(*, env: Optional[dict[str, str]] = None) -> str:
+    """Single-line pytest header: shared version line, then the full binary line."""
+
+    prefix, line = _version_report(env)
+    return f"{prefix}; {line}" if line is not None else prefix
 
 
 def binary_version_output(path: Optional[Path]) -> str:

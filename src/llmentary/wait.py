@@ -14,6 +14,8 @@ DEFAULT_WAIT_QUIET = 0.5
 TIMEOUT_ENV = "LLMENTARY_WAIT_TIMEOUT"
 QUIET_ENV = "LLMENTARY_WAIT_QUIET"
 QUIET_ENV_LEGACY = "LLMENTARY_QUIET_FOR"
+HEADER_TIMEOUT_ENV = "LLMENTARY_UPSTREAM_HEADER_TIMEOUT"
+IDLE_TIMEOUT_ENV = "LLMENTARY_UPSTREAM_IDLE_TIMEOUT"
 
 _DURATION_RE = re.compile(
     r"^(?P<value>(?:\d+(?:\.\d*)?|\.\d+))(?P<unit>ns|us|µs|μs|ms|s|m|h)?$"
@@ -284,6 +286,31 @@ def count_active_calls(
     return fallback
 
 
+def _seconds_with_one_decimal(elapsed_ms: int) -> str:
+    tenths = (int(elapsed_ms) + 50) // 100
+    return f"{tenths // 10}.{tenths % 10}"
+
+
+def timeout_hint(in_flight: Optional[Sequence[InFlightCall]]) -> str:
+    if in_flight:
+        awaiting = [item for item in in_flight if item.phase == "awaiting_headers"]
+        if awaiting:
+            elapsed = [item.elapsed_ms for item in awaiting if item.elapsed_ms is not None]
+            longest = max(elapsed) if elapsed else 0
+            return (
+                f"The upstream has not sent headers for "
+                f"{_seconds_with_one_decimal(longest)}s; set "
+                f"{HEADER_TIMEOUT_ENV} to fail such calls fast."
+            )
+        if any(item.phase == "streaming" for item in in_flight):
+            return (
+                "A call is still streaming; set "
+                f"{IDLE_TIMEOUT_ENV} to fail stalled streams, or raise "
+                f"{TIMEOUT_ENV} if the app needs more time."
+            )
+    return f"Raise {TIMEOUT_ENV} if the app needs more time."
+
+
 def wait_timeout_error(
     session_id: str,
     timeout: float,
@@ -320,7 +347,7 @@ def wait_timeout_error(
     message = (
         f"wait timed out after {format_go_duration(timeout)} on session {session_id} "
         f"({detail}). "
-        f"Raise {TIMEOUT_ENV} if the graph needs more time."
+        f"{timeout_hint(in_flight)}"
     )
     return WaitTimeoutError(
         message,

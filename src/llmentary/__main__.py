@@ -4,7 +4,7 @@ import sys
 from collections.abc import Sequence
 from typing import Optional, TextIO
 
-from .doctor import doctor, proxy_binary_path, proxy_version
+from .doctor import doctor, version_report_line
 
 _USAGE = "usage: python -m llmentary doctor | --version | version\n"
 
@@ -22,15 +22,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 def print_version(*, out: Optional[TextIO] = None) -> int:
     """Print the client and bundled proxy versions. Always exits 0."""
 
-    from . import __version__
-
     stream = sys.stdout if out is None else out
-    path = proxy_binary_path()
-    if path is None:
-        stream.write(f"llmentary {__version__} ; proxy: not found\n")
-        return 0
-    semver = proxy_version() or "unknown"
-    stream.write(f"llmentary {__version__} ; proxy {semver} ({path})\n")
+    stream.write(version_report_line() + "\n")
     return 0
 
 

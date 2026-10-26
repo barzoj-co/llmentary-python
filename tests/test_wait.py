@@ -374,6 +374,143 @@ def test_wait_timeout_pin_streaming() -> None:
     )
 
 
+def test_wait_timeout_hint_active_zero() -> None:
+    payload = {
+        "id": "quiet-zero",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "active": 0,
+            "in_flight": [],
+        },
+    }
+    error = wait_timeout_error("quiet-zero", 1.0, payload)
+    assert str(error) == (
+        "wait timed out after 1s on session quiet-zero "
+        "(0 calls so far, still active: 0). "
+        "Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time."
+    )
+
+
+def test_wait_timeout_hint_awaiting_headers() -> None:
+    payload = _pin_payloads()["awaiting_headers"]
+    error = wait_timeout_error("stall-example", 1.0, payload)
+    assert str(error) == (
+        "wait timed out after 1s on session stall-example "
+        "(0 calls so far, still active: 1: "
+        "#1 POST /v1/responses awaiting_headers 1000ms). "
+        "The upstream has not sent headers for 1.0s; set "
+        "LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast."
+    )
+
+
+def test_wait_timeout_hint_awaiting_headers_uses_longest_elapsed() -> None:
+    payload = {
+        "id": "slow-headers",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 0,
+            "active": 2,
+            "in_flight": [
+                {
+                    "call_id": "a",
+                    "seq": 1,
+                    "method": "POST",
+                    "path": "/v1/responses",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 1395,
+                },
+                {
+                    "call_id": "b",
+                    "seq": 2,
+                    "method": "POST",
+                    "path": "/v1/embeddings",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 400,
+                },
+            ],
+        },
+    }
+    error = wait_timeout_error("slow-headers", 1.0, payload)
+    assert str(error) == (
+        "wait timed out after 1s on session slow-headers "
+        "(0 calls so far, still active: 2: "
+        "#1 POST /v1/responses awaiting_headers 1395ms; "
+        "#2 POST /v1/embeddings awaiting_headers 400ms). "
+        "The upstream has not sent headers for 1.4s; set "
+        "LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast."
+    )
+
+
+def test_wait_timeout_hint_streaming() -> None:
+    payload = _pin_payloads()["streaming"]
+    error = wait_timeout_error("stall-stream-example", 1.0, payload)
+    assert str(error) == (
+        "wait timed out after 1s on session stall-stream-example "
+        "(0 calls so far, still active: 1: "
+        "#1 POST /v1/chat/completions streaming http 200 1000ms). "
+        "A call is still streaming; set LLMENTARY_UPSTREAM_IDLE_TIMEOUT to "
+        "fail stalled streams, or raise LLMENTARY_WAIT_TIMEOUT if the app "
+        "needs more time."
+    )
+
+
+def test_wait_timeout_hint_mixed_prefers_headers() -> None:
+    payload = {
+        "id": "mixed-stall",
+        "calls": [],
+        "error": {
+            "type": "wait_timeout",
+            "calls_seen": 2,
+            "active": 2,
+            "in_flight": [
+                {
+                    "call_id": "h",
+                    "seq": 3,
+                    "method": "POST",
+                    "path": "/v1/responses",
+                    "phase": "awaiting_headers",
+                    "elapsed_ms": 1395,
+                },
+                {
+                    "call_id": "s",
+                    "seq": 4,
+                    "method": "POST",
+                    "path": "/v1/chat/completions",
+                    "phase": "streaming",
+                    "http_status": 200,
+                    "elapsed_ms": 700,
+                },
+            ],
+        },
+    }
+    error = wait_timeout_error("mixed-stall", 2.0, payload)
+    assert str(error) == (
+        "wait timed out after 2s on session mixed-stall "
+        "(2 calls so far, still active: 2: "
+        "#3 POST /v1/responses awaiting_headers 1395ms; "
+        "#4 POST /v1/chat/completions streaming http 200 700ms). "
+        "The upstream has not sent headers for 1.4s; set "
+        "LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast."
+    )
+
+
+def test_wait_timeout_hint_count_only_no_in_flight() -> None:
+    payload = {
+        "id": "count-only",
+        "calls": [],
+        "error": {"type": "wait_timeout", "calls_seen": 1, "active": 2},
+    }
+    error = wait_timeout_error("count-only", 0.5, payload)
+    assert str(error) == (
+        "wait timed out after 500ms on session count-only "
+        "(1 calls so far, still active: 2). "
+        "Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time."
+    )
+
+
 def test_wait_timeout_many_in_flight() -> None:
     payload = {
         "id": "busy",
@@ -598,7 +735,7 @@ def _timeout_message(
     return (
         rf"wait timed out after {timeout}s on session {session_id} "
         rf"\({detail}\)\. "
-        rf"Raise {TIMEOUT_ENV}"
+        rf"Raise {TIMEOUT_ENV} if the app needs more time\."
     )
 
 

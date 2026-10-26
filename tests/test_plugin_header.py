@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from llmentary.doctor import proxy_report_header, proxy_version, proxy_version_line
+from llmentary import __version__
+from llmentary.doctor import (
+    proxy_report_header,
+    proxy_version,
+    proxy_version_line,
+    version_report_line,
+)
 
 
 def test_pytest_report_header_includes_proxy_version(
@@ -28,11 +34,15 @@ def test_pytest_report_header_includes_proxy_version(
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
     text = result.stdout.str()
-    assert "proxy: llmentary " in text
-    assert str(binary) in text
+    prefix = f"llmentary {__version__}; proxy 0.2.0 ({binary})"
+    assert prefix in text
+    assert "llmentary 0.2.0 (d3698347ec0ac297a45fd531e4011b60b2039324)" in text
     header = proxy_report_header()
     assert header.count("\n") == 0
-    assert "proxy: llmentary " in header
+    assert header == (
+        f"{prefix}; llmentary 0.2.0 (d3698347ec0ac297a45fd531e4011b60b2039324)"
+    )
+    assert header.startswith(version_report_line())
     assert str(binary) in header
     assert proxy_version() == "0.2.0"
     assert proxy_version_line() == (
@@ -61,7 +71,7 @@ def test_pytest_report_header_uses_llmentary_bin_option(
     result = pytester.runpytest(f"--llmentary-bin={binary}")
     result.assert_outcomes(passed=1)
     text = result.stdout.str()
-    assert "proxy: llmentary " in text
+    assert f"proxy 0.2.0 ({binary})" in text
     assert str(binary) in text
     assert "from-option" in text
 
@@ -81,12 +91,11 @@ def test_pytest_report_header_without_binary(
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
     text = result.stdout.str()
-    assert "proxy: not found" in text
+    assert "proxy not found" in text
     header = proxy_report_header(env={"PATH": "", **{
         key: value for key, value in os.environ.items() if key != "LLMENTARY_BIN"
     }})
     assert header.count("\n") == 0
-    assert "proxy: not found" in header
-    assert "binary: not found" in header
+    assert header == f"llmentary {__version__}; proxy not found"
     assert proxy_version(env={"PATH": ""}) is None
     assert proxy_version_line(env={"PATH": ""}) is None
