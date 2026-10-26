@@ -152,7 +152,7 @@ Fixes, in order:
 1. `pip install --only-binary=:all: llmentary`
 2. `LLMENTARY_BIN=/path/to/llmentary`
 3. Get the binary from npm `@llmentary/<os>-<cpu>` or the GitHub Release
-   (proxy v0.5.1); see the proxy
+   (proxy v0.5.3); see the proxy
    [docs/binaries.md](https://github.com/barzoj-co/llmentary/blob/main/docs/binaries.md)
 
 Run `python -m llmentary doctor` to print the package version, platform tag,
@@ -164,5 +164,5 @@ The plugin also adds a `pytest_report_header` line:
 
 When no binary resolves, that stays one line: `proxy: not found`. The
 header still uses the full `--version` line (`proxy_version_line()`).
-`llmentary.proxy_version()` is the semver token (`0.5.1`, or `None` when
+`llmentary.proxy_version()` is the semver token (`0.5.3`, or `None` when
 unresolved). `llmentary.proxy_binary_path()` is the resolved binary.

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_PIN = "0.5.1"
+CURRENT_PIN = "0.5.3"
 PIN_DOC_PATHS = (
     ROOT / "README.md",
     ROOT / "CONTRIBUTING.md",

@@ -10,7 +10,7 @@ import pytest
 from test_go_session_schema import chat_tool_request, chat_tool_response, go_call
 
 from llmentary import InFlightCall, WaitTimeoutError
-from llmentary.client import ControlClient
+from llmentary.client import ControlClient, ProxyHandle, Session
 from llmentary.pytest_plugin import _cli_duration
 from llmentary.types import SessionTrace
 from llmentary.wait import (
@@ -94,6 +94,19 @@ def test_wait_query_string_defaults_and_configured() -> None:
     assert wait_query_string(5.0, 0.1, min_calls=2) == "timeout=5s&quiet=100ms&min_calls=2"
 
 
+def test_wait_query_string_exclude_cancelled_is_additive() -> None:
+    assert wait_query_string(30, 0.5) == "timeout=30s&quiet=500ms"
+    assert wait_query_string(30, 0.5, exclude_cancelled=False) == "timeout=30s&quiet=500ms"
+    assert (
+        wait_query_string(30, 0.5, exclude_cancelled=True)
+        == "timeout=30s&quiet=500ms&exclude_cancelled=true"
+    )
+    assert (
+        wait_query_string(5, 0.1, min_calls=2, exclude_cancelled=True)
+        == "timeout=5s&quiet=100ms&min_calls=2&exclude_cancelled=true"
+    )
+
+
 def _wait_payload(session_id: str, *, ended: bool = True, seq: int = 1) -> dict[str, object]:
     call = go_call(
         seq=seq,
@@ -157,6 +170,101 @@ def test_wait_session_sends_min_calls() -> None:
         client.wait_session(session_id, timeout=5, quiet=0.1, min_calls=2)
 
     assert recorded == ["timeout=5s&quiet=100ms&min_calls=2"]
+
+
+def test_wait_session_sends_exclude_cancelled_query_string() -> None:
+    session_id = "sess-excl"
+    recorded: list[str] = []
+    payload = _wait_payload(session_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(_query_string(request))
+        return httpx.Response(200, json=payload)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        client.wait_session(session_id, timeout=5, quiet=0.1)
+        client.wait_session(session_id, timeout=5, quiet=0.1, exclude_cancelled=False)
+        client.wait_session(session_id, timeout=5, quiet=0.1, exclude_cancelled=True)
+
+    assert recorded == [
+        "timeout=5s&quiet=100ms",
+        "timeout=5s&quiet=100ms",
+        "timeout=5s&quiet=100ms&exclude_cancelled=true",
+    ]
+
+
+def test_session_wait_threads_exclude_cancelled() -> None:
+    session_id = "sess-excl-session"
+    recorded: list[str] = []
+    payload = _wait_payload(session_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(_query_string(request))
+        return httpx.Response(200, json=payload)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        session = Session(
+            session_id=session_id,
+            proxy=ProxyHandle(
+                url="http://127.0.0.1:7777",
+                control=ControlClient("http://127.0.0.1:7778", client=http),
+            ),
+        )
+        session.wait(timeout=5, quiet=0.1)
+        session.wait(timeout=5, quiet=0.1, min_calls=2, exclude_cancelled=True)
+
+    assert recorded == [
+        "timeout=5s&quiet=100ms",
+        "timeout=5s&quiet=100ms&min_calls=2&exclude_cancelled=true",
+    ]
+
+
+def test_wait_exclude_cancelled_400_invalid_param_maps_to_upgrade_error() -> None:
+    session_id = "sess-old-proxy"
+    recorded: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(f"{request.method} {request.url.path}?{_query_string(request)}")
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "type": "invalid_param",
+                    "param": "exclude_cancelled",
+                    "message": "unknown query parameter exclude_cancelled",
+                }
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(
+            ValueError,
+            match=r"proxy does not support exclude_cancelled; upgrade the proxy to >= 0\.5\.3",
+        ):
+            client.wait_session(session_id, timeout=1, quiet=0.1, exclude_cancelled=True)
+
+    assert recorded == [
+        f"GET /sessions/{session_id}/wait?timeout=1s&quiet=100ms&exclude_cancelled=true"
+    ]
+
+
+def test_wait_400_other_invalid_param_is_not_remapped() -> None:
+    session_id = "sess-bad-param"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"error": {"type": "invalid_param", "param": "min_calls"}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = ControlClient("http://127.0.0.1:7778", client=http)
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            client.wait_session(session_id, timeout=1, quiet=0.1, min_calls=-1)
+
+    assert caught.value.response.status_code == 400
 
 
 def test_wait_session_timeout_error_message() -> None:

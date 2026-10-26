@@ -200,16 +200,16 @@ def test_select_asset_rejects_stale_pin_names() -> None:
 @pytest.mark.parametrize(
     ("name", "version", "matches"),
     [
-        ("llmentary_0.5.1_linux_amd64.tar.gz", "0.5.1", True),
-        ("llmentary_0.5.1_linux_amd64.tar.gz", "v0.5.1", True),
-        ("llmentary_v0.5.1_darwin_arm64.tar.gz", "0.5.1", True),
-        ("llmentary_0.5.1_windows_amd64.zip", "0.5.1", True),
-        ("llmentary_0.5.0_linux_amd64.tar.gz", "0.5.1", False),
-        ("llmentary_0.5.10_linux_amd64.tar.gz", "0.5.1", False),
-        ("llmentary_10.5.1_linux_amd64.tar.gz", "0.5.1", False),
-        ("checksums.txt", "0.5.1", False),
-        ("llmentary_0.5.1_linux_amd64.tar.gz", "", False),
-        ("llmentary_0.5.1_linux_amd64.tar.gz", "v", False),
+        ("llmentary_0.5.3_linux_amd64.tar.gz", "0.5.3", True),
+        ("llmentary_0.5.3_linux_amd64.tar.gz", "v0.5.3", True),
+        ("llmentary_v0.5.3_darwin_arm64.tar.gz", "0.5.3", True),
+        ("llmentary_0.5.3_windows_amd64.zip", "0.5.3", True),
+        ("llmentary_0.5.0_linux_amd64.tar.gz", "0.5.3", False),
+        ("llmentary_0.5.30_linux_amd64.tar.gz", "0.5.3", False),
+        ("llmentary_10.5.3_linux_amd64.tar.gz", "0.5.3", False),
+        ("checksums.txt", "0.5.3", False),
+        ("llmentary_0.5.3_linux_amd64.tar.gz", "", False),
+        ("llmentary_0.5.3_linux_amd64.tar.gz", "v", False),
     ],
 )
 def test_asset_name_matches_pin_corners(name: str, version: str, matches: bool) -> None:
@@ -365,30 +365,30 @@ def test_verify_asset_checksum_matches_and_rejects() -> None:
         wheels.verify_asset_checksum("missing.tar.gz", payload, {})
 
 
-PINNED_RELEASE_CHECKSUMS = ROOT / "tests" / "testdata" / "proxy-v0.5.1-checksums.txt"
+PINNED_RELEASE_CHECKSUMS = ROOT / "tests" / "testdata" / "proxy-v0.5.3-checksums.txt"
 PINNED_RELEASE_CHECKSUMS_SHA256 = (
-    "6f32fbbbb0d50107af465ee703dab3a41af507c815f4f2bccd37b79ca056ca9f"
+    "4c6ec882ccb8602115349062308b2fe7a514d8b8624eb721e5bea01106a247da"
 )
 PINNED_WHEEL_ARCHIVE_SHA256 = {
-    "llmentary_0.5.1_darwin_amd64.tar.gz": (
-        "9062d20bc12596c460a56a4677564ade948e6cc2159ca6a81c1921b5f6829cb9"
+    "llmentary_0.5.3_darwin_amd64.tar.gz": (
+        "9bf55749dd7cc7423f162cd1fb4a8bba105102fc387bab0563454f9af1f3ddfd"
     ),
-    "llmentary_0.5.1_darwin_arm64.tar.gz": (
-        "558f81178543f8e0dea4a29f1fa80199409d83f91232e6a15211b2d357b6c779"
+    "llmentary_0.5.3_darwin_arm64.tar.gz": (
+        "fda346d984f91aa13afc9c76d550b1738b182067efb9133311d009eb06821f48"
     ),
-    "llmentary_0.5.1_linux_amd64.tar.gz": (
-        "c4baadac534d2a895d0fdd485cc733cbf646af0b7dfbda16767295b13dcbc8df"
+    "llmentary_0.5.3_linux_amd64.tar.gz": (
+        "60ae7f220ac1c53f0b55f75fd6d69ea6debada88adb9502ec6615a041baf7227"
     ),
-    "llmentary_0.5.1_linux_arm64.tar.gz": (
-        "0dbca8bad41616c0bca689020e81b16957e61884da4cdb1a29d3386a989230cb"
+    "llmentary_0.5.3_linux_arm64.tar.gz": (
+        "f644162a4462f077c70766bd3788c792eb9a96473b472e1d56167a17b489d283"
     ),
-    "llmentary_0.5.1_windows_amd64.zip": (
-        "5b56a8e2a2ef0c7731987ce352b532d38ed0b7c273a78e49a766b9981ea73f1a"
+    "llmentary_0.5.3_windows_amd64.zip": (
+        "350f6da10c8e3a1652b38ae9d436b10ba841956e94584ab061098579c707dc0a"
     ),
 }
-PINNED_WINDOWS_ARM64_ARCHIVE = "llmentary_0.5.1_windows_arm64.zip"
+PINNED_WINDOWS_ARM64_ARCHIVE = "llmentary_0.5.3_windows_arm64.zip"
 PINNED_WINDOWS_ARM64_SHA256 = (
-    "262bf20f5a57bee3dd226270c9219eb4652fe4be75db9009edc0f1da8bbe21c8"
+    "d7d78824b87aa8bfdf8081341201742ff721d3c21dc91edd73c401d13627d95e"
 )
 
 
@@ -409,7 +409,7 @@ def test_target_for_platform_rejects_unknown() -> None:
 
 def test_pinned_v0_5_1_checksums_match_release_assets() -> None:
     pin = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
-    assert pin == "0.5.1"
+    assert pin == "0.5.3"
     raw = PINNED_RELEASE_CHECKSUMS.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == PINNED_RELEASE_CHECKSUMS_SHA256
     checksums = wheels.parse_checksums(raw)
@@ -427,16 +427,16 @@ def test_pinned_v0_5_1_checksums_match_release_assets() -> None:
         wheels.assert_asset_matches_pin(name, pin)
         assert wheels.select_asset(assets, target, version=pin).name == name
         with pytest.raises(SystemExit, match="Checksum mismatch"):
-            wheels.verify_asset_checksum(name, b"not-the-v0.5.1-archive", checksums)
+            wheels.verify_asset_checksum(name, b"not-the-v0.5.3-archive", checksums)
         with pytest.raises(SystemExit, match="Checksum mismatch"):
-            wheels.verify_asset_checksum(name, b"not-the-v0.5.1-archive", {name: "0" * 64})
+            wheels.verify_asset_checksum(name, b"not-the-v0.5.3-archive", {name: "0" * 64})
     assert PINNED_WINDOWS_ARM64_ARCHIVE in checksums
     assert checksums[PINNED_WINDOWS_ARM64_ARCHIVE] == PINNED_WINDOWS_ARM64_SHA256
     assert PINNED_WINDOWS_ARM64_ARCHIVE not in PINNED_WHEEL_ARCHIVE_SHA256
     with pytest.raises(SystemExit, match="does not match"):
         wheels.assert_asset_matches_pin("llmentary_0.5.0_linux_amd64.tar.gz", pin)
     with pytest.raises(SystemExit, match="no entry"):
-        wheels.verify_asset_checksum("missing-v0.5.1.tar.gz", b"bytes", checksums)
+        wheels.verify_asset_checksum("missing-v0.5.3.tar.gz", b"bytes", checksums)
 
 
 def test_asset_download_strips_authorization_on_redirect() -> None:
@@ -1025,7 +1025,7 @@ def test_download_bytes_omits_authorization_without_token(
 
     monkeypatch.setattr(wheels, "urlopen", fake_urlopen)
     data = wheels.download_bytes(
-        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.5.1",
+        "https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.5.3",
         token=None,
         accept="application/vnd.github+json",
         follow_redirects=True,
