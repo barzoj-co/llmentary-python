@@ -14,7 +14,7 @@ from llmentary.types import CapturedCall, SessionTrace
 
 CHEAP_MODEL = "gpt-4o-mini"
 PARALLEL_MODEL = "gpt-4.1-mini"
-REASONING_MODEL = "gpt-5-nano"
+REASONING_MODEL = "gpt-6-luna"
 INVALID_MODEL = "ltl-e2e-invalid-model-does-not-exist"
 INVALID_API_KEY = "sk-invalid-ltl-e2e-override"
 INVALID_KEY_HEADERS = {"Authorization": f"Bearer {INVALID_API_KEY}"}
