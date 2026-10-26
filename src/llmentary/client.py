@@ -44,6 +44,9 @@ from .wait import (
 
 SESSION_HEADER = "X-Test-Session"
 BAGGAGE_SESSION_KEY = "llmentary.session.id"
+EXCLUDE_CANCELLED_UNSUPPORTED_MESSAGE = (
+    "proxy does not support exclude_cancelled; upgrade the proxy to >= 0.5.3"
+)
 
 
 class SessionNotFound(LookupError):
@@ -192,10 +195,16 @@ class ControlClient:
         quiet: Optional[float] = None,
         quiet_for: Optional[float] = None,
         min_calls: Optional[int] = None,
+        exclude_cancelled: bool = False,
     ) -> SessionTrace:
         resolved_timeout = resolve_wait_timeout(timeout)
         resolved_quiet = resolve_wait_quiet(quiet, quiet_for)
-        query = wait_query_string(resolved_timeout, resolved_quiet, min_calls=min_calls)
+        query = wait_query_string(
+            resolved_timeout,
+            resolved_quiet,
+            min_calls=min_calls,
+            exclude_cancelled=exclude_cancelled,
+        )
         url = f"{self.base_url}/sessions/{session_id}/wait?{query}"
         request_timeout = resolved_timeout + resolved_quiet + 5
         try:
@@ -208,6 +217,9 @@ class ControlClient:
             raise self._wait_timeout(session_id, resolved_timeout, response)
         if response.status_code == 404:
             raise self._session_not_found(session_id, response)
+        unsupported = self._unsupported_exclude_cancelled(response)
+        if unsupported is not None:
+            raise unsupported
         response.raise_for_status()
         payload: Optional[Mapping[str, Any]] = None
         if response.content:
@@ -270,6 +282,23 @@ class ControlClient:
         return wait_timeout_error(
             session_id, timeout, payload, list_active=list_active
         )
+
+    def _unsupported_exclude_cancelled(
+        self,
+        response: httpx.Response,
+    ) -> Optional[ValueError]:
+        """400 ``invalid_param`` for ``exclude_cancelled`` means an older proxy."""
+
+        if response.status_code != 400:
+            return None
+        error = control_error_payload(response)
+        if not error:
+            return None
+        if error.get("type") != "invalid_param":
+            return None
+        if error.get("param") != "exclude_cancelled":
+            return None
+        return ValueError(EXCLUDE_CANCELLED_UNSUPPORTED_MESSAGE)
 
     def _session_not_found(
         self,
@@ -405,6 +434,7 @@ class Session:
         quiet: Optional[float] = None,
         quiet_for: Optional[float] = None,
         min_calls: Optional[int] = None,
+        exclude_cancelled: bool = False,
     ) -> SessionTrace:
         return self.proxy.control.wait_session(
             self.session_id,
@@ -413,6 +443,7 @@ class Session:
             if quiet is not None or quiet_for is not None
             else self.quiet_for,
             min_calls=min_calls,
+            exclude_cancelled=exclude_cancelled,
         )
 
     def trace(self) -> SessionTrace:

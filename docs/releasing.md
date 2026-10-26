@@ -47,8 +47,8 @@ proxy first. CI downloads that release's host archive with
 and points `LLMENTARY_BIN` at the extracted binary. A `PROXY_VERSION` bump
 therefore changes what the test and e2e jobs execute.
 
-The current pin is `0.5.1`. `--version` prints clean
-`llmentary 0.5.1 (...)` with no `+dirty`. Cosign identity for
+The current pin is `0.5.3`. `--version` prints clean
+`llmentary 0.5.3 (...)` with no `+dirty`. Cosign identity for
 `checksums.txt.sigstore.json` is `goreleaser.yml@refs/heads/main`, not the
 tag ref.
 

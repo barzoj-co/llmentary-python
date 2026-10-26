@@ -178,6 +178,7 @@ def wait_query_string(
     timeout: float,
     quiet: float,
     min_calls: Optional[int] = None,
+    exclude_cancelled: bool = False,
 ) -> str:
     params: dict[str, str] = {
         "timeout": format_go_duration(timeout),
@@ -185,6 +186,8 @@ def wait_query_string(
     }
     if min_calls is not None:
         params["min_calls"] = str(int(min_calls))
+    if exclude_cancelled:
+        params["exclude_cancelled"] = "true"
     return urlencode(params)
 
 
