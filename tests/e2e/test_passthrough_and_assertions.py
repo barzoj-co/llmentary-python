@@ -14,8 +14,9 @@ from e2e_helpers import (
     openai_invalid_model_errors,
 )
 
-from llmentary import OUTCOME_CANCELLED, Session, WaitTimeoutError
+from llmentary import OUTCOME_CANCELLED, Session, SessionNotFound, WaitTimeoutError
 from llmentary.assertions import Expectation
+from llmentary.types import first_present
 
 pytestmark = pytest.mark.e2e
 
@@ -118,6 +119,24 @@ def _cancel_before_headers(llmentary: Session, client: Any) -> bool:
     return any(call.client_aborted and call.abort_phase == "before_headers" for call in new)
 
 
+def _finished_calls_at_mark(llmentary: Session, mark: int) -> int:
+    """Finished calls at or below ``mark``, counted over the whole session.
+
+    ``wait(min_calls=...)`` counts finished calls session-wide, so a threshold
+    for calls expected after a mark must add what the session already finished.
+    """
+
+    try:
+        calls = llmentary.trace().calls
+    except SessionNotFound:
+        return 0
+    return sum(
+        1
+        for call in calls
+        if call.sequence_number() <= mark and first_present(call.raw, "ended_at", "endedAt")
+    )
+
+
 def test_live_cancelled_calls_have_cancelled_outcome(llmentary: Session) -> None:
     from httpx import Timeout
 
@@ -154,6 +173,10 @@ def test_live_cancelled_calls_have_cancelled_outcome(llmentary: Session) -> None
         warnings.warn(reason, UserWarning, stacklevel=2)
         mark = llmentary.mark()
 
+    # ``min_calls`` counts finished calls over the whole session, so anchor the
+    # threshold to the mark: what was already finished there plus what follows.
+    finished_at_mark = _finished_calls_at_mark(llmentary, mark)
+
     stream = call_openai(
         lambda: stream_client.chat.completions.create(
             model=CHEAP_MODEL,
@@ -171,7 +194,7 @@ def test_live_cancelled_calls_have_cancelled_outcome(llmentary: Session) -> None
     finally:
         stream.close()
 
-    trace = llmentary.wait(min_calls=expected_cancelled)
+    trace = llmentary.wait(min_calls=finished_at_mark + expected_cancelled)
     # ``since`` drops a lost-race call from a retried first attempt.
     expect = llmentary.expect(since=mark)
     outcomes = sorted(call.outcome for call in expect.trace.calls)
