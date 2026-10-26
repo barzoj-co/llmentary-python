@@ -64,7 +64,7 @@ def test_reasoning_tokens_from_reasoning_model(llmentary: Session) -> None:
     assert trace.calls, trace.trace_summary()
     values = [call.reasoning_tokens for call in trace.calls]
     assert any(value is not None and value > 0 for value in values), (
-        f"expected reasoning_tokens > 0 for o4-mini on a multi-step product\n"
+        f"expected reasoning_tokens > 0 for {REASONING_MODEL} on a multi-step product\n"
         f"reasoning_tokens={values}\nusage={[dict(call.usage) for call in trace.calls]}\n"
         f"{trace.trace_summary()}"
     )
