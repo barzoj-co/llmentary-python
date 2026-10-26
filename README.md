@@ -280,6 +280,30 @@ fails `no_errors()` / `not_called()` unless you call `allow_empty()` first.
 `allow_empty=True`. Use `llmentary.list_sessions()` when a wait or expect
 fails with zero calls, so the message can name the known session ids (once).
 
+Behind an OpenAI-compatible provider the recommended spec pair is:
+
+```python
+llmentary.expect().no_spec_violations()
+llmentary.expect().no_ignored_fields(min_severity="warning")
+# or allow vendor fields, still check both sides for everything else:
+llmentary.expect().no_ignored_fields(ignore_kinds=["vendor_field"])
+```
+
+`ignore_kinds=` is an alias of `ignore_keywords=` in `no_ignored_fields`: both
+match the entry `kind`, the union applies when both are given, and each also
+accepts a single string as one entry.
+`min_severity="warning"` drops entries recorded below that severity
+(`info` < `warning` < `error`) and keeps entries recorded without a severity
+(fail closed); an invalid value raises `ValueError`. Both filters combine with
+`side=`, which narrows findings to one side. The kinds the proxy records at
+`severity=info`:
+
+| Kind | Side | What it is |
+|---|---|---|
+| `vendor_field` | request | vendor extra the provider accepts and ignores |
+| `compatible_optional` | response | optional OpenAI field the compatible provider omitted |
+| `response_shape` | response | response shape differs from the strict OpenAI shape |
+
 `call_count()` counts calls whose outcome is **not** `cancelled` (DOG-58): a
 client cancel in either phase is not counted, while `committed` and `failed`
 calls are. Pass `include_cancelled=True` to count every captured call, and

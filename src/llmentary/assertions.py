@@ -803,12 +803,24 @@ class Expectation:
         side: Optional[str] = None,
         calls: Optional[Sequence[int]] = None,
         ignore_paths: Sequence[str] = (),
-        ignore_keywords: Sequence[str] = (),
+        ignore_keywords: Union[str, Sequence[str]] = (),
         allow_unvalidated: bool = False,
+        ignore_kinds: Optional[Union[str, Sequence[str]]] = None,
+        min_severity: Optional[str] = None,
     ) -> Expectation:
-        """Fail when checked calls recorded ignored fields. Never vacuous."""
+        """Fail when checked calls recorded ignored fields. Never vacuous.
+
+        ``ignore_keywords`` matches the entry ``kind``; ``ignore_kinds`` is an
+        alias of it (the union applies when both are given). Either accepts a
+        single string, which counts as one entry. ``min_severity``
+        (``info`` < ``warning`` < ``error``) drops entries below that severity;
+        entries recorded without a severity are kept (fail closed). An invalid
+        ``min_severity`` raises ``ValueError``.
+        """
 
         selected = self._select_calls(calls)
+        kinds = keyword_filter_values(ignore_keywords) + keyword_filter_values(ignore_kinds)
+        minimum = severity_rank(min_severity) if min_severity is not None else None
         findings: list[str] = []
         checked = 0
         for call in selected:
@@ -824,7 +836,9 @@ class Expectation:
                 if path_is_ignored(item.path, item.pointer, ignore_paths):
                     continue
                 kind = item.kind or ""
-                if kind and kind in ignore_keywords:
+                if kind and kind in kinds:
+                    continue
+                if minimum is not None and ignored_field_below_severity(item, minimum):
                     continue
                 findings.append(format_ignored_finding(call, item))
         if findings:
@@ -1145,6 +1159,45 @@ def model_output_text_candidates(call: CapturedCall) -> list[str]:
             candidates.append(stringify_value(item_map.get("content")))
 
     return [candidate for candidate in candidates if candidate]
+
+
+SEVERITY_ORDER: dict[str, int] = {"info": 0, "warning": 1, "error": 2}
+
+
+def keyword_filter_values(value: Union[str, Sequence[str], None]) -> tuple[str, ...]:
+    """Ignore-filter entries as a tuple; a bare ``str`` is a single entry."""
+
+    if not value:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(value)
+
+
+def severity_rank(min_severity: str) -> int:
+    """Rank of a ``min_severity`` value, or ``ValueError`` when unknown."""
+
+    key = min_severity.strip().lower()
+    if key not in SEVERITY_ORDER:
+        raise ValueError(
+            f"unknown min_severity {min_severity!r}: expected one of "
+            f"{', '.join(SEVERITY_ORDER)}"
+        )
+    return SEVERITY_ORDER[key]
+
+
+def ignored_field_below_severity(item: IgnoredField, minimum: int) -> bool:
+    """Whether ``item`` is strictly below ``minimum``.
+
+    Missing or unlabeled severities fail closed: the entry is kept.
+    """
+
+    if not item.severity:
+        return False
+    key = item.severity.strip().lower()
+    if key not in SEVERITY_ORDER:
+        return False
+    return SEVERITY_ORDER[key] < minimum
 
 
 def ignored_field_matches_side(item: IgnoredField, side: Optional[str]) -> bool:
