@@ -1,17 +1,29 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Optional
 
+import httpx
 import pytest
 
 from llmentary.assertions import Expectation
-from llmentary.types import SessionTrace
+from llmentary.client import ControlClient, ProxyHandle, Query, Session
+from llmentary.types import (
+    OUTCOME_CANCELLED,
+    OUTCOME_COMMITTED,
+    OUTCOME_FAILED,
+    SessionTrace,
+)
 
 SPECIALIST_TOOLS = [
     {"type": "function", "function": {"name": f"tool_{index}"}}
     for index in range(6)
 ]
+
+ROOT = Path(__file__).resolve().parent
+OUTCOME_CASES = json.loads((ROOT / "testdata" / "call_outcomes.json").read_text())["cases"]
 
 
 def _call(
@@ -185,3 +197,159 @@ def test_empty_filter_no_errors_and_not_called_fail() -> None:
 def test_non_empty_filter_no_errors_still_passes() -> None:
     Expectation(_h1_trace().without_tools()).call_count(1).no_errors()
     Expectation(_h1_trace().offers_tool("tool_0")).call_count(2).not_called("missing")
+
+
+def _vector_trace(session_id: str = "dog-58") -> SessionTrace:
+    calls = [dict(case["call"]) for case in OUTCOME_CASES]
+    return SessionTrace.from_payload(session_id, {"id": session_id, "calls": calls})
+
+
+def test_outcome_filters_count_shared_vector_calls() -> None:
+    trace = _vector_trace()
+    assert len(trace.calls) == len(OUTCOME_CASES)
+
+    cancelled = trace.filtered(outcomes=(OUTCOME_CANCELLED,))
+    failed = trace.filtered(outcomes=(OUTCOME_FAILED,))
+    committed = trace.filtered(outcomes=(OUTCOME_COMMITTED,))
+
+    assert [call.seq for call in cancelled.calls] == [3, 4, 5]
+    assert len(cancelled.calls) == 3
+    assert len(failed.calls) == 9
+    assert len(committed.calls) == 3
+    assert all(call.outcome == OUTCOME_CANCELLED for call in cancelled.calls)
+    assert all(call.outcome == OUTCOME_FAILED for call in failed.calls)
+    assert all(call.outcome == OUTCOME_COMMITTED for call in committed.calls)
+    assert len(cancelled.calls) + len(failed.calls) + len(committed.calls) == len(trace.calls)
+
+    both = trace.filtered(outcomes=(OUTCOME_CANCELLED, OUTCOME_FAILED))
+    assert len(both.calls) == 12
+    assert [call.seq for call in both.calls] == list(range(3, 15))
+
+    Expectation(cancelled).call_count(3, include_cancelled=True)
+    Expectation(committed).call_count(3).no_errors()
+    Expectation(both).call_count(min=12, max=12, include_cancelled=True)
+    with pytest.raises(AssertionError, match=r"got 9 failed call\(s\)"):
+        Expectation(failed).call_count(9).no_errors()
+
+
+def test_committed_and_aborted_counts_are_unchanged() -> None:
+    trace = _vector_trace()
+    committed = trace.committed()
+    aborted = trace.aborted()
+    assert len(committed.calls) == 11
+    assert len(aborted.calls) == 4
+    not_aborted = [call for call in trace.calls if not call.client_aborted]
+    assert [call.seq for call in committed.calls] == [call.seq for call in not_aborted]
+    Expectation(committed).call_count(11)
+    Expectation(aborted).call_count(4, include_cancelled=True)
+    assert all(not call.client_aborted for call in committed.calls)
+    failed_committed = [call.seq for call in committed.calls if call.outcome == OUTCOME_FAILED]
+    assert failed_committed == [6, 8, 9, 10, 11, 12, 13, 14]
+
+
+def test_outcome_filter_is_labelled_in_empty_match_message() -> None:
+    committed_calls = [
+        dict(case["call"]) for case in OUTCOME_CASES if case["outcome"] == OUTCOME_COMMITTED
+    ]
+    committed_only = SessionTrace.from_payload(
+        "committed-only",
+        {"id": "committed-only", "calls": committed_calls},
+    )
+    empty = committed_only.filtered(outcomes=(OUTCOME_CANCELLED,))
+    assert empty.calls == []
+    assert "outcome=cancelled" in empty.empty_match_message()
+    with pytest.raises(AssertionError, match=r"no calls matched query \(outcome=cancelled\)"):
+        Expectation(empty).no_errors()
+    with pytest.raises(AssertionError, match=r"no calls matched query \(outcome=cancelled\)"):
+        Expectation(empty).not_called("tool_0")
+    Expectation(empty).allow_empty().no_errors()
+    Expectation(empty).allow_empty().not_called("tool_0")
+
+    mixed = _vector_trace().filtered(outcomes=(OUTCOME_CANCELLED, OUTCOME_FAILED))
+    assert "outcome=cancelled|failed" in mixed.empty_match_message()
+    none_left = mixed.filtered(outcomes=(OUTCOME_COMMITTED,))
+    with pytest.raises(
+        AssertionError,
+        match=r"no calls matched query \(outcome=cancelled\|failed, outcome=committed\)",
+    ):
+        Expectation(none_left).no_errors()
+
+
+def test_query_outcome_filters_pass_through_to_the_trace() -> None:
+    payload = {"id": "s", "calls": [dict(case["call"]) for case in OUTCOME_CASES]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/wait") or request.url.path.endswith("/sessions/s"):
+            return httpx.Response(200, json=payload)
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        session = Session(
+            session_id="s",
+            proxy=ProxyHandle(
+                url="http://127.0.0.1:7777",
+                control=ControlClient("http://127.0.0.1:7778", client=http),
+            ),
+        )
+        query = session.query()
+        assert query.cancelled().outcomes == (OUTCOME_CANCELLED,)
+        assert query.failed().outcomes == (OUTCOME_FAILED,)
+        assert query.outcome(OUTCOME_COMMITTED).outcomes == (OUTCOME_COMMITTED,)
+        assert query.outcome("committed", "cancelled").outcomes == ("committed", "cancelled")
+        assert query.outcomes is None
+        assert query.committed().outcomes is None
+        assert query.committed().aborted_only is False
+
+        query.cancelled().expect().call_count(3, include_cancelled=True)
+        query.failed().expect().call_count(9)
+        query.outcome(OUTCOME_COMMITTED).expect().call_count(3)
+        query.outcome(OUTCOME_CANCELLED, OUTCOME_FAILED).expect().call_count(
+            12, include_cancelled=True
+        )
+        query.committed().expect().call_count(11)
+        query.aborted().expect().call_count(4, include_cancelled=True)
+        query.failed().committed().expect().call_count(8)
+
+
+def _validation_query() -> Query:
+    session = Session(
+        session_id="outcome-validation",
+        proxy=ProxyHandle(
+            url="http://127.0.0.1:7777",
+            control=ControlClient("http://127.0.0.1:7778"),
+        ),
+    )
+    return session.query()
+
+
+def test_query_outcome_rejects_no_states() -> None:
+    with pytest.raises(ValueError, match="at least one state"):
+        _validation_query().outcome()
+
+
+def test_query_outcome_rejects_unknown_state() -> None:
+    with pytest.raises(ValueError, match="bogus"):
+        _validation_query().outcome("bogus")
+    with pytest.raises(ValueError, match="bogus"):
+        _validation_query().outcome(OUTCOME_COMMITTED, "bogus")
+
+
+def test_in_flight_call_is_excluded_by_outcome_filter() -> None:
+    hanging = {
+        "id": "call_hanging",
+        "seq": 1,
+        "api_type": "chat_completions",
+        "started_at": "2026-10-26T10:00:00Z",
+        "client_aborted": False,
+        "request": {"model": "fake-model", "messages": [{"role": "user", "content": "hang"}]},
+    }
+    trace = SessionTrace.from_payload("in-flight", {"id": "in-flight", "calls": [hanging]})
+    assert trace.calls[0].http_status is None
+
+    for state in (OUTCOME_FAILED, OUTCOME_CANCELLED, OUTCOME_COMMITTED):
+        filtered = trace.filtered(outcomes=(state,))
+        assert filtered.calls == []
+        assert f"outcome={state}" in filtered.empty_match_message()
+        Expectation(filtered).allow_empty().no_errors()
+
+    Expectation(trace.filtered(outcomes=(OUTCOME_FAILED,))).call_count(0)

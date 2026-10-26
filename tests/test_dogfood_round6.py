@@ -218,13 +218,14 @@ def test_call_count_exclude_aborted_and_query_committed() -> None:
     trace = _trace(committed_a, committed_b, aborted, session_id="counts")
     expect = Expectation(trace)
     with pytest.raises(AssertionError, match="got 3"):
-        expect.call_count(2)
+        expect.call_count(2, include_cancelled=True)
+    expect.call_count(2)
     expect.call_count(2, exclude_aborted=True)
     expect.call_count(min=2, max=2, exclude_aborted=True)
     assert [call.id for call in trace.committed().calls] == ["call_1", "call_2"]
     assert [call.id for call in trace.aborted().calls] == ["call_3"]
     Expectation(trace.committed()).call_count(2)
-    Expectation(trace.aborted()).call_count(1)
+    Expectation(trace.aborted()).call_count(1, include_cancelled=True)
     empty_committed = _trace(aborted, session_id="only-abort").committed()
     assert "committed" in empty_committed.empty_match_message()
     empty_aborted = _trace(committed_a, session_id="only-ok").aborted()
@@ -329,6 +330,6 @@ def test_query_committed_and_aborted_filters() -> None:
             ),
         )
         session.query().committed().expect().call_count(1)
-        session.query().aborted().expect().call_count(1)
+        session.query().aborted().expect().call_count(1, include_cancelled=True)
         session.expect().call_count(1, exclude_aborted=True)
-        session.expect().call_count(2)
+        session.expect().call_count(2, include_cancelled=True)

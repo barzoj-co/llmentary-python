@@ -17,6 +17,7 @@ from llmentary import (
     pytest_plugin,
 )
 from llmentary.assertions import Expectation, SoftExpectation
+from llmentary.types import OUTCOME_CANCELLED, OUTCOME_COMMITTED, OUTCOME_FAILED
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC_PATHS = (
@@ -60,6 +61,15 @@ def test_package_exports_session_not_lab_aliases() -> None:
     for removed in ("LabSession", "LlmentarySession"):
         assert removed not in llmentary.__all__
         assert not hasattr(llmentary, removed)
+
+
+def test_package_exports_outcome_constants() -> None:
+    assert "OUTCOME_CANCELLED" in llmentary.__all__
+    assert "OUTCOME_COMMITTED" in llmentary.__all__
+    assert "OUTCOME_FAILED" in llmentary.__all__
+    assert llmentary.OUTCOME_CANCELLED is OUTCOME_CANCELLED
+    assert llmentary.OUTCOME_COMMITTED is OUTCOME_COMMITTED
+    assert llmentary.OUTCOME_FAILED is OUTCOME_FAILED
 
 
 def test_plugin_registers_llmentary_fixture_only() -> None:
