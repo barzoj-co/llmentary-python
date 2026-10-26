@@ -285,16 +285,18 @@ Behind an OpenAI-compatible provider the recommended spec pair is:
 ```python
 llmentary.expect().no_spec_violations()
 llmentary.expect().no_ignored_fields(min_severity="warning")
-# or allow the vendor extras on the request only:
-llmentary.expect().no_ignored_fields(side="request", ignore_kinds=["vendor_field"])
+# or allow vendor fields, still check both sides for everything else:
+llmentary.expect().no_ignored_fields(ignore_kinds=["vendor_field"])
 ```
 
 `ignore_kinds=` is an alias of `ignore_keywords=` in `no_ignored_fields`: both
-match the entry `kind`, and the union applies when both are given.
+match the entry `kind`, the union applies when both are given, and each also
+accepts a single string as one entry.
 `min_severity="warning"` drops entries recorded below that severity
 (`info` < `warning` < `error`) and keeps entries recorded without a severity
 (fail closed); an invalid value raises `ValueError`. Both filters combine with
-`side=`. The kinds the proxy records at `severity=info`:
+`side=`, which narrows findings to one side. The kinds the proxy records at
+`severity=info`:
 
 | Kind | Side | What it is |
 |---|---|---|

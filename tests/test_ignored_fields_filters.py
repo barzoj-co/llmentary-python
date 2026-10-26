@@ -176,7 +176,38 @@ def test_ignore_kinds_and_ignore_keywords_union() -> None:
     assert "compatible_optional" not in message
 
 
+def test_single_string_ignore_filters_are_one_entry() -> None:
+    _expect(VENDOR_FIELD).no_ignored_fields(ignore_keywords="vendor_field")
+    _expect(VENDOR_FIELD).no_ignored_fields(ignore_kinds="vendor_field")
+    _expect(VENDOR_FIELD, COMPATIBLE_OPTIONAL).no_ignored_fields(
+        ignore_keywords="vendor_field",
+        ignore_kinds="compatible_optional",
+    )
+    with pytest.raises(AssertionError) as caught:
+        _expect(*ALL_ENTRIES).no_ignored_fields(ignore_keywords="vendor_field")
+    message = str(caught.value)
+    assert "vendor_field" not in message
+    for kind in ("unknown_request_field", "compatible_optional", "response_shape"):
+        assert kind in message
+    with pytest.raises(AssertionError) as caught:
+        _expect(*ALL_ENTRIES).no_ignored_fields(ignore_kinds="vendor_field")
+    message = str(caught.value)
+    assert "vendor_field" not in message
+    for kind in ("unknown_request_field", "compatible_optional", "response_shape"):
+        assert kind in message
+    near_miss = _entry(kind="vendor", context="request", severity="info", key="vendor")
+    with pytest.raises(AssertionError, match="vendor"):
+        _expect(near_miss).no_ignored_fields(ignore_kinds="vendor_field")
+
+
 def test_filters_combine_with_side() -> None:
+    with pytest.raises(AssertionError) as caught:
+        _expect(*ALL_ENTRIES).no_ignored_fields(ignore_kinds=["vendor_field"])
+    both_sides = str(caught.value)
+    assert "vendor_field" not in both_sides
+    for kind in ("unknown_request_field", "compatible_optional", "response_shape"):
+        assert kind in both_sides
+
     with pytest.raises(AssertionError) as caught:
         _expect(*ALL_ENTRIES).no_ignored_fields(side="request", ignore_kinds=["vendor_field"])
     message = str(caught.value)

@@ -803,22 +803,23 @@ class Expectation:
         side: Optional[str] = None,
         calls: Optional[Sequence[int]] = None,
         ignore_paths: Sequence[str] = (),
-        ignore_keywords: Sequence[str] = (),
+        ignore_keywords: Union[str, Sequence[str]] = (),
         allow_unvalidated: bool = False,
-        ignore_kinds: Optional[Sequence[str]] = None,
+        ignore_kinds: Optional[Union[str, Sequence[str]]] = None,
         min_severity: Optional[str] = None,
     ) -> Expectation:
         """Fail when checked calls recorded ignored fields. Never vacuous.
 
         ``ignore_keywords`` matches the entry ``kind``; ``ignore_kinds`` is an
-        alias of it (the union applies when both are given). ``min_severity``
+        alias of it (the union applies when both are given). Either accepts a
+        single string, which counts as one entry. ``min_severity``
         (``info`` < ``warning`` < ``error``) drops entries below that severity;
         entries recorded without a severity are kept (fail closed). An invalid
         ``min_severity`` raises ``ValueError``.
         """
 
         selected = self._select_calls(calls)
-        kinds = tuple(ignore_keywords) + tuple(ignore_kinds or ())
+        kinds = keyword_filter_values(ignore_keywords) + keyword_filter_values(ignore_kinds)
         minimum = severity_rank(min_severity) if min_severity is not None else None
         findings: list[str] = []
         checked = 0
@@ -1161,6 +1162,16 @@ def model_output_text_candidates(call: CapturedCall) -> list[str]:
 
 
 SEVERITY_ORDER: dict[str, int] = {"info": 0, "warning": 1, "error": 2}
+
+
+def keyword_filter_values(value: Union[str, Sequence[str], None]) -> tuple[str, ...]:
+    """Ignore-filter entries as a tuple; a bare ``str`` is a single entry."""
+
+    if not value:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(value)
 
 
 def severity_rank(min_severity: str) -> int:
