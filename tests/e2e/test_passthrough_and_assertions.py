@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from typing import Any
 
 import pytest
@@ -133,14 +134,25 @@ def test_live_cancelled_calls_have_cancelled_outcome(llmentary: Session) -> None
     stream_client = openai_client(llmentary)
 
     mark = llmentary.mark()
-    if not _cancel_before_headers(llmentary, cancel_client):
+    before_headers_won = _cancel_before_headers(llmentary, cancel_client)
+    if not before_headers_won:
         mark = llmentary.mark()
-        if not _cancel_before_headers(llmentary, cancel_client):
-            pytest.skip(
-                "OpenAI sent response headers before the "
-                f"{BEFORE_HEADERS_READ_TIMEOUT * 1000:.0f}ms read timeout twice; "
-                "expected a before_headers cancel"
-            )
+        before_headers_won = _cancel_before_headers(llmentary, cancel_client)
+
+    # A won before-headers cancel adds one cancelled call next to the
+    # after-headers one; a lost race is dropped from ``mark`` and not counted.
+    expected_cancelled = 2 if before_headers_won else 1
+    if not before_headers_won:
+        reason = (
+            "OpenAI sent response headers before the "
+            f"{BEFORE_HEADERS_READ_TIMEOUT * 1000:.0f}ms read timeout twice; "
+            "skipping the before-headers part and asserting the "
+            "after-headers cancel only "
+            f"({expected_cancelled} cancelled call expected)"
+        )
+        print(reason, flush=True)
+        warnings.warn(reason, UserWarning, stacklevel=2)
+        mark = llmentary.mark()
 
     stream = call_openai(
         lambda: stream_client.chat.completions.create(
@@ -159,17 +171,20 @@ def test_live_cancelled_calls_have_cancelled_outcome(llmentary: Session) -> None
     finally:
         stream.close()
 
-    trace = llmentary.wait(min_calls=2)
+    trace = llmentary.wait(min_calls=expected_cancelled)
     # ``since`` drops a lost-race call from a retried first attempt.
     expect = llmentary.expect(since=mark)
     outcomes = sorted(call.outcome for call in expect.trace.calls)
-    assert outcomes == [OUTCOME_CANCELLED, OUTCOME_CANCELLED], (
-        f"expected two cancelled calls\n\n{trace.trace_summary()}"
+    assert outcomes == [OUTCOME_CANCELLED] * expected_cancelled, (
+        f"expected {expected_cancelled} cancelled call(s)\n\n{trace.trace_summary()}"
     )
 
     expect.no_errors()
-    with pytest.raises(AssertionError, match="expected no cancelled calls, got 2"):
+    got = f"expected no cancelled calls, got {expected_cancelled}"
+    with pytest.raises(AssertionError, match=got):
         expect.no_cancelled()
-    llmentary.query().since(mark).cancelled().expect().call_count(2, include_cancelled=True)
+    llmentary.query().since(mark).cancelled().expect().call_count(
+        expected_cancelled, include_cancelled=True
+    )
     expect.call_count(0)
-    expect.call_count(2, include_cancelled=True)
+    expect.call_count(expected_cancelled, include_cancelled=True)
