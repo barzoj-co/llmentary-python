@@ -20,6 +20,8 @@ import httpx
 from .assertions import Expectation, SoftExpectation
 from .binary import find_binary
 from .types import (
+    OUTCOME_CANCELLED,
+    OUTCOME_FAILED,
     ProxyConfig,
     SessionInfo,
     SessionTrace,
@@ -569,6 +571,7 @@ class Query:
     include_tools: Optional[bool] = None
     since_seq: Optional[int] = None
     aborted_only: Optional[bool] = None
+    outcomes: Optional[tuple[str, ...]] = None
 
     def offers_tool(self, name: str) -> Query:
         return replace(self, offers_tool_name=name)
@@ -592,6 +595,21 @@ class Query:
 
         return replace(self, aborted_only=True)
 
+    def outcome(self, *states: str) -> Query:
+        """Keep calls whose terminal outcome is one of ``states`` (DOG-58)."""
+
+        return replace(self, outcomes=tuple(states))
+
+    def cancelled(self) -> Query:
+        """Keep calls with terminal outcome ``cancelled`` (DOG-58)."""
+
+        return replace(self, outcomes=(OUTCOME_CANCELLED,))
+
+    def failed(self) -> Query:
+        """Keep calls with terminal outcome ``failed`` (DOG-58)."""
+
+        return replace(self, outcomes=(OUTCOME_FAILED,))
+
     def expect(
         self,
         *,
@@ -607,6 +625,7 @@ class Query:
             with_tools=self.include_tools,
             since=mark,
             aborted=self.aborted_only,
+            outcomes=self.outcomes,
         )
         expectation: Expectation = (
             SoftExpectation(trace, session=self.session)

@@ -254,6 +254,8 @@ llmentary.query().without_tools().expect().call_count(1).request_param(
     "response_format.type", "json_schema"
 )
 llmentary.query().committed().expect().call_count(2)
+llmentary.expect().call_count(2)
+llmentary.expect().call_count(3, include_cancelled=True)
 llmentary.expect().call_count(2, exclude_aborted=True)
 mark = llmentary.mark()
 llmentary.expect(since=mark).final_response_mentions_any("20", "sunny")
@@ -268,7 +270,7 @@ calls (`tool_called`, `not_called`, `called_times`, `args_subset`,
 `args_matcher`, `order`, `parallel_tool_calls`, `tool_result_fed_back`),
 request and finish metadata (`model`, `request_param`, `finish_reason`), usage
 and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
-(`no_errors`, `has_error`, `mid_stream_error`), prompt or response text
+(`no_errors`, `no_cancelled`, `has_error`, `mid_stream_error`), prompt or response text
 (`prompt_contains`, `prompt_regex`, `response_contains`, `response_regex`,
 `response_json_valid`, `response_json_schema`), and spec observability
 (`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
@@ -277,6 +279,14 @@ fails `no_errors()` / `not_called()` unless you call `allow_empty()` first.
 `expect()` itself still fails on a never-created session unless you pass
 `allow_empty=True`. Use `llmentary.list_sessions()` when a wait or expect
 fails with zero calls, so the message can name the known session ids (once).
+
+`call_count()` counts calls whose outcome is **not** `cancelled` (DOG-58): a
+client cancel in either phase is not counted, while `committed` and `failed`
+calls are. Pass `include_cancelled=True` to count every captured call, and
+`exclude_aborted=True` (DOG-50) still counts the non-aborted subset — passing
+it together with `include_cancelled=True` raises `TypeError`. A failure that
+left cancelled calls out says so: `expected 2 captured call(s), got 1 (1
+cancelled not counted; pass include_cancelled=True)`.
 
 Negative tests — asserting zero LLM calls:
 
@@ -310,6 +320,12 @@ field (`True`/`False`), or `None` on older proxies. Closing after
 `[DONE]` or a terminal Responses event is not an abort. Proxy 0.3.0 still
 records `finish_reason=unknown` on abort; `cancelled` is the documented
 value.
+
+`no_errors()` fails only on `outcome="failed"` (DOG-58): client cancels in
+both phases are not errors, so use `aborted()`, `no_cancelled()` or
+`has_error("client_aborted")` to assert them. Both assertions name every
+offending call — `no_errors()` prints `#seq` with the normalized error or HTTP
+status, `no_cancelled()` prints `#seq phase=<abort_phase>`.
 
 Trace-summary `status=` is `ok`, `error`, or `aborted`. Both abort
 phases print `status=aborted` (a scan for `status=error` must not miss

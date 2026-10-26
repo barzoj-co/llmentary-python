@@ -19,6 +19,9 @@ from .doctor import (
     proxy_version_line,
 )
 from .types import (
+    OUTCOME_CANCELLED,
+    OUTCOME_COMMITTED,
+    OUTCOME_FAILED,
     APIType,
     IgnoredField,
     ProxyConfig,
@@ -36,6 +39,9 @@ except PackageNotFoundError:
     __version__ = "0.7.2"  # x-release-please-version
 
 __all__ = [
+    "OUTCOME_CANCELLED",
+    "OUTCOME_COMMITTED",
+    "OUTCOME_FAILED",
     "APIType",
     "BinaryResolutionError",
     "ControlClient",

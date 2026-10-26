@@ -40,6 +40,9 @@ LLM_PAYLOAD_KEYS = (
     "tools",
 )
 PATH_KEYS = ("path", "url", "endpoint")
+OUTCOME_COMMITTED = "committed"
+OUTCOME_CANCELLED = "cancelled"
+OUTCOME_FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -354,6 +357,44 @@ class CapturedCall:
     @property
     def stream_truncated(self) -> bool:
         return self._flag("stream_truncated", "streamTruncated")
+
+    @property
+    def outcome(self) -> str:
+        """Terminal outcome of a settled call: ``committed``, ``cancelled`` or ``failed``.
+
+        Returns the recorded ``outcome`` when it is one of those three values
+        (an unknown recorded value is ignored and derived instead); otherwise
+        derives it from the recorded fields (DOG-58): a non-client error fails,
+        HTTP 4xx/5xx fails, a client abort cancels, a truncated stream fails,
+        a zero HTTP status fails, and everything else commits. ``abort_phase``
+        (``before_headers`` vs ``after_headers``) never changes the outcome.
+        """
+
+        recorded = first_present(self.raw, "outcome")
+        if isinstance(recorded, str) and recorded in (
+            OUTCOME_COMMITTED,
+            OUTCOME_CANCELLED,
+            OUTCOME_FAILED,
+        ):
+            return recorded
+        error = self.error
+        client_abort_error = (
+            self.client_aborted
+            and self.error_normalized == "client_aborted"
+            and self.error_source in (None, "client")
+        )
+        if error is not None and not client_abort_error:
+            return OUTCOME_FAILED
+        status = self.http_status if self.http_status is not None else 0
+        if status >= 400:
+            return OUTCOME_FAILED
+        if self.client_aborted:
+            return OUTCOME_CANCELLED
+        if self.stream_truncated:
+            return OUTCOME_FAILED
+        if status == 0:
+            return OUTCOME_FAILED
+        return OUTCOME_COMMITTED
 
     @property
     def upstream_called(self) -> Optional[bool]:
@@ -736,6 +777,7 @@ class SessionTrace:
         with_tools: Optional[bool] = None,
         since: Optional[int] = None,
         aborted: Optional[bool] = None,
+        outcomes: Optional[Sequence[str]] = None,
     ) -> SessionTrace:
         calls = list(self.calls)
         if api_type:
@@ -755,6 +797,8 @@ class SessionTrace:
             calls = [call for call in calls if call.client_aborted]
         elif aborted is False:
             calls = [call for call in calls if not call.client_aborted]
+        if outcomes is not None:
+            calls = [call for call in calls if call.outcome in outcomes]
         labels = list(self.filter_labels)
         if offers_tool:
             labels.append(f'offers_tool("{offers_tool}")')
@@ -772,6 +816,8 @@ class SessionTrace:
             labels.append("aborted")
         elif aborted is False:
             labels.append("committed")
+        if outcomes is not None:
+            labels.append(f"outcome={'|'.join(outcomes)}")
         return SessionTrace(
             session_id=self.session_id,
             raw=self.raw,

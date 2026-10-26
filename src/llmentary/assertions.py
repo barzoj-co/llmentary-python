@@ -11,6 +11,8 @@ from jsonschema import ValidationError
 from jsonschema.validators import Draft202012Validator
 
 from .types import (
+    OUTCOME_CANCELLED,
+    OUTCOME_FAILED,
     CapturedCall,
     IgnoredField,
     SessionTrace,
@@ -48,6 +50,20 @@ def require_non_negative_count(name: str, value: object) -> int:
     return value
 
 
+def _settled_calls(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
+    """Calls with a recorded ``ended_at``. An in-flight record has no outcome (DOG-58)."""
+
+    return [call for call in calls if first_present(call.raw, "ended_at", "endedAt")]
+
+
+def _failed_call_reason(call: CapturedCall) -> str:
+    normalized = call.error_normalized
+    if normalized:
+        return normalized
+    status = call.http_status if call.http_status is not None else 0
+    return str(status)
+
+
 class Expectation:
     """Fluent deterministic assertions over an llmentary session trace."""
 
@@ -75,19 +91,34 @@ class Expectation:
         min: Optional[int] = None,
         max: Optional[int] = None,
         exclude_aborted: bool = False,
+        include_cancelled: bool = False,
     ) -> Expectation:
         """Assert how many captured calls the (possibly filtered) trace has.
 
         ``call_count(2)`` requires an exact count. ``call_count(min=1, max=4)``
-        is the range form. ``exclude_aborted=True`` counts committed calls
-        only (DOG-50; after-headers abort is still HTTP 200). The failure
-        message includes the actual count and the trace summary.
+        is the range form.
+
+        The default counts calls whose terminal outcome is **not**
+        ``cancelled`` (DOG-58): a client cancel in either phase is not
+        counted, ``committed`` and ``failed`` calls are. Pass
+        ``include_cancelled=True`` to count every captured call, cancelled
+        ones included. ``exclude_aborted=True`` (DOG-50) counts the
+        non-aborted subset — the same calls the default leaves out, plus any
+        client-aborted call whose outcome is ``failed``. Passing
+        ``exclude_aborted=True`` and ``include_cancelled=True`` together
+        raises ``TypeError``. The failure message includes the actual count,
+        how many cancelled calls were left out, and the trace summary.
         """
 
         if expected is not None and (min is not None or max is not None):
             raise TypeError("call_count() takes either an exact count or min/max, not both")
         if expected is None and min is None and max is None:
             raise TypeError("call_count() requires an exact count or min/max")
+        if exclude_aborted and include_cancelled:
+            raise TypeError(
+                "call_count() exclude_aborted=True and include_cancelled=True conflict: "
+                "exclude_aborted=True already leaves cancelled calls out"
+            )
         if expected is not None:
             expected = require_non_negative_count("expected", expected)
         if min is not None:
@@ -98,25 +129,35 @@ class Expectation:
             raise TypeError(f"call_count() min={min} is greater than max={max}")
 
         calls = self.trace.calls
+        excluded_cancelled = 0
         if exclude_aborted:
             calls = [call for call in calls if not call.client_aborted]
+        elif not include_cancelled:
+            counted = [call for call in calls if call.outcome != OUTCOME_CANCELLED]
+            excluded_cancelled = len(calls) - len(counted)
+            calls = counted
         actual = len(calls)
         noun = "committed call(s)" if exclude_aborted else "captured call(s)"
+        note = (
+            f" ({excluded_cancelled} cancelled not counted; pass include_cancelled=True)"
+            if excluded_cancelled
+            else ""
+        )
         if expected is not None:
             self._assert(
                 actual == expected,
-                f"expected {expected} {noun}, got {actual}",
+                f"expected {expected} {noun}, got {actual}{note}",
             )
             return self
         if min is not None:
             self._assert(
                 actual >= min,
-                f"expected at least {min} {noun}, got {actual}",
+                f"expected at least {min} {noun}, got {actual}{note}",
             )
         if max is not None:
             self._assert(
                 actual <= max,
-                f"expected at most {max} {noun}, got {actual}",
+                f"expected at most {max} {noun}, got {actual}{note}",
             )
         return self
 
@@ -524,10 +565,47 @@ class Expectation:
         return self.retries(max_count=0)
 
     def no_errors(self) -> Expectation:
+        """Assert no settled call has terminal outcome ``failed`` (DOG-58).
+
+        Client cancels in both phases (``before_headers`` and
+        ``after_headers``) are not errors; use ``aborted()`` /
+        ``no_cancelled()`` / ``has_error("client_aborted")`` to assert them.
+        In-flight calls (no recorded ``ended_at``) have no outcome and are
+        skipped. The failure message names every failed call by ``seq``.
+        """
+
         if not self._require_matching_calls():
             return self
-        errors = [call for call in self.trace.calls if call.error or call.mid_stream_error]
-        self._assert(not errors, f"expected no errors, got {len(errors)} errored call(s)")
+        failed = [
+            call for call in _settled_calls(self.trace.calls) if call.outcome == OUTCOME_FAILED
+        ]
+        self._assert(
+            not failed,
+            f"expected no errors, got {len(failed)} failed call(s): "
+            + ", ".join(f"#{call.seq} {_failed_call_reason(call)}" for call in failed),
+        )
+        return self
+
+    def no_cancelled(self) -> Expectation:
+        """Assert no settled call has terminal outcome ``cancelled`` (DOG-58).
+
+        Client cancels in both phases are not errors; use ``aborted()`` /
+        ``no_cancelled()`` / ``has_error("client_aborted")`` to assert them.
+        In-flight calls (no recorded ``ended_at``) have no outcome and are
+        skipped. The failure message names every cancelled call by ``seq``
+        and its ``abort_phase``.
+        """
+
+        if not self._require_matching_calls():
+            return self
+        cancelled = [
+            call for call in _settled_calls(self.trace.calls) if call.outcome == OUTCOME_CANCELLED
+        ]
+        self._assert(
+            not cancelled,
+            f"expected no cancelled calls, got {len(cancelled)}: "
+            + ", ".join(f"#{call.seq} phase={call.abort_phase}" for call in cancelled),
+        )
         return self
 
     def has_error(self, pattern: Optional[Regex] = None) -> Expectation:

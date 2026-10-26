@@ -498,8 +498,8 @@ def test_after_headers_abort_response_text_is_partial_not_json(llmentary: Sessio
     assert text
     if assembled:
         assert text.startswith(assembled[0]) or assembled[0].startswith(text)
-    llmentary.expect().call_count(1, exclude_aborted=False)
-    llmentary.query().aborted().expect().call_count(1)
+    llmentary.expect().call_count(1, exclude_aborted=False, include_cancelled=True)
+    llmentary.query().aborted().expect().call_count(1, include_cancelled=True)
     listed = llmentary.list_sessions()
     mine = next(row for row in listed if row.id == llmentary.session_id)
     if mine.spec is not None:
