@@ -9,6 +9,7 @@ import pytest
 
 from llmentary import __version__
 from llmentary.__main__ import main, print_version
+from llmentary.doctor import proxy_report_header, version_report_line
 
 
 def test_doctor_wheel_case_prints_path(tmp_path: Path) -> None:
@@ -59,7 +60,7 @@ def test_cli_version_prints_package_and_proxy(
     monkeypatch.setenv("PATH", "")
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert out == f"llmentary {__version__} ; proxy 0.4.1+dirty ({binary})\n"
+    assert out == f"llmentary {__version__}; proxy 0.4.1+dirty ({binary})\n"
     assert main(["version"]) == 0
     assert capsys.readouterr().out == out
 
@@ -71,9 +72,9 @@ def test_cli_version_missing_binary_exits_0(
     monkeypatch.setenv("PATH", "")
     monkeypatch.setattr("llmentary.doctor.find_binary", _raise_missing)
     assert main(["--version"]) == 0
-    assert capsys.readouterr().out == f"llmentary {__version__} ; proxy: not found\n"
+    assert capsys.readouterr().out == f"llmentary {__version__}; proxy not found\n"
     assert print_version() == 0
-    assert capsys.readouterr().out == f"llmentary {__version__} ; proxy: not found\n"
+    assert capsys.readouterr().out == f"llmentary {__version__}; proxy not found\n"
 
 
 def test_cli_unknown_args_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
@@ -104,4 +105,28 @@ def test_cli_version_subprocess_matches_inprocess(tmp_path: Path) -> None:
         env=env,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == f"llmentary {__version__} ; proxy 0.4.1 ({binary})\n"
+    assert completed.stdout == f"llmentary {__version__}; proxy 0.4.1 ({binary})\n"
+
+
+def test_cli_version_uses_one_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    binary = tmp_path / "llmentary"
+    binary.write_text("#!/bin/sh\necho 'llmentary 0.5.1 (deadbeef)'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setenv("LLMENTARY_BIN", str(binary))
+    monkeypatch.setenv("PATH", "")
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out == f"llmentary {__version__}; proxy 0.5.1 ({binary})\n"
+    assert version_report_line() == f"llmentary {__version__}; proxy 0.5.1 ({binary})"
+    header = proxy_report_header()
+    assert header == (
+        f"llmentary {__version__}; proxy 0.5.1 ({binary}); llmentary 0.5.1 (deadbeef)"
+    )
+    assert header.startswith(version_report_line())
+    monkeypatch.delenv("LLMENTARY_BIN", raising=False)
+    monkeypatch.setattr("llmentary.doctor.find_binary", _raise_missing)
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out == f"llmentary {__version__}; proxy not found\n"
+    assert version_report_line() == f"llmentary {__version__}; proxy not found"
+    assert proxy_report_header() == f"llmentary {__version__}; proxy not found"
