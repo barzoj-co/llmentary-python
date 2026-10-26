@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from llmentary.assertions import Expectation
-from llmentary.client import ControlClient, ProxyHandle, Session
+from llmentary.client import ControlClient, ProxyHandle, Query, Session
 from llmentary.types import (
     OUTCOME_CANCELLED,
     OUTCOME_COMMITTED,
@@ -309,3 +309,47 @@ def test_query_outcome_filters_pass_through_to_the_trace() -> None:
         query.committed().expect().call_count(11)
         query.aborted().expect().call_count(4, include_cancelled=True)
         query.failed().committed().expect().call_count(8)
+
+
+def _validation_query() -> Query:
+    session = Session(
+        session_id="outcome-validation",
+        proxy=ProxyHandle(
+            url="http://127.0.0.1:7777",
+            control=ControlClient("http://127.0.0.1:7778"),
+        ),
+    )
+    return session.query()
+
+
+def test_query_outcome_rejects_no_states() -> None:
+    with pytest.raises(ValueError, match="at least one state"):
+        _validation_query().outcome()
+
+
+def test_query_outcome_rejects_unknown_state() -> None:
+    with pytest.raises(ValueError, match="bogus"):
+        _validation_query().outcome("bogus")
+    with pytest.raises(ValueError, match="bogus"):
+        _validation_query().outcome(OUTCOME_COMMITTED, "bogus")
+
+
+def test_in_flight_call_is_excluded_by_outcome_filter() -> None:
+    hanging = {
+        "id": "call_hanging",
+        "seq": 1,
+        "api_type": "chat_completions",
+        "started_at": "2026-10-26T10:00:00Z",
+        "client_aborted": False,
+        "request": {"model": "fake-model", "messages": [{"role": "user", "content": "hang"}]},
+    }
+    trace = SessionTrace.from_payload("in-flight", {"id": "in-flight", "calls": [hanging]})
+    assert trace.calls[0].http_status is None
+
+    for state in (OUTCOME_FAILED, OUTCOME_CANCELLED, OUTCOME_COMMITTED):
+        filtered = trace.filtered(outcomes=(state,))
+        assert filtered.calls == []
+        assert f"outcome={state}" in filtered.empty_match_message()
+        Expectation(filtered).allow_empty().no_errors()
+
+    Expectation(trace.filtered(outcomes=(OUTCOME_FAILED,))).call_count(0)

@@ -365,9 +365,11 @@ class CapturedCall:
         Returns the recorded ``outcome`` when it is one of those three values
         (an unknown recorded value is ignored and derived instead); otherwise
         derives it from the recorded fields (DOG-58): a non-client error fails,
-        HTTP 4xx/5xx fails, a client abort cancels, a truncated stream fails,
-        a zero HTTP status fails, and everything else commits. ``abort_phase``
-        (``before_headers`` vs ``after_headers``) never changes the outcome.
+        a top-level ``mid_stream_error`` on a call that was not client-aborted
+        fails, HTTP 4xx/5xx fails, a client abort cancels, a truncated stream
+        fails, a zero HTTP status fails, and everything else commits.
+        ``abort_phase`` (``before_headers`` vs ``after_headers``) never changes
+        the outcome.
         """
 
         recorded = first_present(self.raw, "outcome")
@@ -384,6 +386,8 @@ class CapturedCall:
             and self.error_source in (None, "client")
         )
         if error is not None and not client_abort_error:
+            return OUTCOME_FAILED
+        if not self.client_aborted and self.mid_stream_error:
             return OUTCOME_FAILED
         status = self.http_status if self.http_status is not None else 0
         if status >= 400:
@@ -798,7 +802,11 @@ class SessionTrace:
         elif aborted is False:
             calls = [call for call in calls if not call.client_aborted]
         if outcomes is not None:
-            calls = [call for call in calls if call.outcome in outcomes]
+            calls = [
+                call
+                for call in calls
+                if first_present(call.raw, "ended_at", "endedAt") and call.outcome in outcomes
+            ]
         labels = list(self.filter_labels)
         if offers_tool:
             labels.append(f'offers_tool("{offers_tool}")')

@@ -21,6 +21,7 @@ from .assertions import Expectation, SoftExpectation
 from .binary import find_binary
 from .types import (
     OUTCOME_CANCELLED,
+    OUTCOME_COMMITTED,
     OUTCOME_FAILED,
     ProxyConfig,
     SessionInfo,
@@ -598,6 +599,15 @@ class Query:
     def outcome(self, *states: str) -> Query:
         """Keep calls whose terminal outcome is one of ``states`` (DOG-58)."""
 
+        if not states:
+            raise ValueError("outcome() requires at least one state")
+        allowed = (OUTCOME_COMMITTED, OUTCOME_CANCELLED, OUTCOME_FAILED)
+        for state in states:
+            if state not in allowed:
+                raise ValueError(
+                    f"unknown outcome state {state!r}: expected one of "
+                    f"{', '.join(allowed)}"
+                )
         return replace(self, outcomes=tuple(states))
 
     def cancelled(self) -> Query:
