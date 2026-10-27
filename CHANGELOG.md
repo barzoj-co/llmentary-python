@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.4](https://github.com/barzoj-co/llmentary-python/compare/v0.7.3...v0.7.4) (2026-10-27)
+
+
+### Documentation
+
+* add 0.7.3 upgrade notes for call_count, no_errors and --version ([#67](https://github.com/barzoj-co/llmentary-python/issues/67)) ([d0295c5](https://github.com/barzoj-co/llmentary-python/commit/d0295c519937365c10beeacdbaf6c897011c16d8))
+* note the test-key placeholder works only in start mode ([#68](https://github.com/barzoj-co/llmentary-python/issues/68)) ([da56606](https://github.com/barzoj-co/llmentary-python/commit/da566065cbacca8b2f341518979c4cf0e635dbb8))
+* remove internal references and use neutral example data ([#70](https://github.com/barzoj-co/llmentary-python/issues/70)) ([7d93850](https://github.com/barzoj-co/llmentary-python/commit/7d93850c730bed75e89d44c1c3ffc9377ad48568))
+* rewrite the README ([#72](https://github.com/barzoj-co/llmentary-python/issues/72)) ([ed15071](https://github.com/barzoj-co/llmentary-python/commit/ed150719ee68d7fe89e198f628e7290caf485b76))
+
 ## [0.7.3](https://github.com/barzoj-co/llmentary-python/compare/v0.7.2...v0.7.3) (2026-10-26)
 
 

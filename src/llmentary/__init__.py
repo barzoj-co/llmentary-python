@@ -36,7 +36,7 @@ from .wait import InFlightCall, WaitTimeoutError
 try:
     __version__ = version("llmentary")
 except PackageNotFoundError:
-    __version__ = "0.7.3"  # x-release-please-version
+    __version__ = "0.7.4"  # x-release-please-version
 
 __all__ = [
     "OUTCOME_CANCELLED",
