@@ -1,9 +1,15 @@
 # Changelog
 
-## Upgrade notes
-
 ## [0.7.3](https://github.com/barzoj-co/llmentary-python/compare/v0.7.2...v0.7.3) (2026-10-26)
 
+
+### Upgrade notes
+
+0.7.3 changes test outcomes for some existing suites:
+
+- `call_count(n)` no longer counts cancelled calls (calls the client aborted, e.g. on barge-in). When cancelled calls would explain the mismatch, the failure message says how many were not counted, e.g. `expected 3 captured call(s), got 0 (3 cancelled not counted; pass include_cancelled=True)`. To keep the old total, pass `call_count(3, include_cancelled=True)`.
+- `no_errors()` now checks failed calls only; cancelled calls no longer make it fail. Use `no_cancelled()` for the old strictness. The failure message changed from `... N errored call(s)` to `expected no errors, got N failed call(s): #1 ...`, so `pytest.raises(AssertionError, match="errored call")` needs `match="failed call"`.
+- `llmentary --version` now prints one of two formats: `llmentary X; proxy Y (path)` when the proxy binary is found, `llmentary X; proxy not found` when it is missing. Update scripts that parse the old output.
 
 ### Bug Fixes
 
