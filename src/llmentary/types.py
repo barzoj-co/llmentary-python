@@ -327,7 +327,7 @@ class CapturedCall:
     def client_aborted(self) -> bool:
         """True when the client disconnected before the proxy finished the call.
 
-        Prefers the top-level Call field (DOG-27). Older proxies only set
+        Prefers the top-level Call field. Older proxies only set
         ``normalized.client_aborted``; that remains the fallback.
         """
 
@@ -364,7 +364,7 @@ class CapturedCall:
 
         Returns the recorded ``outcome`` when it is one of those three values
         (an unknown recorded value is ignored and derived instead); otherwise
-        derives it from the recorded fields (DOG-58): a non-client error fails,
+        derives it from the recorded fields: a non-client error fails,
         a top-level ``mid_stream_error`` on a call that was not client-aborted
         fails, HTTP 4xx/5xx fails, a client abort cancels, a truncated stream
         fails, a zero HTTP status fails, and everything else commits.
@@ -404,7 +404,7 @@ class CapturedCall:
     def upstream_called(self) -> Optional[bool]:
         """Whether the proxy forwarded this call upstream.
 
-        Reads the top-level Call field (DOG-35). ``None`` when the field is
+        Reads the top-level Call field. ``None`` when the field is
         absent (older proxies) or not a boolean.
         """
 
@@ -869,12 +869,12 @@ class SessionTrace:
         return self.filtered(since=mark)
 
     def committed(self) -> SessionTrace:
-        """Calls that were not client-aborted (DOG-50)."""
+        """Calls that were not client-aborted."""
 
         return self.filtered(aborted=False)
 
     def aborted(self) -> SessionTrace:
-        """Client-aborted calls only (DOG-50)."""
+        """Client-aborted calls only."""
 
         return self.filtered(aborted=True)
 

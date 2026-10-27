@@ -194,7 +194,7 @@ def wait_query_string(
 def explicit_active_count(*payloads: Mapping[str, Any]) -> Optional[int]:
     """Return an explicit ``active`` integer, or ``None`` when the body omits it.
 
-    After proxy 0.4.1 (DOG-36) in-flight calls are not in ``calls``, so counting
+    After proxy 0.4.1 in-flight calls are not in ``calls``, so counting
     missing ``ended_at`` is always 0 and must not be used.
     """
 

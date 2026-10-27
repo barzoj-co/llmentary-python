@@ -102,7 +102,7 @@ show_missing = true
 # Ratchet fail_under upward; do not lower it. CI `coverage report --fail-under`
 # reads this table (scripts/coverage_fail_under.py).
 fail_under = 92
-# Denis: releases require >=90. Applied on release-please PRs.
+# Releases require >=90. Applied on release-please PRs.
 release_fail_under = 90
 
 [tool.pytest.ini_options]

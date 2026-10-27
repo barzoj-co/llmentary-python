@@ -128,11 +128,11 @@ def _replay_call(
 def test_same_canned_question_is_not_a_leak() -> None:
     weather = _trace(
         "weather",
-        _call(session_id="weather", ident="call_3", seq=1, user="What is my biological age?"),
+        _call(session_id="weather", ident="call_3", seq=1, user="Where is my order?"),
     )
     barge = _trace(
         "barge",
-        _call(session_id="barge", ident="call_7", seq=1, user="What is my biological age?"),
+        _call(session_id="barge", ident="call_7", seq=1, user="Where is my order?"),
     )
     Expectation(weather).isolated_from(barge)
     Expectation(barge).isolated_from(weather)
@@ -149,7 +149,7 @@ def test_short_hi_is_not_a_substring_leak() -> None:
             session_id="long",
             ident="call_2",
             seq=1,
-            user="Hi, what is my biological age? This text is long.",
+            user="Hi, where is my order? This text is long.",
         ),
     )
     Expectation(hello).isolated_from(long)

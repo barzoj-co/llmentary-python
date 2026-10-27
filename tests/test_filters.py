@@ -199,7 +199,7 @@ def test_non_empty_filter_no_errors_still_passes() -> None:
     Expectation(_h1_trace().offers_tool("tool_0")).call_count(2).not_called("missing")
 
 
-def _vector_trace(session_id: str = "dog-58") -> SessionTrace:
+def _vector_trace(session_id: str = "outcome") -> SessionTrace:
     calls = [dict(case["call"]) for case in OUTCOME_CASES]
     return SessionTrace.from_payload(session_id, {"id": session_id, "calls": calls})
 

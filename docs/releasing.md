@@ -66,7 +66,7 @@ or PyPI settings.
 2. In this GitHub repository, **Settings → Environments → `pypi`**: restrict
    deployments to tags matching `v*`. The release-please path dispatches
    `release.yml` on the tag ref, so this rule covers both the tag-push and the
-   dispatch paths. Optionally require Denis as a reviewer.
+   dispatch paths. Optionally require a maintainer as a reviewer.
 3. **Settings → Variables → Actions**: set `PYPI_PUBLISH_ENABLED=true`.
 4. After the first successful publish, on the PyPI project **Settings**:
    confirm no API tokens exist and keep it that way.

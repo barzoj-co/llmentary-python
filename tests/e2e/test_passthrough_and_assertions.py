@@ -65,9 +65,9 @@ def test_assertion_helpers_fail_with_clear_messages(llmentary: Session) -> None:
     with pytest.raises(AssertionError, match="expected model 'gpt-not-a-model'"):
         expect.model("gpt-not-a-model")
     with pytest.raises(AssertionError, match="expected prompt to contain"):
-        expect.prompt_contains("this-prompt-marker-is-absent-ltl")
+        expect.prompt_contains("this-prompt-marker-is-absent-llmentary")
     with pytest.raises(AssertionError, match="expected response to contain"):
-        expect.response_contains("this-response-marker-is-absent-ltl")
+        expect.response_contains("this-response-marker-is-absent-llmentary")
     with pytest.raises(AssertionError, match="expected at least one error"):
         expect.has_error()
     with pytest.raises(AssertionError, match="expected total tokens >= 1000000000"):

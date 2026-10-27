@@ -19,7 +19,7 @@ from llmentary.types import SessionTrace
 ROOT = Path(__file__).resolve().parents[1]
 VECTOR_DIR = ROOT / "tests" / "testdata" / "isolation"
 PROXY_VERSION = (ROOT / "PROXY_VERSION").read_text(encoding="utf-8").strip()
-# Proxy DOG-29 PR #35 landed on main as bb39133; the pin tag is the
+# The proxy isolation-vector change (PR #35) landed on main as bb39133; the pin tag is the
 # long-term source once a release includes testdata/isolation.
 PROXY_VECTOR_REFS = (
     "main",

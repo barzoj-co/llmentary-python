@@ -2,7 +2,7 @@
 """Print the coverage fail-under threshold stored in pyproject.toml.
 
 Regular PRs use ``[tool.llmentary.coverage] fail_under``. release-please PRs
-use ``release_fail_under`` (Denis: releases require >=90).
+use ``release_fail_under`` (releases require >=90).
 """
 
 from __future__ import annotations

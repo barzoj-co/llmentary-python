@@ -332,7 +332,7 @@ def test_hostname_of_rejects_non_strings() -> None:
 
 @pytest.mark.integration
 def test_proxy_config_typed_defaults_against_real_proxy() -> None:
-    from test_proxy_dogfood import isolated_proxy
+    from test_proxy_control import isolated_proxy
 
     with isolated_proxy() as handle:
         raw = handle.control.config()
@@ -349,7 +349,7 @@ def test_proxy_config_typed_defaults_against_real_proxy() -> None:
 
 @pytest.mark.integration
 def test_proxy_config_timeouts_and_spec_target_override() -> None:
-    from test_proxy_dogfood import isolated_proxy
+    from test_proxy_control import isolated_proxy
 
     with isolated_proxy(
         extra_env={
@@ -368,7 +368,7 @@ def test_proxy_config_timeouts_and_spec_target_override() -> None:
 @pytest.mark.integration
 def test_named_upstream_skips_path_allow_list() -> None:
     from fake_upstream import FakeOpenAIServer
-    from test_proxy_dogfood import _post_chat, isolated_proxy
+    from test_proxy_control import _post_chat, isolated_proxy
 
     server = FakeOpenAIServer().start()
     try:

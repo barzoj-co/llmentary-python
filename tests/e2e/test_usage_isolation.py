@@ -20,7 +20,7 @@ from llmentary.client import new_session_id
 
 pytestmark = pytest.mark.e2e
 
-CACHE_PREFIX = ("cache-token LTL-PY-2 " * 400).strip()
+CACHE_PREFIX = ("cache-token PY-USAGE " * 400).strip()
 
 
 def test_cached_tokens_field_is_parsed(llmentary: Session) -> None:
@@ -186,7 +186,7 @@ def test_isolated_from_same_prompt_and_history_replay(llmentary: Session) -> Non
         wait_timeout=llmentary.wait_timeout,
         quiet_for=llmentary.quiet_for,
     )
-    prompt = "What is my biological age? Reply with one integer."
+    prompt = "Where is my order? Reply with one integer."
     try:
         for session in (llmentary, other):
             client = openai_client(session)
@@ -261,9 +261,9 @@ def test_later_call_two_new_user_messages_is_not_a_leak(llmentary: Session) -> N
         wait_timeout=llmentary.wait_timeout,
         quiet_for=llmentary.quiet_for,
     )
-    opening = "Opening question number one LTL-PY-DOG-33"
-    second = "Second message sent by P itself LTL-PY-DOG-33"
-    third = "Third message sent by P itself LTL-PY-DOG-33"
+    opening = "Opening question number one PY-ISOLATION-A"
+    second = "Second message sent by P itself PY-ISOLATION-A"
+    third = "Third message sent by P itself PY-ISOLATION-A"
     try:
         client_p = openai_client(llmentary)
         call_openai(
@@ -313,7 +313,7 @@ def test_isolated_from_sees_leak_source_that_is_still_streaming(
         quiet_for=llmentary.quiet_for,
     )
     nonce = other.session_id[-8:]
-    secret = f"Y follow-up that X must never see ({nonce}) LTL-PY-DOG-37"
+    secret = f"Y follow-up that X must never see ({nonce}) PY-ISOLATION-B"
     started = threading.Event()
     drain_error: list[BaseException] = []
 
@@ -350,7 +350,7 @@ def test_isolated_from_sees_leak_source_that_is_still_streaming(
             drain_error.append(exc)
             started.set()
 
-    worker = threading.Thread(target=run_y, name="dog37-y")
+    worker = threading.Thread(target=run_y, name="case37-y")
     worker.start()
     try:
         assert started.wait(30), "Y stream did not open"
@@ -386,7 +386,7 @@ def test_isolated_from_both_sides_streaming_still_sees_leak(
         quiet_for=llmentary.quiet_for,
     )
     nonce = other.session_id[-8:]
-    secret = f"Shared streaming leak text ({nonce}) LTL-PY-DOG-37"
+    secret = f"Shared streaming leak text ({nonce}) PY-ISOLATION-B"
     y_started = threading.Event()
     errors: list[BaseException] = []
 
@@ -413,7 +413,7 @@ def test_isolated_from_both_sides_streaming_still_sees_leak(
             errors.append(exc)
             y_started.set()
 
-    worker = threading.Thread(target=run_y, name="dog37-both-y")
+    worker = threading.Thread(target=run_y, name="case37-both-y")
     worker.start()
     try:
         assert y_started.wait(30), "Y stream did not open"
@@ -461,7 +461,7 @@ def test_isolated_from_times_out_on_other_side_still_streaming(
         call_openai(
             lambda: openai_client(starter).chat.completions.create(
                 model=CHEAP_MODEL,
-                messages=[{"role": "user", "content": "X settled prompt LTL-PY-DOG-37"}],
+                messages=[{"role": "user", "content": "X settled prompt PY-ISOLATION-B"}],
                 temperature=0,
                 max_tokens=8,
             )
@@ -472,7 +472,7 @@ def test_isolated_from_times_out_on_other_side_still_streaming(
         call_openai(
             lambda: openai_client(other).chat.completions.create(
                 model=CHEAP_MODEL,
-                messages=[{"role": "user", "content": "Y settled prompt LTL-PY-DOG-37"}],
+                messages=[{"role": "user", "content": "Y settled prompt PY-ISOLATION-B"}],
                 temperature=0,
                 max_tokens=8,
             )

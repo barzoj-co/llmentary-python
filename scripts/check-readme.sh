@@ -32,7 +32,7 @@ for url in "${badges[@]}"; do
   fi
 done
 
-canonical_block='<!-- ltl-repos:start -->
+canonical_block='<!-- llmentary-repos:start -->
 ## llmentary repositories
 
 | Repository | What |
@@ -41,7 +41,7 @@ canonical_block='<!-- ltl-repos:start -->
 | [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
 | [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
 | [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
-<!-- ltl-repos:end -->'
+<!-- llmentary-repos:end -->'
 
 if ! grep -F -q -- "$canonical_block" "$README"; then
   echo "README.md is missing or altered the canonical llmentary repositories block" >&2

@@ -1,4 +1,4 @@
-Vendored isolation vectors for DOG-29 / DOG-22 / DOG-32 / DOG-33.
+Vendored isolation vectors.
 
 Canonical copy: barzoj-co/llmentary testdata/isolation/*.json
 (proxy PR https://github.com/barzoj-co/llmentary/pull/42 on main;

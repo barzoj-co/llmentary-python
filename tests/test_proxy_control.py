@@ -63,9 +63,9 @@ def test_list_sessions_and_session_not_found_against_real_proxy(llmentary: Sessi
             == mine.calls
         )
 
-    with pytest.raises(SessionNotFound, match="definitely-missing-dog2") as caught:
-        llmentary.proxy.control.get_session("definitely-missing-dog2")
-    assert caught.value.session_id == "definitely-missing-dog2"
+    with pytest.raises(SessionNotFound, match="definitely-missing-case2") as caught:
+        llmentary.proxy.control.get_session("definitely-missing-case2")
+    assert caught.value.session_id == "definitely-missing-case2"
     assert llmentary.session_id in caught.value.known_ids or llmentary.session_id in str(
         caught.value
     )
@@ -78,26 +78,26 @@ def test_zero_calls_expect_includes_session_and_known_ids(llmentary: Session) ->
     llmentary.wait(timeout=5, quiet=0.1)
 
     empty = Session(
-        session_id="empty-dog2-zero",
+        session_id="empty-case2-zero",
         proxy=llmentary.proxy,
         wait_timeout=2,
         quiet_for=0.1,
     )
     with pytest.raises(
-        AssertionError, match="no calls recorded for session empty-dog2-zero"
+        AssertionError, match="no calls recorded for session empty-case2-zero"
     ) as caught:
         empty.expect()
     message = str(caught.value)
     assert llmentary.session_id in message
     assert "known sessions" in message
-    assert zero_calls_message("empty-dog2-zero", [llmentary.session_id]).split(";")[0] in message
+    assert zero_calls_message("empty-case2-zero", [llmentary.session_id]).split(";")[0] in message
 
 
 @pytest.mark.integration
 def test_wait_never_created_min_calls_zero_is_session_not_found(
     llmentary: Session,
 ) -> None:
-    session_id = new_session_id("ghost-dog17-zero")
+    session_id = new_session_id("ghost-case17-zero")
     ghost = Session(
         session_id=session_id,
         proxy=llmentary.proxy,
@@ -142,7 +142,7 @@ def test_proxy_config_includes_version() -> None:
         assert typed.raw == config
 
 
-# Shared table used by the Go and JS clients as well (DOG-5 C1).
+# Shared table used by the Go and JS clients as well.
 UPSTREAM_JOIN_CASES = (
     ("{echo}/api/v1", "openrouter", "/v1/chat/completions", "/api/v1/chat/completions"),
     ("{echo}/api/v1", "openrouter", "/chat/completions", "/api/v1/chat/completions"),
