@@ -1,6 +1,4 @@
-# llmentary
-
-Python (pytest) client for llmentary: deterministic trace-based integration tests for LLM apps.
+# llmentary for Python
 
 [![CI](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llmentary-python/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/barzoj-co/llmentary-python/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llmentary-python)
@@ -9,368 +7,88 @@ Python (pytest) client for llmentary: deterministic trace-based integration test
 [![PyPI](https://img.shields.io/pypi/v/llmentary)](https://pypi.org/project/llmentary/)
 [![Python versions](https://img.shields.io/pypi/pyversions/llmentary)](https://pypi.org/project/llmentary/)
 
-`llmentary` is the Python/pytest client for the
-[`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary) recording proxy.
-See [Versions](#versions) for `__version__`, `proxy_version()`, and
-`python -m llmentary --version`.
-It gives tests deterministic, trace-based assertions for OpenAI-compatible Chat
-Completions and Responses calls. There is no LLM judge: assertions inspect the
-requests, responses, tool calls, usage, timings, retries, and errors the proxy
-recorded. The control API contract (`GET {control}/openapi.yaml`) describes `/healthz`,
-`/sessions`, and `/sessions/{id}/wait`. Platform wheels bundle the same
-`openapi.yaml` next to the proxy binary. `ControlClient.openapi()` returns the
-served document; `contract_path()` is the bundled file.
+Python client and pytest plugin for [llmentary](https://github.com/barzoj-co/llmentary),
+a recording proxy for testing LLM applications. Your test sends OpenAI SDK
+requests through the proxy to the real provider, then asserts on what was
+recorded: tools called and their arguments, call count, tokens, latency, errors.
 
-Published platform wheels bundle proxy v0.5.3; see
-[docs/binaries.md](docs/binaries.md) for how it is resolved and how to override it.
+Documentation: **https://barzoj-co.github.io/llmentary/**
 
 ## Install
-
-```bash
-pip install llmentary
-```
-
-Platform wheels bundle the version-pinned proxy binary (`PROXY_VERSION`,
-currently 0.5.3). The sdist is client-only
-and does not include a binary. Install a wheel with
-`pip install --only-binary=:all: llmentary`, or set `LLMENTARY_BIN`, or put
-`llmentary` on `PATH`. There is no `llmentary` console script (that name
-is the proxy binary). Run `python -m llmentary doctor` to see what this
-install resolved, or `python -m llmentary --version` for the client and
-proxy versions.
-
-Supported wheel tags: `manylinux2014_x86_64`, `manylinux2014_aarch64`,
-`macosx_11_0_x86_64`, `macosx_11_0_arm64`, `win_amd64`.
-
-For pytest fixture support:
-
-```bash
-pip install "llmentary[pytest]"
-```
-
-For the quickstart using `openai-python`:
 
 ```bash
 pip install "llmentary[pytest,openai]"
 ```
 
-## Versions
-
-`llmentary.__version__` is the Python package. `llmentary.proxy_version()`
-returns the proxy semver (for example `"0.5.3"`), or `None` when no binary
-resolves. `proxy_version_line()` is the full `llmentary --version` line.
-
-Changed in 0.5.3: `proxy_version()` used to return that full line. Code
-that did `proxy_version().split()[1]` should call `proxy_version()` for the
-semver, or `proxy_version_line()` for the line.
-
-```python
-from llmentary import __version__, proxy_version, proxy_version_line
-
-print(__version__)
-print(proxy_version())
-print(proxy_version_line())
-```
+Requires Python 3.9 or newer. Published platform wheels bundle proxy v0.5.3
+for Linux, macOS and Windows; `python -m llmentary doctor` shows which binary
+is used.
 
 ## Quickstart
 
-Point pytest at an existing proxy, or let the fixture start one:
-
-```bash
-export LLMENTARY_PROXY_URL=http://127.0.0.1:7777
-export LLMENTARY_CONTROL_URL=http://127.0.0.1:7778
-pytest
-```
-
-```bash
-export LLMENTARY_BIN=/path/to/llmentary
-export LLMENTARY_UPSTREAM_BASE_URL=https://api.openai.com/v1
-export LLMENTARY_UPSTREAM_API_KEY="$OPENAI_API_KEY"
-pytest
-```
-
-In-process tests that can set headers:
-
 ```python
+import os
 from openai import OpenAI
 
+WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    },
+}
 
-def test_tool_flow(llmentary):
+
+def test_model_calls_weather_tool(llmentary):
     client = OpenAI(
-        api_key="test-key",
+        api_key=os.environ["OPENAI_API_KEY"],
         base_url=llmentary.openai_base_url,
         default_headers=llmentary.headers,
+        max_retries=0,
     )
-
-    first = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": "Weather in Paris?"}],
-        tools=[
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"city": {"type": "string"}},
-                        "required": ["city"],
-                    },
-                },
-            }
-        ],
-    )
-    tool_call = first.choices[0].message.tool_calls[0]
-
     client.chat.completions.create(
         model="gpt-4.1-mini",
-        messages=[
-            {"role": "user", "content": "Weather in Paris?"},
-            first.choices[0].message,
-            {"role": "tool", "tool_call_id": tool_call.id, "content": '{"weather":"sunny"}'},
-        ],
+        messages=[{"role": "user", "content": "What's the weather in Paris?"}],
+        tools=[WEATHER_TOOL],
+        tool_choice="required",
     )
 
-    llmentary.expect().call_count(2).tool_called("get_weather").args_subset(
-        "get_weather", {"city": "Paris"}
-    ).tool_result_fed_back("get_weather").no_errors()
-```
-
-The placeholder `api_key="test-key"` works only in start mode: the `llmentary_proxy`
-fixture starts the proxy and passes `LLMENTARY_UPSTREAM_API_KEY`
-(`--llmentary-upstream-api-key`) to it, so the proxy authenticates upstream with the
-real key. In attach mode (`LLMENTARY_PROXY_URL` / `--llmentary-proxy-url`) the already
-running proxy forwards the client's key, so a real API key is needed.
-
-Black-box / import-time clients that cannot send headers: set the service base
-URL to `llmentary.path_base_url()` **inside the test**, then import the app.
-The session id exists only after the fixture runs, so a module-level import is
-too early.
-
-```python
-import importlib
-
-
-def test_import_time_client(llmentary, monkeypatch):
-    monkeypatch.setenv("OPENAI_BASE_URL", llmentary.path_base_url())
-    app = importlib.import_module("myapp")
-    app.client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": "ping"}],
+    (
+        llmentary.expect()
+        .call_count(1)
+        .tool_called("get_weather")
+        .args_subset("get_weather", {"city": "Paris"})
+        .no_errors()
+        .tokens(max_total=1000)
     )
-    llmentary.expect().prompt_contains("ping").no_errors()
 ```
 
-A path prefix isolates **client processes**, not conversations. One process
-with one env-configured SDK client is one session. For N parallel
-conversations use one of: (a) one worker process per session; (b) construct
-the SDK client per conversation with `base_url=lm.path_base_url()`; (c)
-headers/baggage when the app can set them; (d) run conversations sequentially
-with `DELETE` between them. A second bus worker needs its own topic or
-partition; two consumer groups on one topic both get every event.
-
-Prove isolation with `isolated_from`. The rule is the isolation spec: same
-canned user question in two sessions is not a leak; a foreign user turn
-replayed as history is. Later calls introduce each new user-role message.
-An empty or unknown other session fails unless you pass `allow_empty`.
-`isolated_from` waits on a `Session` or session id with the same wait
-semantics as `expect()`, so a leak introduced by a still-running call
-on the other side is included; a pre-fetched trace is used as given.
-Comparison is exact (normalized), never substring.
-
-```python
-other.expect().isolated_from(llmentary)
-llmentary.expect().isolated_from(other)
+```console
+$ OPENAI_API_KEY=sk-... pytest -q
+1 passed in 2.49s
 ```
 
-See the proxy
-[isolation spec](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md)
-,
-[black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md),
-and
-[assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+The `llmentary` fixture starts the proxy once per pytest run and gives each
+test its own session. The SDK's API key is forwarded to the provider unchanged,
+so it must be a real key; a placeholder such as `test-key` is rejected by the
+provider.
 
-The function-scoped `llmentary` fixture returns a `Session`: it creates a unique
-session id, exposes headers with `X-Test-Session`, waits for proxy quiescence
-before assertions, and deletes the session during teardown.
+## What you can assert
 
-## Waiting for calls
+- Tools: `tool_called`, `not_called`, `args_subset`, `order`, `tool_result_in_prompt`.
+- Requests: `model`, `request_param`, `prompt_contains`.
+- Reliability: `call_count`, `no_retries`, `no_errors`, `aborted`.
+- Budgets: `tokens`, `latency`, `ttft`.
+- Isolation between sessions: `isolated_from`
+  ([rules](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md),
+  [test vectors](tests/testdata/isolation/)).
 
-`wait` asks the proxy to return the session trace once the session has been
-idle for `quiet`, or to fail when `timeout` elapses. The proxy only reads these
-query parameters:
-
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `timeout` | `30s` | Maximum time to wait for the session to become quiet |
-| `quiet` | `500ms` | How long the session must stay idle before wait returns |
-| `min_calls` | `0` | Wait until this many finished calls exist, then for `quiet` |
-
-Override the defaults with environment variables. Each accepts a Go duration
-(`45s`, `200ms`) or a bare number of seconds (`45`, `0.2`):
-
-| Environment | Default |
-| --- | --- |
-| `LLMENTARY_WAIT_TIMEOUT` | `30s` |
-| `LLMENTARY_WAIT_QUIET` | `500ms` |
-
-The client HTTP deadline is `timeout + quiet + 5s`, so the client cannot abort
-before the proxy answers. A timeout is an error: `wait timed out after 30s on
-session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`.
-When the 504 includes `error.in_flight`, the message also lists those still-
-running calls (`#seq METHOD path phase`). Older proxies omit that array; the
-client then keeps the count-only form, or omits `still active` when the count
-is unknown.
-
-`wait` on a session that was never created (or was `DELETE`d):
-
-| `min_calls` | Control status | Client exception |
-| --- | --- | --- |
-| `0` | `404 session_not_found` | `SessionNotFound` |
-| `>=1` | `504 wait_timeout` after `timeout` | `WaitTimeoutError` |
-
-```python
-from llmentary import SessionNotFound, WaitTimeoutError
-
-try:
-    llmentary.wait(timeout=3, quiet=0.2, min_calls=0)
-except SessionNotFound:
-    pass
-
-try:
-    llmentary.wait(timeout=3, quiet=0.2, min_calls=1)
-except WaitTimeoutError:
-    pass
-```
-
-`wait()` still raises `SessionNotFound` on that 404. `expect()` without
-`allow_empty=True` turns it into `AssertionError('no calls recorded for
-session …; known sessions: …')` — it does not return an empty expectation
-you can chain. Use `expect_no_calls()` or `expect(allow_empty=True)` for
-the negative test. A never-created session that will be filled by an
-async worker should wait with `min_calls=1` (or higher), not `0`.
-
-## Assertions
-
-```python
-llmentary.expect().call_count(1).tool_called("search").called_times("search", 1)
-llmentary.expect_no_calls()
-llmentary.expect(allow_empty=True).call_count(0)
-llmentary.query(api_type="responses", model="gpt-4.1-mini").expect().no_errors()
-llmentary.query().without_tools().expect().call_count(1).request_param(
-    "response_format.type", "json_schema"
-)
-llmentary.query().committed().expect().call_count(2)
-llmentary.expect().call_count(2)
-llmentary.expect().call_count(3, include_cancelled=True)
-llmentary.expect().call_count(2, exclude_aborted=True)
-mark = llmentary.mark()
-llmentary.expect(since=mark).final_response_mentions_any("20", "sunny")
-
-with llmentary.soft_expect() as expect:
-    expect.tool_called("search")
-    expect.response_contains("done")
-```
-
-Supported deterministic assertions include call count (`call_count`), tool
-calls (`tool_called`, `not_called`, `called_times`, `args_subset`,
-`args_matcher`, `order`, `parallel_tool_calls`, `tool_result_fed_back`),
-request and finish metadata (`model`, `request_param`, `finish_reason`), usage
-and timing (`tokens`, `latency`, `ttft`, `retries`, `no_retries`), errors
-(`no_errors`, `no_cancelled`, `has_error`, `mid_stream_error`), prompt or response text
-(`prompt_contains`, `prompt_regex`, `response_contains`, `response_regex`,
-`response_json_valid`, `response_json_schema`), and spec observability
-(`no_spec_violations`, `no_ignored_fields`). Failures raise `AssertionError`
-with the session trace summary. A filter or `since=` that matches zero calls
-fails `no_errors()` / `not_called()` unless you call `allow_empty()` first.
-`expect()` itself still fails on a never-created session unless you pass
-`allow_empty=True`. Use `llmentary.list_sessions()` when a wait or expect
-fails with zero calls, so the message can name the known session ids (once).
-
-Behind an OpenAI-compatible provider the recommended spec pair is:
-
-```python
-llmentary.expect().no_spec_violations()
-llmentary.expect().no_ignored_fields(min_severity="warning")
-# or allow vendor fields, still check both sides for everything else:
-llmentary.expect().no_ignored_fields(ignore_kinds=["vendor_field"])
-```
-
-`ignore_kinds=` is an alias of `ignore_keywords=` in `no_ignored_fields`: both
-match the entry `kind`, the union applies when both are given, and each also
-accepts a single string as one entry.
-`min_severity="warning"` drops entries recorded below that severity
-(`info` < `warning` < `error`) and keeps entries recorded without a severity
-(fail closed); an invalid value raises `ValueError`. Both filters combine with
-`side=`, which narrows findings to one side. The kinds the proxy records at
-`severity=info`:
-
-| Kind | Side | What it is |
-|---|---|---|
-| `vendor_field` | request | vendor extra the provider accepts and ignores |
-| `compatible_optional` | response | optional OpenAI field the compatible provider omitted |
-| `response_shape` | response | response shape differs from the strict OpenAI shape |
-
-`call_count()` counts calls whose outcome is **not** `cancelled`: a
-client cancel in either phase is not counted, while `committed` and `failed`
-calls are. Pass `include_cancelled=True` to count every captured call, and
-`exclude_aborted=True` still counts the non-aborted subset — passing
-it together with `include_cancelled=True` raises `TypeError`. A failure that
-left cancelled calls out says so: `expected 2 captured call(s), got 1 (1
-cancelled not counted; pass include_cancelled=True)`.
-
-Negative tests — asserting zero LLM calls:
-
-```python
-# reading history / a GET that must not hit the model
-unused.expect_no_calls(quiet=0.2)
-unused.expect(allow_empty=True).call_count(0)
-active.expect().allow_empty().isolated_from(unused)
-```
-
-Testing interruptions / barge-in: cancel a streaming call (~50 ms after
-send, or after the first chunk) and read the typed abort fields:
-
-```python
-stream.close()
-expectation = llmentary.expect().aborted()
-call = next(call for call in expectation.trace.calls if call.client_aborted)
-assert call.client_aborted
-assert call.upstream_called is True
-assert call.abort_phase in (None, "before_headers", "after_headers")
-assert call.finish_reason in {"cancelled", "unknown"}
-assert call.http_status != 502
-assert "status=aborted" in expectation.trace.trace_summary()
-```
-
-`client_aborted` prefers the top-level Call field and falls back to
-`normalized.client_aborted` on older proxies. `abort_phase` is
-`before_headers` or `after_headers` when the call was aborted, and
-omitted (`None`) otherwise. `upstream_called` is the top-level Call
-field (`True`/`False`), or `None` on older proxies. Closing after
-`[DONE]` or a terminal Responses event is not an abort. Proxy 0.3.0 still
-records `finish_reason=unknown` on abort; `cancelled` is the documented
-value.
-
-`no_errors()` fails only on `outcome="failed"`: client cancels in
-both phases are not errors, so use `aborted()`, `no_cancelled()` or
-`has_error("client_aborted")` to assert them. Both assertions name every
-offending call — `no_errors()` prints `#seq` with the normalized error or HTTP
-status, `no_cancelled()` prints `#seq phase=<abort_phase>`.
-
-Trace-summary `status=` is `ok`, `error`, or `aborted`. Both abort
-phases print `status=aborted` (a scan for `status=error` must not miss
-an after-headers cancel that already has `http=200`). `http=` is
-included only when an upstream status was recorded (after-headers,
-typically 200; omitted for before-headers). `stream_truncated` is
-printed only when the proxy recorded a truncated stream (after-headers).
-`phase=` is printed when `abort_phase` is known.
-
-Call `id` values (`call_3`) are unique within one proxy process and can
-interleave across sessions. `CapturedCall.seq` is 1-based per session
-(`sequence_number()` is an alias). The trace summary prints `#seq (id)`.
-
-See [`docs/api.md`](docs/api.md), [`docs/pytest.md`](docs/pytest.md), and the
-proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+All assertions: [reference](https://barzoj-co.github.io/llmentary/reference/assertions/).
+Python API and pytest options: [docs/api.md](docs/api.md), [docs/pytest.md](docs/pytest.md).
 
 <!-- llmentary-repos:start -->
 ## llmentary repositories

@@ -21,7 +21,6 @@ PIN_DOC_PATHS = (
 )
 CURRENT_PIN_PHRASES = (
     "Published platform wheels bundle proxy v{pin}",
-    "currently {pin}",
     "currently `{pin}`",
     "The current pin is `{pin}`",
     "proxy v{pin}",

@@ -50,7 +50,7 @@ def test_something(llmentary):
 | `--llmentary-bin` | `LLMENTARY_BIN` | Path to proxy binary |
 | `--llmentary-proxy-url` | `LLMENTARY_PROXY_URL` | Attach to existing proxy |
 | `--llmentary-upstream-url` | `LLMENTARY_UPSTREAM_BASE_URL` | Upstream OpenAI-compatible base URL |
-| `--llmentary-upstream-api-key` | `LLMENTARY_UPSTREAM_API_KEY` | Upstream API key |
+| `--llmentary-upstream-api-key` | `LLMENTARY_UPSTREAM_API_KEY` | Value for `{upstream_api_key}` in `LLMENTARY_START_COMMAND`. The proxy does not add it to requests; it forwards the SDK client's key |
 | `--llmentary-control-token` | `LLMENTARY_CONTROL_TOKEN` | Bearer token for control API |
 | `--llmentary-control-url` | `LLMENTARY_CONTROL_URL` | Control API URL when attaching |
 | `--llmentary-wait-timeout` | `LLMENTARY_WAIT_TIMEOUT` | Wait timeout (Go duration or seconds; default `30s`) |
@@ -94,13 +94,18 @@ def llmentary_upstream_url(fake_openai_server):
 
 ### openai-python
 
+The proxy forwards the client's API key unchanged, so use a real key. A
+placeholder such as `test-key` only works against a fake upstream.
+
 ```python
+import os
+
 from openai import OpenAI
 
 
 def test_openai(llmentary):
     client = OpenAI(
-        api_key="test-key",
+        api_key=os.environ["OPENAI_API_KEY"],
         base_url=llmentary.openai_base_url,
         default_headers=llmentary.headers,
     )
