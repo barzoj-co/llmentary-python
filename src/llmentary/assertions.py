@@ -51,7 +51,7 @@ def require_non_negative_count(name: str, value: object) -> int:
 
 
 def _settled_calls(calls: Sequence[CapturedCall]) -> list[CapturedCall]:
-    """Calls with a recorded ``ended_at``. An in-flight record has no outcome (DOG-58)."""
+    """Calls with a recorded ``ended_at``. An in-flight record has no outcome."""
 
     return [call for call in calls if first_present(call.raw, "ended_at", "endedAt")]
 
@@ -99,10 +99,10 @@ class Expectation:
         is the range form.
 
         The default counts calls whose terminal outcome is **not**
-        ``cancelled`` (DOG-58): a client cancel in either phase is not
+        ``cancelled``: a client cancel in either phase is not
         counted, ``committed`` and ``failed`` calls are. Pass
         ``include_cancelled=True`` to count every captured call, cancelled
-        ones included. ``exclude_aborted=True`` (DOG-50) counts the
+        ones included. ``exclude_aborted=True`` counts the
         non-aborted subset — the same calls the default leaves out, plus any
         client-aborted call whose outcome is ``failed``. Passing
         ``exclude_aborted=True`` and ``include_cancelled=True`` together
@@ -172,7 +172,7 @@ class Expectation:
         """Assert this session's calls are isolated from ``other``.
 
         ``other`` is a ``Session``, a session id, or a ``SessionTrace``.
-        Checks, with one failure line per violated rule (DOG-29):
+        Checks, with one failure line per violated rule:
 
         1. every call has ``session_id`` equal to this session
         2. no call id appears in both sessions
@@ -565,7 +565,7 @@ class Expectation:
         return self.retries(max_count=0)
 
     def no_errors(self) -> Expectation:
-        """Assert no settled call has terminal outcome ``failed`` (DOG-58).
+        """Assert no settled call has terminal outcome ``failed``.
 
         Client cancels in both phases (``before_headers`` and
         ``after_headers``) are not errors; use ``aborted()`` /
@@ -587,7 +587,7 @@ class Expectation:
         return self
 
     def no_cancelled(self) -> Expectation:
-        """Assert no settled call has terminal outcome ``cancelled`` (DOG-58).
+        """Assert no settled call has terminal outcome ``cancelled``.
 
         Client cancels in both phases are not errors; use ``aborted()`` /
         ``no_cancelled()`` / ``has_error("client_aborted")`` to assert them.
@@ -632,7 +632,7 @@ class Expectation:
         """Assert at least one captured call has ``client_aborted``.
 
         ``phase`` is ``before_headers`` or ``after_headers`` when the proxy
-        recorded ``abort_phase`` (DOG-27 / DOG-28).
+        recorded ``abort_phase``.
         """
 
         calls = [call for call in self.trace.calls if call.client_aborted]
@@ -756,7 +756,7 @@ class Expectation:
     ) -> Expectation:
         """Fail when checked calls have spec findings. Never vacuous.
 
-        Schema findings live on ``normalized.spec_violations``. The LTL-API-2
+        Schema findings live on ``normalized.spec_violations``. The
         unknown nested message field is recorded as
         ``ignored_fields`` with ``kind=unknown_request_field`` (OpenAI accepts
         it and ignores it). Those are findings for this assertion too; JS

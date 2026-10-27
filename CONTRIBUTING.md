@@ -121,7 +121,7 @@ only move up. release-please PRs
 (`autorelease: pending`, a `chore(main): release` title, or a
 `release-please--*` head ref) use
 `max(fail_under, release_fail_under)` (92 today; `release_fail_under` is
-the 90 floor Denis requires for releases).
+the 90 floor the maintainer requires for releases).
 
 Codecov upload stays tokenless (no OIDC) and informational (`codecov.yml`).
 It does not gate PRs: `fail_ci_if_error` is true only when

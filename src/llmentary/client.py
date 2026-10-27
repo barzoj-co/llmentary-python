@@ -490,7 +490,7 @@ class Session:
     ) -> Expectation:
         """Wait, then return an expectation.
 
-        The default is strict (DOG-2): a never-created session raises
+        The default is strict: a never-created session raises
         ``AssertionError('no calls recorded …')``. Pass ``allow_empty=True``
         (or chain ``allow_empty()`` after that) to get an empty expectation
         so ``call_count(0)`` / ``isolated_from`` against an empty other
@@ -618,17 +618,17 @@ class Query:
         return replace(self, since_seq=mark)
 
     def committed(self) -> Query:
-        """Keep calls that were not client-aborted (DOG-50)."""
+        """Keep calls that were not client-aborted."""
 
         return replace(self, aborted_only=False)
 
     def aborted(self) -> Query:
-        """Keep client-aborted calls only (DOG-50)."""
+        """Keep client-aborted calls only."""
 
         return replace(self, aborted_only=True)
 
     def outcome(self, *states: str) -> Query:
-        """Keep calls whose terminal outcome is one of ``states`` (DOG-58)."""
+        """Keep calls whose terminal outcome is one of ``states``."""
 
         if not states:
             raise ValueError("outcome() requires at least one state")
@@ -642,12 +642,12 @@ class Query:
         return replace(self, outcomes=tuple(states))
 
     def cancelled(self) -> Query:
-        """Keep calls with terminal outcome ``cancelled`` (DOG-58)."""
+        """Keep calls with terminal outcome ``cancelled``."""
 
         return replace(self, outcomes=(OUTCOME_CANCELLED,))
 
     def failed(self) -> Query:
-        """Keep calls with terminal outcome ``failed`` (DOG-58)."""
+        """Keep calls with terminal outcome ``failed``."""
 
         return replace(self, outcomes=(OUTCOME_FAILED,))
 

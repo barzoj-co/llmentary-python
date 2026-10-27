@@ -8,9 +8,9 @@ import pytest
 from llmentary.assertions import Expectation
 from llmentary.types import SessionTrace
 
-# Chat-service live-validation fixture: a hand-written scraper treated
+# Live-validation fixture: a hand-written scraper treated
 # ``normalized.validation`` as a finding. That payload is clean.
-CHAT_SERVICE_RUN1_NORMALIZED: dict[str, Any] = {
+SUPPORT_BOT_RUN1_NORMALIZED: dict[str, Any] = {
     "validation": {
         "mode": "warn",
         "profile": "relaxed",
@@ -43,11 +43,11 @@ ENUM_IGNORED: dict[str, Any] = {
     "message": "vendor extension is ignored",
 }
 
-# Live OpenAI records this on ignored_fields, not spec_violations (LTL-API-2 L2).
+# Live OpenAI records this on ignored_fields, not spec_violations.
 L2_UNKNOWN_NESTED: dict[str, Any] = {
-    "path": "messages[0].content[0].ltl_unknown_nested",
-    "pointer": "/messages/0/content/0/ltl_unknown_nested",
-    "key": "ltl_unknown_nested",
+    "path": "messages[0].content[0].x_unknown_nested",
+    "pointer": "/messages/0/content/0/x_unknown_nested",
+    "key": "x_unknown_nested",
     "kind": "unknown_request_field",
     "context": "chat.message",
     "effective_strict": False,
@@ -87,7 +87,7 @@ def _trace(*calls: Mapping[str, Any], session_id: str = "sess") -> SessionTrace:
 
 
 def test_chat_service_run1_payload_is_clean_not_a_violation() -> None:
-    trace = _trace(_call(normalized=CHAT_SERVICE_RUN1_NORMALIZED), session_id="chat-service-run1")
+    trace = _trace(_call(normalized=SUPPORT_BOT_RUN1_NORMALIZED), session_id="support-bot-run1")
     call = trace.calls[0]
     assert call.validation is not None
     assert call.validation.mode == "warn"
@@ -267,21 +267,21 @@ def test_unknown_request_field_fails_no_spec_violations() -> None:
     fields = call.ignored_fields
     assert fields is not None
     assert fields[0].kind == "unknown_request_field"
-    assert fields[0].key == "ltl_unknown_nested"
+    assert fields[0].key == "x_unknown_nested"
     assert fields[0].hint is not None
     with pytest.raises(AssertionError) as caught:
         Expectation(trace).no_spec_violations()
     message = str(caught.value)
     assert "validation was not run" not in message
     assert " — " in message
-    assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
+    assert "x_unknown_nested" in message or "/x_unknown" in message
     Expectation(trace).no_spec_violations(ignore_keywords=("unknown_request_field",))
-    Expectation(trace).no_spec_violations(ignore_paths=("/messages/0/content/0/ltl_unknown_nested",))
+    Expectation(trace).no_spec_violations(ignore_paths=("/messages/0/content/0/x_unknown_nested",))
     # context=chat.message is not a request/response label, so a side
     # filter fail-closes and still reports the finding.
-    with pytest.raises(AssertionError, match="ltl_unknown"):
+    with pytest.raises(AssertionError, match="x_unknown"):
         Expectation(trace).no_spec_violations(side="response")
-    with pytest.raises(AssertionError, match="ltl_unknown"):
+    with pytest.raises(AssertionError, match="x_unknown"):
         Expectation(trace).no_spec_violations(side="request")
 
 

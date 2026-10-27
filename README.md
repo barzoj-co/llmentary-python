@@ -184,7 +184,7 @@ llmentary.expect().isolated_from(other)
 
 See the proxy
 [isolation spec](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md)
-(DOG-29 / DOG-32 / DOG-33),
+,
 [black-box guide](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md),
 and
 [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
@@ -310,10 +310,10 @@ accepts a single string as one entry.
 | `compatible_optional` | response | optional OpenAI field the compatible provider omitted |
 | `response_shape` | response | response shape differs from the strict OpenAI shape |
 
-`call_count()` counts calls whose outcome is **not** `cancelled` (DOG-58): a
+`call_count()` counts calls whose outcome is **not** `cancelled`: a
 client cancel in either phase is not counted, while `committed` and `failed`
 calls are. Pass `include_cancelled=True` to count every captured call, and
-`exclude_aborted=True` (DOG-50) still counts the non-aborted subset — passing
+`exclude_aborted=True` still counts the non-aborted subset — passing
 it together with `include_cancelled=True` raises `TypeError`. A failure that
 left cancelled calls out says so: `expected 2 captured call(s), got 1 (1
 cancelled not counted; pass include_cancelled=True)`.
@@ -351,7 +351,7 @@ field (`True`/`False`), or `None` on older proxies. Closing after
 records `finish_reason=unknown` on abort; `cancelled` is the documented
 value.
 
-`no_errors()` fails only on `outcome="failed"` (DOG-58): client cancels in
+`no_errors()` fails only on `outcome="failed"`: client cancels in
 both phases are not errors, so use `aborted()`, `no_cancelled()` or
 `has_error("client_aborted")` to assert them. Both assertions name every
 offending call — `no_errors()` prints `#seq` with the normalized error or HTTP
@@ -372,7 +372,7 @@ interleave across sessions. `CapturedCall.seq` is 1-based per session
 See [`docs/api.md`](docs/api.md), [`docs/pytest.md`](docs/pytest.md), and the
 proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
-<!-- ltl-repos:start -->
+<!-- llmentary-repos:start -->
 ## llmentary repositories
 
 | Repository | What |
@@ -381,7 +381,7 @@ proxy [assertions guide](https://github.com/barzoj-co/llmentary/blob/main/docs/a
 | [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` |
 | [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin |
 | [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest |
-<!-- ltl-repos:end -->
+<!-- llmentary-repos:end -->
 
 ## License
 

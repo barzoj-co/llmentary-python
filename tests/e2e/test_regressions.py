@@ -156,7 +156,7 @@ def test_unknown_nested_field_fails_no_spec_violations(llmentary: Session) -> No
                             {
                                 "type": "text",
                                 "text": "Reply with the single word ping.",
-                                "ltl_unknown_nested": "dog3-l2",
+                                "x_unknown_nested": "case3-l2",
                             }
                         ],
                     }
@@ -173,7 +173,7 @@ def test_unknown_nested_field_fails_no_spec_violations(llmentary: Session) -> No
     message = str(caught.value)
     assert "validation was not run" not in message
     assert " — " in message
-    assert "ltl_unknown_nested" in message or "/ltl_unknown" in message
+    assert "x_unknown_nested" in message or "/x_unknown" in message
 
 
 def test_wait_never_created_min_calls_zero_is_session_not_found(

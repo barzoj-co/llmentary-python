@@ -400,7 +400,7 @@ def outcome_case(name: str) -> dict[str, Any]:
 
 def outcome_trace(case: dict[str, Any]) -> SessionTrace:
     call = dict(case["call"])
-    return SessionTrace.from_payload("dog-58", {"id": "dog-58", "calls": [call]})
+    return SessionTrace.from_payload("outcome", {"id": "outcome", "calls": [call]})
 
 
 @pytest.mark.parametrize("case", OUTCOME_CASES, ids=lambda row: row["name"])
@@ -487,7 +487,7 @@ def test_no_errors_and_no_cancelled_skip_in_flight_calls() -> None:
     Expectation(trace()).no_errors().no_cancelled()
 
 
-def outcome_trace_of(*names: str, session_id: str = "dog-58-counts") -> SessionTrace:
+def outcome_trace_of(*names: str, session_id: str = "outcome-counts") -> SessionTrace:
     calls = [dict(outcome_case(name)["call"]) for name in names]
     return SessionTrace.from_payload(session_id, {"id": session_id, "calls": calls})
 
@@ -514,7 +514,7 @@ def test_call_count_default_failure_names_the_cancelled_calls_left_out() -> None
         "expected 3 captured call(s), got 2 "
         "(1 cancelled not counted; pass include_cancelled=True)" in str(caught.value)
     )
-    assert "llmentary session dog-58-counts" in str(caught.value)
+    assert "llmentary session outcome-counts" in str(caught.value)
     with pytest.raises(AssertionError, match="at least 3 captured call"):
         Expectation(counts).call_count(min=3)
 

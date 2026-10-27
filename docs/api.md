@@ -135,9 +135,9 @@ calls that offered none (router-style structured output). `since(mark)` keeps
 calls whose sequence number is greater than `mark`. `committed()` / `aborted()`
 keep calls that were not / were client-aborted (an after-headers abort is
 still HTTP 200, so a status filter is not a substitute). `call_count(...)`
-counts calls whose outcome is not `cancelled` (DOG-58) — a client cancel in
+counts calls whose outcome is not `cancelled` — a client cancel in
 either phase is left out, `failed` calls count; `include_cancelled=True`
-counts every captured call. `call_count(..., exclude_aborted=True)` (DOG-50)
+counts every captured call. `call_count(..., exclude_aborted=True)`
 counts the non-aborted subset on an unfiltered trace; passing it with
 `include_cancelled=True` raises `TypeError`.
 The same filters exist on `SessionTrace.filtered(...)` and as chainable

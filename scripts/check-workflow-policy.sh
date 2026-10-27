@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Enforce least-privilege permissions, timeouts, concurrency, and the release
-# publish path described in LTL-HYG-PY.
+# publish path described in docs/releasing.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
