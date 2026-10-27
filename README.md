@@ -135,6 +135,12 @@ def test_tool_flow(llmentary):
     ).tool_result_fed_back("get_weather").no_errors()
 ```
 
+The placeholder `api_key="test-key"` works only in start mode: the `llmentary_proxy`
+fixture starts the proxy and passes `LLMENTARY_UPSTREAM_API_KEY`
+(`--llmentary-upstream-api-key`) to it, so the proxy authenticates upstream with the
+real key. In attach mode (`LLMENTARY_PROXY_URL` / `--llmentary-proxy-url`) the already
+running proxy forwards the client's key, so a real API key is needed.
+
 Black-box / import-time clients that cannot send headers: set the service base
 URL to `llmentary.path_base_url()` **inside the test**, then import the app.
 The session id exists only after the fixture runs, so a module-level import is
